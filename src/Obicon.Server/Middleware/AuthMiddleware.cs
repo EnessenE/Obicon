@@ -11,6 +11,12 @@ public class AuthMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
+        if (IsExcludedPath(context.Request.Path))
+        {
+            await _next(context);
+            return;
+        }
+
         if (!context.Request.Headers.TryGetValue("Authorization", out var authHeader) ||
             authHeader != "uwu")
         {
@@ -20,5 +26,11 @@ public class AuthMiddleware
         }
 
         await _next(context);
+    }
+
+    private static bool IsExcludedPath(PathString path)
+    {
+        var excludedPaths = new[] { "/metrics", "/swagger", "/swagger-ui" };
+        return excludedPaths.Any(p => path.StartsWithSegments(p));
     }
 }
