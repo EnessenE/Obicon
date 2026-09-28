@@ -1,3 +1,4 @@
 <Solution>
-  <Folder Name="/" />
+  <Project Path="src/Obicon.Server/Obicon.Server.csproj" />
+  <Project Path="src/Obicon.Node/Obicon.Node.csproj" />
 </Solution>
