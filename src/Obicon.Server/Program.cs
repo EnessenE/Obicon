@@ -20,7 +20,7 @@ builder.Services.AddOpenTelemetry()
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation());
 
-
+builder.Services.AddCors();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddControllers();
 builder.Services.AddSwaggerGen(c =>
@@ -46,6 +46,12 @@ builder.Services.AddSingleton<IConfigRepository, JsonConfigRepository>();
 builder.Services.AddHostedService<TestQueueProcessor>();
 
 var app = builder.Build();
+
+// Enable CORS for frontend on port 5003
+app.UseCors(builder => builder
+    .AllowAnyOrigin()
+    .AllowAnyMethod()
+    .AllowAnyHeader());
 
 app.UseSwagger();
 app.UseSwaggerUI();

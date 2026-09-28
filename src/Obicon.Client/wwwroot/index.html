@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obicon - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="app" class="container-fluid">
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#">Obicon</a>
+                <div class="navbar-nav">
+                    <a class="nav-link active" href="#" @click="show='home'">Home</a>
+                    <a class="nav-link" href="#" @click="show='nodes'">Nodes</a>
+                    <a class="nav-link" href="#" @click="show='tests'">Tests</a>
+                    <a class="nav-link" href="#" @click="checkHealth">Health</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container mt-4">
+            <!-- Home -->
+            <div v-if="show === 'home'" class="home-view">
+                <h1>Obicon Dashboard</h1>
+                <div class="row mt-4">
+                    <div class="col-md-4">
+                        <div class="card" @click="show='nodes'">
+                            <div class="card-body text-center">
+                                <h3>Nodes</h3>
+                                <p>Manage monitoring nodes</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card" @click="show='tests'">
+                            <div class="card-body text-center">
+                                <h3>Tests</h3>
+                                <p>Configure synthetic tests</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card" @click="checkHealth">
+                            <div class="card-body text-center">
+                                <h3>Health</h3>
+                                <p>Check system status</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Nodes -->
+            <div v-if="show === 'nodes'" class="nodes-view">
+                <h1>Nodes</h1>
+                <div class="mb-3">
+                    <div class="input-group" style="max-width: 400px;">
+                        <input v-model="newNodeName" class="form-control" placeholder="Node name" @keyup.enter="createNode">
+                        <button class="btn btn-primary" @click="createNode">Add Node</button>
+                    </div>
+                </div>
+                <div v-if="loading.nodes" class="text-center my-4">
+                    <div class="spinner-border"></div>
+                </div>
+                <div v-if="error.nodes" class="alert alert-danger">{{ error.nodes }}</div>
+                <table v-if="nodes.length > 0" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Active</th>
+                            <th>Created</th>
+                            <th>Last Seen</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="node in nodes" :key="node.id">
+                            <td>{{ node.id.substring(0, 8) }}</td>
+                            <td>{{ node.name }}</td>
+                            <td>{{ node.isActive ? 'Yes' : 'No' }}</td>
+                            <td>{{ new Date(node.createdAt).toLocaleString() }}</td>
+                            <td>{{ node.lastSeenAt ? new Date(node.lastSeenAt).toLocaleString() : 'Never' }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" @click="deleteNode(node.id)">Delete</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div v-if="nodes.length === 0 && !loading.nodes" class="alert alert-info">No nodes found.</div>
+            </div>
+
+            <!-- Tests -->
+            <div v-if="show === 'tests'" class="tests-view">
+                <h1>Tests</h1>
+                <div class="card mb-4">
+                    <div class="card-header"><h5>Create Test</h5></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-2">
+                                <input v-model="newTest.name" class="form-control" placeholder="Name">
+                            </div>
+                            <div class="col-md-2">
+                                <select v-model="newTest.type" class="form-select">
+                                    <option value="Ping">Ping</option>
+                                    <option value="Http">HTTP</option>
+                                    <option value="Https">HTTPS</option>
+                                    <option value="Tcp">TCP</option>
+                                    <option value="Dns">DNS</option>
+                                    <option value="Traceroute">Traceroute</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <select v-model="newTest.frequency" class="form-select">
+                                    <option value="TenSeconds">10 seconds</option>
+                                    <option value="ThirtySeconds">30 seconds</option>
+                                    <option value="OneMinute">1 minute</option>
+                                    <option value="TwoMinutes">2 minutes</option>
+                                    <option value="FiveMinutes">5 minutes</option>
+                                    <option value="TenMinutes">10 minutes</option>
+                                    <option value="OneHour">1 hour</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <input v-model="newTest.isActive" type="checkbox" class="form-check-input"> Active
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-primary w-100" @click="createTest">Create Test</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="loading.tests" class="text-center my-4">
+                    <div class="spinner-border"></div>
+                </div>
+                <div v-if="error.tests" class="alert alert-danger">{{ error.tests }}</div>
+                <table v-if="tests.length > 0" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Frequency</th>
+                            <th>Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="test in tests" :key="test.id">
+                            <td>{{ test.id.substring(0, 8) }}</td>
+                            <td>{{ test.name }}</td>
+                            <td>{{ test.type }}</td>
+                            <td>{{ test.frequency }}</td>
+                            <td>{{ test.isActive ? 'Yes' : 'No' }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-success me-1" @click="triggerRun(test.id)">Run</button>
+                                <button class="btn btn-sm btn-danger" @click="deleteTest(test.id)">Delete</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div v-if="tests.length === 0 && !loading.tests" class="alert alert-info">No tests found.</div>
+            </div>
+
+            <!-- Health -->
+            <div v-if="show === 'health'" class="health-view">
+                <h1>Health Check</h1>
+                <button class="btn btn-primary mb-3" @click="checkHealth">Check Health</button>
+                <div v-if="health" class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ health.status }}</h5>
+                        <p class="card-text">Checked at: {{ new Date(health.timestamp).toLocaleString() }}</p>
+                    </div>
+                </div>
+                <div v-if="error.health" class="alert alert-danger">{{ error.health }}</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
