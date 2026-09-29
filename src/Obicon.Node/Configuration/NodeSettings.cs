@@ -57,9 +57,15 @@ public class NodeSettings
     public int MonitoringIntervalSeconds { get; set; } = 5;
 
     /// <summary>
-    /// URL prefix the Prometheus metrics listener binds to. Default: "http://localhost:9464/".
+    /// Host the Prometheus metrics listener binds to. Default: "localhost"; use "+" to expose
+    /// metrics outside the machine or container.
     /// </summary>
-    public string MetricsUrlPrefix { get; set; } = "http://localhost:9464/";
+    public string MetricsHost { get; set; } = "localhost";
+
+    /// <summary>
+    /// Port the Prometheus metrics listener binds to. Default: 9464.
+    /// </summary>
+    public int MetricsPort { get; set; } = 9464;
 
     /// <summary>
     /// Enroll token to register this node with the server when no auth token is configured.

@@ -38,7 +38,9 @@ function renderSettings() {
                            onchange="toggleSetting('${escapeHtml(setting.key)}', this.checked, this)">
                 </div>`
             : `
-                <input id="setting-input-${escapeHtml(setting.key)}" class="form-control" value="${escapeHtml(setting.value)}"
+                <input id="setting-input-${escapeHtml(setting.key)}"
+                       class="form-control${locked ? ' bg-body-tertiary text-secondary' : ''}"
+                       value="${escapeHtml(setting.value)}"
                        ${locked ? 'readonly' : ''}>`;
 
         const action = locked

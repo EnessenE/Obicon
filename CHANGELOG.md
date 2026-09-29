@@ -12,6 +12,9 @@ separate version; its changes are listed under the server release.
 
 ## [Unreleased]
 
+### Node
+- Configurable Prometheus metrics endpoint: `Node:MetricsHost` (default `localhost`, `+` exposes outside the machine) and `Node:MetricsPort` (default `9464`). Replaces `Node:MetricsUrlPrefix`; setting a custom port now actually frees the default one instead of binding both
+
 ## [Server 1.0.0] - 2026-09-29
 
 Initial release.

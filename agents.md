@@ -32,7 +32,7 @@
 
 - **Pipelines:** `.github/workflows/ci.yml` (pull requests to `main`: build + test, default read-only permissions) and `.github/workflows/release.yml` (pushes to `main`: build + test, then publish the server and node images to the GitHub Container Registry, `ghcr.io/<owner>/<repo>/server` and `/node`, then tag and release). The frontend is not published as an image (run it with `dotnet run --project src/Obicon.Client`)
 - **Versions are per component:** `CHANGELOG.md` tracks `## [Server x.y.z]` and `## [Node x.y.z]` headings independently — bump only the component that changed. The pipeline publishes each image with its own version and creates `server-vx.y.z` / `node-vx.y.z` tags and releases, with the matching changelog section as notes. Frontend changes are listed under the server release. The publish job reuses images for an existing tag but skips re-releasing
-- **Dockerfiles:** `src/Obicon.Server/Dockerfile` (aspnet:10.0, port 5000, SQLite file in `/app`) and `src/Obicon.Node/Dockerfile` (runtime:10.0, configured via `Node__*` env vars; needs `--cap-add=NET_RAW` for ping/traceroute, and `Node__MetricsUrlPrefix=http://+:9464/` to expose metrics). Both build from the repo root as context with `.dockerignore` keeping it small
+- **Dockerfiles:** `src/Obicon.Server/Dockerfile` (aspnet:10.0, port 5000, SQLite file in `/app`) and `src/Obicon.Node/Dockerfile` (runtime:10.0, configured via `Node__*` env vars; needs `--cap-add=NET_RAW` for ping/traceroute, and `Node__MetricsHost=+` to expose metrics). Both build from the repo root as context with `.dockerignore` keeping it small
 
 ## Server Settings Standard
 

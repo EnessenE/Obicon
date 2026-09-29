@@ -16,12 +16,24 @@ builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfigurati
 
 builder.Services.Configure<NodeSettings>(builder.Configuration.GetSection("Node"));
 
-var metricsPrefix = builder.Configuration["Node:MetricsUrlPrefix"] ?? "http://localhost:9464/";
+// The metrics listener address: Node:MetricsHost and Node:MetricsPort (defaults localhost:9464)
+var metricsHost = builder.Configuration["Node:MetricsHost"] ?? "localhost";
+if (!int.TryParse(builder.Configuration["Node:MetricsPort"], out var metricsPort) || metricsPort <= 0)
+{
+    metricsPort = 9464;
+}
 
 builder.Services.AddOpenTelemetry()
     .WithMetrics(b => b
         .AddMeter(NodeMetrics.NodeMeterName)
-        .AddPrometheusHttpListener(o => o.ConfigureHttpListener = (_, listener) => listener.Prefixes.Add(metricsPrefix)));
+        .AddPrometheusHttpListener(o => o.ConfigureHttpListener = (_, listener) =>
+        {
+            // The exporter keeps its default prefix (http://localhost:9464/) even when a
+            // callback is set, so clear it first: a custom port must free the default,
+            // and hosts like "+" (all interfaces) are only valid at the listener level
+            listener.Prefixes.Clear();
+            listener.Prefixes.Add($"http://{metricsHost}:{metricsPort}/");
+        }));
 
 builder.Services.AddSingleton<ServerConnection>();
 builder.Services.AddSingleton<IServerConnection>(sp => sp.GetRequiredService<ServerConnection>());
@@ -41,5 +53,6 @@ builder.Services.AddHostedService<HealthService>();
 builder.Services.AddHostedService<MonitoringService>();
 
 var host = builder.Build();
-host.Services.GetRequiredService<ILogger<Program>>().LogInformation("Obicon Node starting");
+host.Services.GetRequiredService<ILogger<Program>>().LogInformation(
+    "Obicon Node starting; metrics on http://{MetricsHost}:{MetricsPort}/metrics", metricsHost, metricsPort);
 await host.RunAsync();

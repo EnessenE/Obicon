@@ -416,7 +416,7 @@ Prometheus scrape endpoint (no auth). Exposes:
 - `obicon.server.actions` (counter, dim `action`) and `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`) from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
-Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.node.test_duration_ms`, `obicon.node.heartbeats`, `obicon.node.reconnects`) on `http://localhost:9464/metrics` by default, configurable via `Node:MetricsUrlPrefix`.
+Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.node.test_duration_ms`, `obicon.node.heartbeats`, `obicon.node.reconnects`) on `http://localhost:9464/metrics` by default, configurable via `Node:MetricsHost` and `Node:MetricsPort` (e.g. `Node__MetricsPort=9500`; host `+` exposes metrics outside the machine).
 
 ### Settings
 
