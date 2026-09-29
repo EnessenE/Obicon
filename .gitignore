@@ -405,4 +405,5 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
-Project
+# JetBrains IDEs (IntelliJ, Rider, PyCharm, ...)
+.idea/

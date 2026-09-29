@@ -1,0 +1,16 @@
+# Keep the Docker build context small; images build from src/ only
+.git/
+.github/
+.idea/
+.vs/
+.vscode/
+docs/
+tests/
+src/Obicon.Client/
+
+**/bin/
+**/obj/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/node-identity.json

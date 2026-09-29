@@ -1,0 +1,129 @@
+name: Release
+
+# Runs on merges to main. Builds and tests, then publishes the server and
+# node Docker images to the GitHub Container Registry and tags/releases
+# each component using its version from CHANGELOG.md
+# ([Server x.y.z] and [Node x.y.z] headings).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Obicon.slnx
+
+      - name: Build
+        run: dotnet build Obicon.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/Obicon.Server.Tests --configuration Release --no-build
+
+  publish:
+    name: Publish images, tag, and release
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Determine component versions from CHANGELOG.md
+        id: version
+        run: |
+          SERVER_VERSION=$(sed -n 's/^## \[Server \([0-9]*\.[0-9]*\.[0-9]*\)\].*/\1/p' CHANGELOG.md | head -n 1)
+          NODE_VERSION=$(sed -n 's/^## \[Node \([0-9]*\.[0-9]*\.[0-9]*\)\].*/\1/p' CHANGELOG.md | head -n 1)
+          if [ -z "$SERVER_VERSION" ] || [ -z "$NODE_VERSION" ]; then
+            echo "CHANGELOG.md needs [Server x.y.z] and [Node x.y.z] version headings"
+            exit 1
+          fi
+          IMAGE_BASE=$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          echo "server-version=$SERVER_VERSION" >> "$GITHUB_OUTPUT"
+          echo "node-version=$NODE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "image-base=$IMAGE_BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Obicon.Server/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.version.outputs.image-base }}/server:${{ steps.version.outputs.server-version }}
+            ${{ steps.version.outputs.image-base }}/server:latest
+
+      - name: Build and push node image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Obicon.Node/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.version.outputs.image-base }}/node:${{ steps.version.outputs.node-version }}
+            ${{ steps.version.outputs.image-base }}/node:latest
+
+      - name: Extract release notes
+        env:
+          SERVER_VERSION: ${{ steps.version.outputs.server-version }}
+          NODE_VERSION: ${{ steps.version.outputs.node-version }}
+        run: |
+          python3 - <<'EOF'
+          import re, os
+
+          text = open('CHANGELOG.md').read()
+
+          def notes(component, version):
+              pattern = r'^## \[' + component + r' ' + re.escape(version) + r'\][^\n]*\n(.*?)(?=^## \[|\Z)'
+              match = re.search(pattern, text, re.S | re.M)
+              return match.group(1).strip() if match else 'Release ' + version
+
+          open('server-release-notes.md', 'w').write(notes('Server', os.environ['SERVER_VERSION']))
+          open('node-release-notes.md', 'w').write(notes('Node', os.environ['NODE_VERSION']))
+          EOF
+          cat server-release-notes.md
+          cat node-release-notes.md
+
+      - name: Create server tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.server-version }}
+        run: |
+          if git ls-remote --tags origin "refs/tags/server-v$VERSION" | grep -q .; then
+            echo "Tag server-v$VERSION already exists; skipping tag and release creation"
+          else
+            gh release create "server-v$VERSION" --title "Server v$VERSION" --notes-file server-release-notes.md --target "$GITHUB_SHA"
+          fi
+
+      - name: Create node tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.node-version }}
+        run: |
+          if git ls-remote --tags origin "refs/tags/node-v$VERSION" | grep -q .; then
+            echo "Tag node-v$VERSION already exists; skipping tag and release creation"
+          else
+            gh release create "node-v$VERSION" --title "Node v$VERSION" --notes-file node-release-notes.md --target "$GITHUB_SHA"
+          fi
