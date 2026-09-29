@@ -36,4 +36,10 @@ public class Node
     /// Free-form labels attached to this node, used later for test targeting. Default: empty list.
     /// </summary>
     public List<string> Labels { get; set; } = new();
+
+    /// <summary>
+    /// Indicates if the node enrolled itself; such nodes manage their own name, labels, and pools
+    /// and cannot be edited by users. Default: false.
+    /// </summary>
+    public bool ManagedByNode { get; set; }
 }

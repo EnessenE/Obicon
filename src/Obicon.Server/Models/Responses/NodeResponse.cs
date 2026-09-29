@@ -36,4 +36,9 @@ public class NodeResponse
     /// Free-form labels attached to this node. Default: empty list.
     /// </summary>
     public List<string> Labels { get; set; } = new();
+
+    /// <summary>
+    /// Indicates if the node enrolled itself and manages its own name, labels, and pools.
+    /// </summary>
+    public bool ManagedByNode { get; set; }
 }

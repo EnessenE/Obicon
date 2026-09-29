@@ -25,6 +25,21 @@
 - `src/Obicon.Node` — .NET console app (generic host): `ServerConnection` (dedicated comm task: register, heartbeat, reconnect), `TestExecutor` (max concurrency, `[timeout]+5s` hard kill), test runners, `HealthService`, `MonitoringService`
 - `src/Obicon.Client` — static frontend; `js/api.js` is the shared API helper (already handles 204 and the auth header)
 
+## Server Settings Standard
+
+Settings live in three layers, resolved in this order:
+
+1. **Forced** — present in the `ServerSettings` section of appsettings or as `ServerSettings__*` environment variables (`Configure<ServerSettings>` binds them). Read-only; the API returns 409 and the UI shows a "Forced by configuration" badge
+2. **Database overrides** — set via `PUT /v1/settings/{key}`, stored in the `ServerSettingValues` table
+3. **Defaults** — from `ServerSettingDefinitions.All`
+
+Rules:
+
+- **Every setting must have a description** in `Configuration/ServerSettingDefinitions.cs` — it is shown in the settings UI and API. A setting without a description is incomplete work
+- When adding a setting: add it to `ServerSettings` (config binding + property doc comment) AND to `ServerSettingDefinitions.All` (description, type, default). Consumers read values through `IServerSettingsService.GetAsync<T>(key)`, never directly from `IOptions`, so database overrides take effect
+- The settings service caches effective values; the cache is invalidated on change
+- Enroll tokens are stored as SHA-256 hashes only; the plain value is returned exactly once at creation. Node identity (`node-identity.json`) contains the node auth token and is gitignored
+
 ## Logging Standard
 
 **Every basic action gets an `LogInformation` entry in the service that performs it** — created/updated/deleted for nodes, pools, and tests; token regeneration; test runs triggered; jobs enqueued, dispatched, and finished; connections opened and closed. Someone tailing the log should see the full lifecycle without debug logging enabled.

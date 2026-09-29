@@ -21,16 +21,22 @@ public class ServerConnection : BackgroundService, IServerConnection
     private readonly ITestExecutor _testExecutor;
     private readonly ILogger<ServerConnection> _logger;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly NodeIdentityStore _identityStore;
+    private readonly EnrollmentClient _enrollmentClient;
 
     private volatile ClientWebSocket? _socket;
 
     public ServerConnection(
         IOptions<NodeSettings> settings,
         ITestExecutor testExecutor,
+        NodeIdentityStore identityStore,
+        EnrollmentClient enrollmentClient,
         ILogger<ServerConnection> logger)
     {
         _settings = settings.Value;
         _testExecutor = testExecutor;
+        _identityStore = identityStore;
+        _enrollmentClient = enrollmentClient;
         _logger = logger;
     }
 
@@ -65,9 +71,9 @@ public class ServerConnection : BackgroundService, IServerConnection
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (string.IsNullOrWhiteSpace(_settings.Token))
+        if (string.IsNullOrWhiteSpace(_settings.Token) && string.IsNullOrWhiteSpace(_settings.EnrollToken) && string.IsNullOrWhiteSpace(_identityStore.AuthToken))
         {
-            _logger.LogError("No token configured. Set Node:Token in appsettings.json or the Node__Token environment variable");
+            _logger.LogError("No token configured. Set Node:Token or Node:EnrollToken in appsettings.json, or the Node__Token / Node__EnrollToken environment variables");
         }
 
         if (!Uri.TryCreate(_settings.ServerUrl, UriKind.Absolute, out var serverUri) ||
@@ -92,6 +98,15 @@ public class ServerConnection : BackgroundService, IServerConnection
             {
                 break;
             }
+            catch (WebSocketException ex) when (IsUnauthorized(ex))
+            {
+                // The stored token was rejected (e.g. regenerated on the server): re-enroll if possible
+                if (string.IsNullOrWhiteSpace(_settings.Token) && !string.IsNullOrWhiteSpace(_settings.EnrollToken))
+                {
+                    _logger.LogWarning("Server rejected the stored token; re-enrolling");
+                    _identityStore.Reset();
+                }
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Connection to server lost");
@@ -115,14 +130,50 @@ public class ServerConnection : BackgroundService, IServerConnection
         _logger.LogInformation("Communication task stopped");
     }
 
+    private static bool IsUnauthorized(WebSocketException ex)
+    {
+        return ex.Message.Contains("401", StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    /// <summary>
+    /// Resolves the auth token to connect with: configured token, then the enrolled
+    /// identity, then a fresh enrollment with the enroll token.
+    /// </summary>
+    private async Task<string> ResolveTokenAsync(CancellationToken stoppingToken)
+    {
+        if (!string.IsNullOrWhiteSpace(_settings.Token))
+        {
+            return _settings.Token;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_identityStore.AuthToken))
+        {
+            return _identityStore.AuthToken;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_settings.EnrollToken))
+        {
+            return await _enrollmentClient.EnrollAsync(stoppingToken);
+        }
+
+        return string.Empty;
+    }
+
     private async Task ConnectAndRunAsync(CancellationToken stoppingToken)
     {
         var nodeName = string.IsNullOrWhiteSpace(_settings.NodeName)
             ? Environment.MachineName
             : _settings.NodeName;
 
+        var token = await ResolveTokenAsync(stoppingToken);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new InvalidOperationException("No auth token or enroll token available");
+        }
+
         using var socket = new ClientWebSocket();
-        var uri = new Uri($"{_settings.ServerUrl.TrimEnd('/')}?token={Uri.EscapeDataString(_settings.Token)}");
+        var uri = new Uri($"{_settings.ServerUrl.TrimEnd('/')}?token={Uri.EscapeDataString(token)}");
 
         _logger.LogInformation("Connecting to {ServerUrl} as {NodeName}", _settings.ServerUrl, nodeName);
         await socket.ConnectAsync(uri, stoppingToken);

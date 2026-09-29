@@ -21,4 +21,9 @@ public class ServerSettings
     /// URL path for WebSocket connections. Default: "/ws/nodes".
     /// </summary>
     public string WebSocketPath { get; set; } = "/ws/nodes";
+
+    /// <summary>
+    /// Indicates if nodes can register themselves with an enroll token. Default: false.
+    /// </summary>
+    public bool NodeAutoEnrollmentEnabled { get; set; }
 }

@@ -71,18 +71,25 @@ public class NodesController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateNode(Guid id, [FromBody] UpdateNodeRequest request)
     {
-        var node = await _nodeService.UpdateNodeAsync(id, request);
-        if (node == null)
+        try
         {
-            return NotFound();
-        }
+            var node = await _nodeService.UpdateNodeAsync(id, request);
+            if (node == null)
+            {
+                return NotFound();
+            }
 
-        if (request.RegenerateToken)
+            if (request.RegenerateToken)
+            {
+                await _connectionManager.DisconnectNodeAsync(id.ToString());
+            }
+
+            return Ok(node);
+        }
+        catch (InvalidOperationException ex)
         {
-            await _connectionManager.DisconnectNodeAsync(id.ToString());
+            return Conflict(new { Message = ex.Message });
         }
-
-        return Ok(node);
     }
 
     /// <summary>

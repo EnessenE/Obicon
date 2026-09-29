@@ -411,6 +411,106 @@ Prometheus scrape endpoint (no auth). Exposes:
 
 Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.node.test_duration_ms`, `obicon.node.heartbeats`, `obicon.node.reconnects`) on `http://localhost:9464/metrics` by default, configurable via `Node:MetricsUrlPrefix`.
 
+### Settings
+
+Server settings resolve as: forced by appsettings/env (read-only) → database override → default.
+
+#### List Settings
+```
+GET /v1/settings
+```
+**Response:** 200 OK
+```json
+[
+  {
+    "Key": "NodeAutoEnrollmentEnabled",
+    "Description": "If enabled, nodes can register themselves with a valid enroll token...",
+    "Value": "false",
+    "IsForced": false,
+    "Source": "Default"
+  }
+]
+```
+
+#### Change Setting
+```
+PUT /v1/settings/{key}
+```
+**Request Body:**
+```json
+{ "Value": "true" }
+```
+**Response:** 200 OK (the updated setting)
+**Errors:** 409 when the setting is forced by configuration, 400 for unknown keys or invalid values.
+
+---
+
+### Enroll Tokens
+
+Enroll tokens let nodes register themselves (requires the `NodeAutoEnrollmentEnabled` setting). Only the SHA-256 hash is stored; the plain token is returned exactly once, on creation. Token names default to `enroll-token-dd-MM-yyyy-HH-mm-ss`.
+
+#### Create Token
+```
+POST /v1/enroll-tokens
+```
+**Request Body:**
+```json
+{ "Name": "raspberry-pis", "ExpiresAt": "2026-12-31T00:00:00Z" }
+```
+Both fields optional. **Response:** 201 Created, includes the plain `Token` once.
+
+#### List Tokens
+```
+GET /v1/enroll-tokens
+```
+**Response:** 200 OK - list without plain tokens, with `CreatedAt`, `ExpiresAt`, `RevokedAt`.
+
+#### Revoke Token
+```
+POST /v1/enroll-tokens/{id}/revoke
+```
+**Response:** 204 No Content
+
+#### Delete Token
+```
+DELETE /v1/enroll-tokens/{id}
+```
+**Response:** 204 No Content
+
+---
+
+### Node Enrollment
+
+```
+POST /v1/enroll
+```
+Authenticates with the enroll token in the body instead of the API Authorization header. Requires the `NodeAutoEnrollmentEnabled` setting (403 otherwise). Enrolled nodes manage their own name, labels, and pools; `PUT /v1/nodes/{id}` returns 409 for them.
+
+**Request Body:**
+```json
+{
+  "EnrollToken": "the-plain-enroll-token",
+  "NodeId": null,
+  "NodeName": "pi-1",
+  "Labels": ["edge", "home"],
+  "Pools": ["raspberry-pis"]
+}
+```
+`NodeId` is set when updating an already enrolled node; pools are matched by name and created when missing.
+
+**Response:** 200 OK
+```json
+{
+  "Id": "00000000-0000-0000-0000-000000000000",
+  "Name": "pi-1",
+  "AuthToken": "the-node-auth-token",
+  "Labels": ["edge", "home"],
+  "PoolIds": ["55555555-5555-5555-5555-555555555555"]
+}
+```
+
+---
+
 ### Server Stats
 
 #### Stats

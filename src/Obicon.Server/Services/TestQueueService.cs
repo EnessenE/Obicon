@@ -10,12 +10,12 @@ namespace Obicon.Server.Services;
 public class TestQueueService : ITestQueueService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly ServerSettings _settings;
+    private readonly IServerSettingsService _settingsService;
 
-    public TestQueueService(IDbContextFactory<ObiconDbContext> dbFactory, IOptions<ServerSettings> settings)
+    public TestQueueService(IDbContextFactory<ObiconDbContext> dbFactory, IServerSettingsService settingsService)
     {
         _dbFactory = dbFactory;
-        _settings = settings.Value;
+        _settingsService = settingsService;
     }
 
     public async Task<TestJob> EnqueueJobAsync(TestJob job)
@@ -23,7 +23,7 @@ public class TestQueueService : ITestQueueService
         job.Id = job.Id == Guid.Empty ? Guid.NewGuid() : job.Id;
         job.CreatedAt = job.CreatedAt == default ? DateTime.UtcNow : job.CreatedAt;
         job.Status = TestJobStatus.Queued;
-        job.TimeoutSeconds = Math.Clamp(job.TimeoutSeconds, 1, Math.Max(1, _settings.MaxTestTimeoutSeconds));
+        job.TimeoutSeconds = Math.Clamp(job.TimeoutSeconds, 1, Math.Max(1, await _settingsService.GetAsync<int>("MaxTestTimeoutSeconds")));
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         db.TestJobs.Add(job);

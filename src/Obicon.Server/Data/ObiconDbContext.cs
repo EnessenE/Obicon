@@ -30,6 +30,16 @@ public class ObiconDbContext : DbContext
     /// </summary>
     public DbSet<TestJob> TestJobs => Set<TestJob>();
 
+    /// <summary>
+    /// Runtime overrides of server settings. Default: empty.
+    /// </summary>
+    public DbSet<ServerSettingValue> ServerSettingValues => Set<ServerSettingValue>();
+
+    /// <summary>
+    /// Enroll tokens for node self-registration, stored as hashes. Default: empty.
+    /// </summary>
+    public DbSet<EnrollToken> EnrollTokens => Set<EnrollToken>();
+
     public ObiconDbContext(DbContextOptions<ObiconDbContext> options) : base(options)
     {
     }
@@ -56,6 +66,9 @@ public class ObiconDbContext : DbContext
 
         modelBuilder.Entity<Node>()
             .HasIndex(n => n.AuthToken);
+
+        modelBuilder.Entity<ServerSettingValue>()
+            .HasKey(s => s.Key);
 
         modelBuilder.Entity<Node>()
             .Property(n => n.Labels)

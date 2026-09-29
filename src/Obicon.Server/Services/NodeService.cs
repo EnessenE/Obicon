@@ -69,6 +69,11 @@ public class NodeService : INodeService
             return null;
         }
 
+        if (node.ManagedByNode)
+        {
+            throw new InvalidOperationException($"Node {id} enrolled itself; its name, labels, and pools are managed by the node");
+        }
+
         node.Name = request.Name;
         node.Labels = request.Labels;
 
@@ -132,6 +137,7 @@ public class NodeService : INodeService
         IsActive = node.IsActive,
         CreatedAt = node.CreatedAt,
         LastSeenAt = node.LastSeenAt,
-        Labels = node.Labels
+        Labels = node.Labels,
+        ManagedByNode = node.ManagedByNode
     };
 }

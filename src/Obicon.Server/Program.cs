@@ -54,6 +54,13 @@ builder.Services.AddSingleton<NodeConnectionManager>();
 builder.Services.AddSingleton<IConfigRepository, JsonConfigRepository>();
 builder.Services.AddDbContextFactory<ObiconDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+
+// The ServerSettings section is the configuration layer of the settings system:
+// values present there (or as ServerSettings__* environment variables) are forced and read-only
+builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
+builder.Services.AddSingleton<IServerSettingsService, ServerSettingsService>();
+builder.Services.AddSingleton<IEnrollTokenService, EnrollTokenService>();
+builder.Services.AddSingleton<INodeEnrollmentService, NodeEnrollmentService>();
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddHostedService<TestQueueProcessor>();

@@ -60,4 +60,20 @@ public class NodeSettings
     /// URL prefix the Prometheus metrics listener binds to. Default: "http://localhost:9464/".
     /// </summary>
     public string MetricsUrlPrefix { get; set; } = "http://localhost:9464/";
+
+    /// <summary>
+    /// Enroll token to register this node with the server when no auth token is configured.
+    /// Default: empty string.
+    /// </summary>
+    public string EnrollToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Labels this node attaches to itself when enrolling. Default: empty list.
+    /// </summary>
+    public List<string> Labels { get; set; } = new();
+
+    /// <summary>
+    /// Names of pools this node puts itself into when enrolling. Default: empty list.
+    /// </summary>
+    public List<string> Pools { get; set; } = new();
 }
