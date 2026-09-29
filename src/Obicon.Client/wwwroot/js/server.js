@@ -31,7 +31,7 @@ async function loadAll() {
 
     if (health.status === 'fulfilled') {
         document.getElementById('healthStatus').textContent = health.value.status;
-        document.getElementById('healthTimestamp').textContent = new Date(health.value.timestamp).toLocaleString();
+        document.getElementById('healthTimestamp').textContent = new Date().toLocaleString();
     }
 
     if (stats.status === 'fulfilled') {

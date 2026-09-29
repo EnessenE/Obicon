@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using OpenTelemetry;
@@ -5,6 +7,8 @@ using OpenTelemetry.Metrics;
 using Obicon.Server.BackgroundServices;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
+using Obicon.Server.Health;
+using Obicon.Server.Metrics;
 using Obicon.Server.Middleware;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
@@ -19,7 +23,10 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 builder.Services.AddOpenTelemetry()
     .WithMetrics(b => b
         .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation());
+        .AddHttpClientInstrumentation()
+        .AddMeter(ServerMetrics.ServerMeterName)
+        .AddMeter(ServerMetrics.TestsMeterName)
+        .AddPrometheusExporter());
 
 builder.Services.AddCors();
 builder.Services.AddEndpointsApiExplorer();
@@ -40,13 +47,17 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 builder.Services.AddSingleton<INodeService, NodeService>();
+builder.Services.AddSingleton<INodePoolService, NodePoolService>();
 builder.Services.AddSingleton<ITestService, TestService>();
 builder.Services.AddSingleton<ITestQueueService, TestQueueService>();
 builder.Services.AddSingleton<NodeConnectionManager>();
 builder.Services.AddSingleton<IConfigRepository, JsonConfigRepository>();
 builder.Services.AddDbContextFactory<ObiconDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddHostedService<TestQueueProcessor>();
+builder.Services.AddHostedService<TestScheduler>();
 
 var app = builder.Build();
 
@@ -71,5 +82,21 @@ app.UseMiddleware<AuthMiddleware>();
 app.UseMiddleware<WebSocketMiddleware>();
 
 app.MapControllers();
+app.MapHealthChecks("/v1/health", new HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new
+        {
+            Status = report.Status.ToString(),
+            TotalDuration = report.TotalDuration.ToString(),
+            Entries = report.Entries.ToDictionary(
+                e => e.Key,
+                e => new { Status = e.Value.Status.ToString(), e.Value.Description, Duration = e.Value.Duration.ToString(), e.Value.Data })
+        }));
+    }
+});
+app.MapPrometheusScrapingEndpoint();
 
 app.Run();

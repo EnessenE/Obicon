@@ -25,12 +25,23 @@
 - `src/Obicon.Node` — .NET console app (generic host): `ServerConnection` (dedicated comm task: register, heartbeat, reconnect), `TestExecutor` (max concurrency, `[timeout]+5s` hard kill), test runners, `HealthService`, `MonitoringService`
 - `src/Obicon.Client` — static frontend; `js/api.js` is the shared API helper (already handles 204 and the auth header)
 
+## Logging Standard
+
+**Every basic action gets an `LogInformation` entry in the service that performs it** — created/updated/deleted for nodes, pools, and tests; token regeneration; test runs triggered; jobs enqueued, dispatched, and finished; connections opened and closed. Someone tailing the log should see the full lifecycle without debug logging enabled.
+
+- Log **what** and **identify it**: `"Created pool {PoolId} with name {PoolName}"`, `"Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms"`
+- Put lifecycle logs in **services**, not controllers; HTTP request lifecycle lines come from ASP.NET already
+- Failure paths log at **Warning** (expected: not found, bad input) or **Error** (unexpected exceptions)
+- High-frequency chatter (heartbeats, queue polls) logs at **Debug**, not Information
+- Cross-reference: meaningful server actions also increment the `Obicon.Server` metrics counter (`ServerMetrics.Action("created_pool")`), finished test runs go to `ServerMetrics.TestRun(...)`
+
 ## Conventions
 
 - **JSON casing differs by channel, on purpose:** HTTP API responses are camelCase (ASP.NET default); WebSocket payloads are PascalCase (`System.Text.Json` defaults + explicit `[JsonPropertyName]`). Keep both as they are — the node and frontend depend on them
 - **Validation:** all request DTOs use DataAnnotations → automatic 400 ProblemDetails naming the field. Add attributes for every new required/range-checked field
 - **Responses:** never return EF entities directly; map through DTOs in `Models/Responses/` (`TestJobResponse.From(job)` pattern)
 - **Frontend cache busting:** bump `?v=N` on `<script>` tags whenever a JS file changes — browsers cache them
+- **Metrics:** two server meters (`Obicon.Server` for lifecycle actions, `Obicon.Tests` for run counts/durations) exported at `GET /metrics` via the OpenTelemetry Prometheus exporter; the node exports its `Obicon.Node` meter on `http://localhost:9464/metrics`. Add new actions to the existing counters, don't create new meters
 - **Timestamps:** all persistence uses UTC; `ObiconDbContext` re-marks SQLite datetimes as UTC on read so they serialize with `Z`
 - **DI cycle warning:** `ServerConnection` and `TestExecutor` mutually reference each other; the executor resolves `IServerConnection` lazily. Keep it that way when touching constructors
 

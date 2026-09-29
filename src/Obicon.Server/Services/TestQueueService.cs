@@ -18,19 +18,12 @@ public class TestQueueService : ITestQueueService
         _settings = settings.Value;
     }
 
-    public async Task<TestJob> EnqueueTestAsync(Guid testId, Guid nodeId, TestType testType, string target, int? timeoutSeconds = null)
+    public async Task<TestJob> EnqueueJobAsync(TestJob job)
     {
-        var job = new TestJob
-        {
-            Id = Guid.NewGuid(),
-            TestId = testId,
-            NodeId = nodeId,
-            TestType = testType,
-            Target = target,
-            TimeoutSeconds = Math.Clamp(timeoutSeconds ?? _settings.MaxTestTimeoutSeconds, 1, Math.Max(1, _settings.MaxTestTimeoutSeconds)),
-            Status = TestJobStatus.Queued,
-            CreatedAt = DateTime.UtcNow
-        };
+        job.Id = job.Id == Guid.Empty ? Guid.NewGuid() : job.Id;
+        job.CreatedAt = job.CreatedAt == default ? DateTime.UtcNow : job.CreatedAt;
+        job.Status = TestJobStatus.Queued;
+        job.TimeoutSeconds = Math.Clamp(job.TimeoutSeconds, 1, Math.Max(1, _settings.MaxTestTimeoutSeconds));
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         db.TestJobs.Add(job);

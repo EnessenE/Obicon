@@ -31,4 +31,9 @@ public class NodeResponse
     /// Timestamp of the last heartbeat received from the node. Null if never connected.
     /// </summary>
     public DateTime? LastSeenAt { get; set; }
+
+    /// <summary>
+    /// Free-form labels attached to this node. Default: empty list.
+    /// </summary>
+    public List<string> Labels { get; set; } = new();
 }

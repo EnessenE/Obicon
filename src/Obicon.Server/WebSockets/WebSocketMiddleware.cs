@@ -14,6 +14,7 @@ public class WebSocketMiddleware
     private readonly RequestDelegate _next;
     private readonly NodeConnectionManager _connectionManager;
     private readonly INodeService _nodeService;
+    private readonly ITestService _testService;
     private readonly ITestQueueService _queueService;
     private readonly ILogger<WebSocketMiddleware> _logger;
 
@@ -21,12 +22,14 @@ public class WebSocketMiddleware
         RequestDelegate next,
         NodeConnectionManager connectionManager,
         INodeService nodeService,
+        ITestService testService,
         ITestQueueService queueService,
         ILogger<WebSocketMiddleware> logger)
     {
         _next = next;
         _connectionManager = connectionManager;
         _nodeService = nodeService;
+        _testService = testService;
         _queueService = queueService;
         _logger = logger;
     }
@@ -65,10 +68,16 @@ public class WebSocketMiddleware
 
             _logger.LogInformation("Node {NodeId} connected via WebSocket", node.Id);
 
-            await HandleWebSocketConnection(node.Id.ToString(), webSocket);
-            
-            _connectionManager.TryRemoveConnection(node.Id.ToString());
-            _logger.LogInformation("Node {NodeId} disconnected", node.Id);
+            try
+            {
+                await HandleWebSocketConnection(node.Id.ToString(), webSocket);
+            }
+            finally
+            {
+                // Always drop the connection, also when the socket aborted mid-close-handshake
+                _connectionManager.TryRemoveConnection(node.Id.ToString());
+                _logger.LogInformation("Node {NodeId} disconnected", node.Id);
+            }
 
             return;
         }
@@ -102,7 +111,15 @@ public class WebSocketMiddleware
             result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
         }
 
-        await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
+        try
+        {
+            await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // The node may have dropped the socket before completing the close handshake
+            _logger.LogDebug(ex, "Close handshake with node {NodeId} aborted", nodeId);
+        }
     }
 
     private async Task ProcessMessage(string nodeId, WebSocket webSocket, WebSocketMessage message)
@@ -164,6 +181,20 @@ public class WebSocketMiddleware
         };
 
         await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
+
+        var job = await _queueService.GetJobAsync(jobId);
+        var test = job != null && job.TestId != Guid.Empty ? await _testService.GetTestAsync(job.TestId) : null;
+        var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
+
+        Metrics.ServerMetrics.TestRun(
+            status.ToString(),
+            job?.TestType.ToString() ?? "unknown",
+            job?.TestId.ToString() ?? "unknown",
+            test?.Name ?? "run-once",
+            nodeId,
+            node?.Name ?? "unknown",
+            result.DurationMs);
+
         _logger.LogInformation("Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms",
             jobId, nodeId, result.Success, result.DurationMs);
     }

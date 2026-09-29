@@ -14,6 +14,7 @@
             <div class="navbar-nav">
                 <a class="nav-link" href="/">Home</a>
                 <a class="nav-link" href="/nodes.html">Nodes</a>
+                <a class="nav-link" href="/pools.html">Pools</a>
                 <a class="nav-link active" href="/tests.html">Tests</a>
                 <a class="nav-link" href="/queue.html">Queue</a>
                 <a class="nav-link" href="/server.html">Server</a>
@@ -40,7 +41,7 @@
                             <option value="1">Traceroute</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <input id="testTarget" class="form-control" placeholder="Target (host, host:port, or URL)">
                     </div>
                     <div class="col-md-2">
@@ -54,20 +55,52 @@
                             <option value="6">1 hour</option>
                         </select>
                     </div>
+                    <div class="col-md-2">
+                        <select id="testIpVersion" class="form-select">
+                            <option value="0">IPv4 or IPv6</option>
+                            <option value="1">IPv4 only</option>
+                            <option value="2">IPv6 only</option>
+                        </select>
+                    </div>
                     <div class="col-md-2 d-flex align-items-center">
                         <input id="testIsActive" type="checkbox" class="form-check-input" checked> <label class="form-check-label ms-1">Active</label>
                     </div>
                 </div>
                 <div class="row mt-2">
-                    <div class="col-md-6">
+                    <div class="col-md-3">
                         <label class="form-label mb-1">Nodes</label>
                         <div id="nodeSelectList" class="border rounded p-2" style="max-height: 120px; overflow-y: auto;">
                             <span class="text-muted">Loading nodes...</span>
                         </div>
                     </div>
-                    <div class="col-md-6 d-flex align-items-end gap-2">
-                        <button class="btn btn-primary" onclick="createTest()">Create Test</button>
-                        <button class="btn btn-outline-primary" onclick="runOnRandomNode()" id="dryRunBtn">Run once on a random node</button>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1">Pools <span class="text-muted">(all members run the test)</span></label>
+                        <div id="poolSelectList" class="border rounded p-2" style="max-height: 120px; overflow-y: auto;">
+                            <span class="text-muted">Loading pools...</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="row g-2" id="expectationFields">
+                            <div class="col-md-6 http-expectation">
+                                <label class="form-label mb-1">Expected status codes <span class="text-muted">(e.g. 200-399 or 200,301)</span></label>
+                                <input id="expectedStatusCodes" class="form-control" placeholder="200-399" value="200-399">
+                            </div>
+                            <div class="col-md-6 https-expectation">
+                                <label class="form-label mb-1">Fail if TLS cert expires within (days)</label>
+                                <input id="checkCertExpiryDays" type="number" min="0" class="form-control" placeholder="disabled">
+                            </div>
+                            <div class="col-md-6 dns-expectation">
+                                <label class="form-label mb-1">Expected DNS result <span class="text-muted">(empty = anything)</span></label>
+                                <input id="expectedDnsResult" class="form-control" placeholder="anything">
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 mt-2">
+                            <button class="btn btn-primary" onclick="createTest()">Create Test</button>
+                            <button class="btn btn-outline-primary" onclick="runOnRandomNode()" id="dryRunBtn">Run once on a random node</button>
+                        </div>
+                        <div class="text-muted small mt-2">
+                            Estimated checks: <span id="checkEstimate">-</span>
+                        </div>
                     </div>
                 </div>
                 <div id="testFormError" class="alert alert-danger mt-3 mb-0" style="display:none;"></div>
@@ -90,6 +123,7 @@
                     <th>Type</th>
                     <th>Target</th>
                     <th>Frequency</th>
+                    <th>Est. checks</th>
                     <th>Active</th>
                     <th>Actions</th>
                 </tr>
@@ -101,7 +135,7 @@
     </div>
 
     <script src="js/api.js?v=2"></script>
-    <script src="js/tests.js?v=3"></script>
+    <script src="js/tests.js?v=5"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

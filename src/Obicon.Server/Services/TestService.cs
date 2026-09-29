@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Obicon.Server.Data;
 using Obicon.Server.WebSockets;
@@ -13,31 +14,30 @@ public class TestService : ITestService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly INodeService _nodeService;
+    private readonly INodePoolService _poolService;
     private readonly ITestQueueService _queueService;
     private readonly NodeConnectionManager _connectionManager;
+    private readonly ILogger<TestService> _logger;
 
     public TestService(
         IDbContextFactory<ObiconDbContext> dbFactory,
         INodeService nodeService,
+        INodePoolService poolService,
         ITestQueueService queueService,
-        NodeConnectionManager connectionManager)
+        NodeConnectionManager connectionManager,
+        ILogger<TestService> logger)
     {
+        _logger = logger;
         _dbFactory = dbFactory;
         _nodeService = nodeService;
+        _poolService = poolService;
         _queueService = queueService;
         _connectionManager = connectionManager;
     }
 
     public async Task<TestResponse> CreateTestAsync(CreateTestRequest request)
     {
-        foreach (var nodeId in request.NodeIds)
-        {
-            var node = await _nodeService.GetNodeAsync(nodeId);
-            if (node == null)
-            {
-                throw new ArgumentException("Invalid node ID: " + nodeId);
-            }
-        }
+        await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
 
         var test = new Test
         {
@@ -46,8 +46,13 @@ public class TestService : ITestService
             Type = request.Type,
             Target = request.Target,
             NodeIds = request.NodeIds,
+            PoolIds = request.PoolIds,
             Frequency = request.Frequency,
             IsActive = request.IsActive,
+            ExpectedStatusCodes = request.ExpectedStatusCodes,
+            CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
+            ExpectedDnsResult = request.ExpectedDnsResult,
+            IpVersion = request.IpVersion,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = null
         };
@@ -56,6 +61,8 @@ public class TestService : ITestService
         db.Tests.Add(test);
         await db.SaveChangesAsync();
 
+        _logger.LogInformation("Created test {TestId} ({TestName}, type {TestType}, target {Target})", test.Id, test.Name, test.Type, test.Target);
+        Metrics.ServerMetrics.Action("created_test");
         return ToResponse(test);
     }
 
@@ -73,7 +80,34 @@ public class TestService : ITestService
         return test == null ? null : ToResponse(test);
     }
 
-    public async Task<TestResponse?> UpdateTestAsync(Guid id, TestType type, string target, List<Guid> nodeIds, TestFrequency frequency, bool isActive)
+    public async Task<TestResponse?> UpdateTestAsync(Guid id, UpdateTestRequest request)
+    {
+        await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var test = await db.Tests.FindAsync(id);
+        if (test == null)
+        {
+            return null;
+        }
+
+        test.Type = request.Type;
+        test.Target = request.Target;
+        test.NodeIds = request.NodeIds;
+        test.PoolIds = request.PoolIds;
+        test.Frequency = request.Frequency;
+        test.IsActive = request.IsActive;
+        test.ExpectedStatusCodes = request.ExpectedStatusCodes;
+        test.CheckCertificateExpiryDays = request.CheckCertificateExpiryDays;
+        test.ExpectedDnsResult = request.ExpectedDnsResult;
+        test.IpVersion = request.IpVersion;
+        test.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return ToResponse(test);
+    }
+
+    public async Task<TestResponse?> ToggleTestAsync(Guid id)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var test = await db.Tests.FindAsync(id);
@@ -82,14 +116,11 @@ public class TestService : ITestService
             return null;
         }
 
-        test.Type = type;
-        test.Target = target;
-        test.NodeIds = nodeIds;
-        test.Frequency = frequency;
-        test.IsActive = isActive;
+        test.IsActive = !test.IsActive;
         test.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
+        _logger.LogInformation("Test {TestId} ({TestName}) is now {State}", test.Id, test.Name, test.IsActive ? "active" : "inactive");
         return ToResponse(test);
     }
 
@@ -104,6 +135,9 @@ public class TestService : ITestService
 
         db.Tests.Remove(test);
         await db.SaveChangesAsync();
+
+        _logger.LogInformation("Deleted test {TestId} ({TestName})", test.Id, test.Name);
+        Metrics.ServerMetrics.Action("deleted_test");
         return true;
     }
 
@@ -116,13 +150,77 @@ public class TestService : ITestService
             return false;
         }
 
-        // Enqueue one job per assigned node; dispatch to nodes happens in the queue processor
-        foreach (var nodeId in test.NodeIds)
+        await EnqueueJobsForTestAsync(test);
+        _logger.LogInformation("Manual run triggered for test {TestId} ({TestName})", test.Id, test.Name);
+        return true;
+    }
+
+    /// <summary>
+    /// Enqueues jobs for every active test whose frequency interval has elapsed.
+    /// Called by the scheduler; overdue tests run once and resynchronize instead of catching up.
+    /// </summary>
+    public async Task<int> ScheduleDueTestsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var now = DateTime.UtcNow;
+        var activeTests = await db.Tests.Where(t => t.IsActive).ToListAsync();
+
+        var scheduled = 0;
+        foreach (var test in activeTests)
         {
-            await _queueService.EnqueueTestAsync(testId, nodeId, test.Type, test.Target);
+            var interval = TimeSpan.FromSeconds(FrequencyToSeconds(test.Frequency));
+            var anchor = test.LastScheduledAt ?? test.CreatedAt;
+
+            if (now - anchor < interval)
+            {
+                continue;
+            }
+
+            await EnqueueJobsForTestAsync(test);
+            test.LastScheduledAt = now;
+            scheduled++;
+
+            _logger.LogInformation("Scheduler enqueued test {TestId} ({TestName})", test.Id, test.Name);
         }
 
-        return true;
+        if (scheduled > 0)
+        {
+            await db.SaveChangesAsync();
+        }
+
+        return scheduled;
+    }
+
+    private static int FrequencyToSeconds(TestFrequency frequency) => frequency switch
+    {
+        TestFrequency.TenSeconds => 10,
+        TestFrequency.ThirtySeconds => 30,
+        TestFrequency.OneMinute => 60,
+        TestFrequency.TwoMinutes => 120,
+        TestFrequency.FiveMinutes => 300,
+        TestFrequency.TenMinutes => 600,
+        TestFrequency.OneHour => 3600,
+        _ => 3600
+    };
+
+    private async Task EnqueueJobsForTestAsync(Test test)
+    {
+        // One job per targeted node: direct node IDs plus all pool members, deduplicated
+        foreach (var nodeId in await ResolveTargetNodesAsync(test))
+        {
+            await _queueService.EnqueueJobAsync(new TestJob
+            {
+                TestId = test.Id,
+                NodeId = nodeId,
+                TestType = test.Type,
+                Target = test.Target,
+                TimeoutSeconds = 60,
+                ExpectedStatusCodes = test.ExpectedStatusCodes,
+                CheckCertificateExpiryDays = test.CheckCertificateExpiryDays,
+                ExpectedDnsResult = test.ExpectedDnsResult,
+                IpVersion = test.IpVersion
+            });
+        }
     }
 
     public async Task<Models.TestJob?> RunOnceAsync(Models.Requests.RunTestOnceRequest request)
@@ -138,8 +236,21 @@ public class TestService : ITestService
             return null;
         }
 
-        return await _queueService.EnqueueTestAsync(
-            Guid.Empty, request.NodeId, request.Type, request.Target, request.TimeoutSeconds);
+        var job = await _queueService.EnqueueJobAsync(new TestJob
+        {
+            TestId = Guid.Empty,
+            NodeId = request.NodeId,
+            TestType = request.Type,
+            Target = request.Target,
+            TimeoutSeconds = request.TimeoutSeconds ?? 60,
+            ExpectedStatusCodes = request.ExpectedStatusCodes,
+            CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
+            ExpectedDnsResult = request.ExpectedDnsResult,
+            IpVersion = request.IpVersion
+        });
+
+        _logger.LogInformation("Run-once job {JobId} enqueued on node {NodeId} ({TestType} {Target})", job.Id, request.NodeId, request.Type, request.Target);
+        return job;
     }
 
     public async Task<IEnumerable<Test>> GetTestsForNodeAsync(Guid nodeId)
@@ -152,6 +263,47 @@ public class TestService : ITestService
         return tests.Where(t => t.NodeIds.Contains(nodeId));
     }
 
+    private async Task ValidateTargetsAsync(List<Guid> nodeIds, List<Guid> poolIds)
+    {
+        if (nodeIds.Count == 0 && poolIds.Count == 0)
+        {
+            throw new ArgumentException("A test needs at least one node or pool");
+        }
+
+        foreach (var nodeId in nodeIds)
+        {
+            if (await _nodeService.GetNodeAsync(nodeId) == null)
+            {
+                throw new ArgumentException("Invalid node ID: " + nodeId);
+            }
+        }
+
+        foreach (var poolId in poolIds)
+        {
+            if (await _poolService.GetPoolAsync(poolId) == null)
+            {
+                throw new ArgumentException("Invalid pool ID: " + poolId);
+            }
+        }
+    }
+
+    private async Task<List<Guid>> ResolveTargetNodesAsync(Test test)
+    {
+        var nodeIds = new HashSet<Guid>(test.NodeIds);
+        foreach (var poolId in test.PoolIds)
+        {
+            var pool = await _poolService.GetPoolAsync(poolId);
+            if (pool != null)
+            {
+                foreach (var nodeId in pool.NodeIds)
+                {
+                    nodeIds.Add(nodeId);
+                }
+            }
+        }
+        return nodeIds.ToList();
+    }
+
     private static TestResponse ToResponse(Test test) => new()
     {
         Id = test.Id,
@@ -159,8 +311,13 @@ public class TestService : ITestService
         Type = test.Type,
         Target = test.Target,
         NodeIds = test.NodeIds,
+        PoolIds = test.PoolIds,
         Frequency = test.Frequency,
         IsActive = test.IsActive,
+        ExpectedStatusCodes = test.ExpectedStatusCodes,
+        CheckCertificateExpiryDays = test.CheckCertificateExpiryDays,
+        ExpectedDnsResult = test.ExpectedDnsResult,
+        IpVersion = test.IpVersion,
         CreatedAt = test.CreatedAt,
         UpdatedAt = test.UpdatedAt
     };

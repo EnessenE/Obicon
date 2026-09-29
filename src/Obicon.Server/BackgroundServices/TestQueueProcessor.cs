@@ -79,7 +79,11 @@ public class TestQueueProcessor : BackgroundService
                     TestId = job.TestId.ToString(),
                     TestType = job.TestType,
                     Target = job.Target,
-                    TimeoutSeconds = job.TimeoutSeconds
+                    TimeoutSeconds = job.TimeoutSeconds,
+                    ExpectedStatusCodes = job.ExpectedStatusCodes,
+                    CheckCertificateExpiryDays = job.CheckCertificateExpiryDays,
+                    ExpectedDnsResult = job.ExpectedDnsResult,
+                    IpVersion = job.IpVersion
                 }
             };
 
@@ -88,8 +92,8 @@ public class TestQueueProcessor : BackgroundService
                 var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(assignment, JsonOptions));
                 await connection.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, stoppingToken);
                 await _queueService.MarkJobAssignedAsync(job.Id);
-                _logger.LogInformation("Assigned job {JobId} to node {NodeId} ({TestType} {Target})",
-                    job.Id, job.NodeId, job.TestType, job.Target);
+                _logger.LogInformation("Assigned job {JobId} to node {NodeId} ({TestType} {Target})", job.Id, job.NodeId, job.TestType, job.Target);
+                Metrics.ServerMetrics.Action("job_dispatched");
             }
             catch (Exception ex)
             {

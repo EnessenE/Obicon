@@ -98,7 +98,7 @@ public class TestExecutor : ITestExecutor
                 return;
             }
 
-            var outcome = await runner.ExecuteAsync(assignment.Target, timeout, testTimeout.Token);
+            var outcome = await runner.ExecuteAsync(assignment, timeout, testTimeout.Token);
 
             var finalStatus = outcome.Success ? TestJobStatus.Completed : TestJobStatus.Failed;
             if (testTimeout.IsCancellationRequested)
@@ -143,6 +143,7 @@ public class TestExecutor : ITestExecutor
         TestJobStatus finalStatus)
     {
         var stats = Statistics;
+        Metrics.NodeMetrics.TestExecuted(finalStatus.ToString(), assignment.TestType.ToString(), stopwatch.Elapsed.TotalMilliseconds);
         switch (finalStatus)
         {
             case TestJobStatus.Completed:

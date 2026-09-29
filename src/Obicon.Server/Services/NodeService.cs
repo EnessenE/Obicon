@@ -36,6 +36,7 @@ public class NodeService : INodeService
         await db.SaveChangesAsync();
 
         _logger.LogInformation("Created node {NodeId} with name: {NodeName}", node.Id, node.Name);
+        Metrics.ServerMetrics.Action("created_node");
         return ToResponse(node);
     }
 
@@ -58,7 +59,7 @@ public class NodeService : INodeService
         return ToResponse(node);
     }
 
-    public async Task<NodeResponse?> UpdateNodeAsync(Guid id, string name)
+    public async Task<NodeResponse?> UpdateNodeAsync(Guid id, UpdateNodeRequest request)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var node = await db.Nodes.FindAsync(id);
@@ -68,9 +69,18 @@ public class NodeService : INodeService
             return null;
         }
 
-        node.Name = name;
+        node.Name = request.Name;
+        node.Labels = request.Labels;
+
+        if (request.RegenerateToken)
+        {
+            node.AuthToken = Guid.NewGuid().ToString();
+            _logger.LogInformation("Regenerated auth token for node {NodeId}", id);
+            Metrics.ServerMetrics.Action("token_regenerated");
+        }
+
         await db.SaveChangesAsync();
-        _logger.LogInformation("Updated node {NodeId} to name: {NewName}", id, name);
+        _logger.LogInformation("Updated node {NodeId} to name: {NewName}", id, request.Name);
         return ToResponse(node);
     }
 
@@ -87,6 +97,7 @@ public class NodeService : INodeService
         db.Nodes.Remove(node);
         await db.SaveChangesAsync();
         _logger.LogInformation("Deleted node {NodeId}", id);
+        Metrics.ServerMetrics.Action("deleted_node");
         return true;
     }
 
@@ -120,6 +131,7 @@ public class NodeService : INodeService
         AuthToken = node.AuthToken,
         IsActive = node.IsActive,
         CreatedAt = node.CreatedAt,
-        LastSeenAt = node.LastSeenAt
+        LastSeenAt = node.LastSeenAt,
+        Labels = node.Labels
     };
 }

@@ -20,8 +20,15 @@ public class TestsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateTest([FromBody] CreateTestRequest request)
     {
-        var test = await _testService.CreateTestAsync(request);
-        return CreatedAtAction(nameof(GetTest), new { id = test.Id }, test);
+        try
+        {
+            var test = await _testService.CreateTestAsync(request);
+            return CreatedAtAction(nameof(GetTest), new { id = test.Id }, test);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
     }
 
     [HttpGet]
@@ -47,14 +54,28 @@ public class TestsController : ControllerBase
         Guid id,
         [FromBody] UpdateTestRequest request)
     {
-        var test = await _testService.UpdateTestAsync(
-            id,
-            request.Type,
-            request.Target,
-            request.NodeIds,
-            request.Frequency,
-            request.IsActive);
-        
+        try
+        {
+            var test = await _testService.UpdateTestAsync(id, request);
+            if (test == null)
+            {
+                return NotFound();
+            }
+            return Ok(test);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Flips a test between active and inactive without deleting it.
+    /// </summary>
+    [HttpPost("{id}/toggle")]
+    public async Task<IActionResult> ToggleTest(Guid id)
+    {
+        var test = await _testService.ToggleTestAsync(id);
         if (test == null)
         {
             return NotFound();

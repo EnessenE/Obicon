@@ -100,6 +100,7 @@ public class ServerConnection : BackgroundService, IServerConnection
             if (!stoppingToken.IsCancellationRequested)
             {
                 _logger.LogInformation("Reconnecting in {Delay}s", _settings.ReconnectDelaySeconds);
+            Metrics.NodeMetrics.Reconnect();
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(_settings.ReconnectDelaySeconds), stoppingToken);
@@ -175,6 +176,7 @@ public class ServerConnection : BackgroundService, IServerConnection
         var interval = TimeSpan.FromSeconds(Math.Max(1, _settings.HeartbeatIntervalSeconds));
         while (!cancellationToken.IsCancellationRequested && IsConnected)
         {
+            Metrics.NodeMetrics.Heartbeat();
             await SendAsync(new WebSocketMessage
             {
                 Type = MessageType.NodeHeartbeat,

@@ -55,4 +55,9 @@ public class NodeSettings
     /// How often the monitoring task logs node statistics, in seconds. Default: 5.
     /// </summary>
     public int MonitoringIntervalSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// URL prefix the Prometheus metrics listener binds to. Default: "http://localhost:9464/".
+    /// </summary>
+    public string MetricsUrlPrefix { get; set; } = "http://localhost:9464/";
 }

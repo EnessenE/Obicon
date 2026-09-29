@@ -5,7 +5,7 @@ namespace Obicon.Server.Services;
 
 public interface ITestQueueService
 {
-    Task<TestJob> EnqueueTestAsync(Guid testId, Guid nodeId, TestType testType, string target, int? timeoutSeconds = null);
+    Task<TestJob> EnqueueJobAsync(Models.TestJob job);
     Task<TestJob?> DequeueTestAsync(Guid nodeId);
     Task UpdateJobStatusAsync(Guid jobId, TestJobStatus status, TestResult? result = null, string? errorMessage = null);
     Task<TestJob?> GetJobAsync(Guid jobId);

@@ -16,6 +16,11 @@ public class ObiconDbContext : DbContext
     public DbSet<Node> Nodes => Set<Node>();
 
     /// <summary>
+    /// User-defined node pools. Default: empty.
+    /// </summary>
+    public DbSet<NodePool> NodePools => Set<NodePool>();
+
+    /// <summary>
     /// Configured tests. Default: empty.
     /// </summary>
     public DbSet<Test> Tests => Set<Test>();
@@ -35,6 +40,10 @@ public class ObiconDbContext : DbContext
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
             v => JsonSerializer.Deserialize<List<Guid>>(v, (JsonSerializerOptions?)null) ?? new List<Guid>());
 
+        var stringListConverter = new ValueConverter<List<string>, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>());
+
         var testResultConverter = new ValueConverter<TestResult?, string>(
             v => v == null ? string.Empty : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
             v => string.IsNullOrEmpty(v) ? null : JsonSerializer.Deserialize<TestResult>(v, (JsonSerializerOptions?)null));
@@ -48,8 +57,20 @@ public class ObiconDbContext : DbContext
         modelBuilder.Entity<Node>()
             .HasIndex(n => n.AuthToken);
 
+        modelBuilder.Entity<Node>()
+            .Property(n => n.Labels)
+            .HasConversion(stringListConverter);
+
+        modelBuilder.Entity<NodePool>()
+            .Property(p => p.NodeIds)
+            .HasConversion(guidListConverter);
+
         modelBuilder.Entity<Test>()
             .Property(t => t.NodeIds)
+            .HasConversion(guidListConverter);
+
+        modelBuilder.Entity<Test>()
+            .Property(t => t.PoolIds)
             .HasConversion(guidListConverter);
 
         modelBuilder.Entity<TestJob>()

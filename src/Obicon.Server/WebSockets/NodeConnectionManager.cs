@@ -89,4 +89,30 @@ public class NodeConnectionManager
             }
         }
     }
+
+    /// <summary>
+    /// Closes a node's live WebSocket connection, e.g. after its token was regenerated.
+    /// </summary>
+    /// <param name="nodeId">Unique identifier of the node.</param>
+    public async Task DisconnectNodeAsync(string nodeId)
+    {
+        NodeConnection? connection;
+        lock (_lock)
+        {
+            if (!_connections.TryGetValue(nodeId, out connection))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await connection.Socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Authentication token was regenerated", closeCts.Token);
+        }
+        catch (Exception)
+        {
+            // The receive loop in the middleware cleans up either way
+        }
+    }
 }

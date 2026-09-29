@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using Obicon.Shared.Models.Enums;
+using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Node.Services.TestRunners;
 
@@ -16,8 +18,23 @@ public class TracerouteTestRunner : ITestRunner
     public TestType Type => TestType.Traceroute;
 
     /// <inheritdoc />
-    public async Task<TestOutcome> ExecuteAsync(string target, TimeSpan timeout, CancellationToken cancellationToken)
+    public async Task<TestOutcome> ExecuteAsync(TestAssignmentMessage assignment, TimeSpan timeout, CancellationToken cancellationToken)
     {
+        IPAddress? address;
+        try
+        {
+            address = await HostResolver.ResolveAsync(assignment.Target, assignment.IpVersion, cancellationToken);
+        }
+        catch (SocketException ex)
+        {
+            return new TestOutcome { Success = false, Output = $"Could not resolve {assignment.Target}: {ex.SocketErrorCode}" };
+        }
+
+        if (address == null)
+        {
+            return new TestOutcome { Success = false, Output = $"{assignment.Target} has no {HostResolver.FamilyName(assignment.IpVersion)} address" };
+        }
+
         var buffer = new byte[16];
         using var ping = new Ping();
         var hops = new List<string>(MaxHops);
@@ -27,7 +44,7 @@ public class TracerouteTestRunner : ITestRunner
             cancellationToken.ThrowIfCancellationRequested();
 
             var options = new PingOptions { Ttl = ttl, DontFragment = true };
-            var reply = await ping.SendPingAsync(target, PerHopTimeoutMs, buffer, options);
+            var reply = await ping.SendPingAsync(address, PerHopTimeoutMs, buffer, options);
 
             if (reply.Status == IPStatus.Success)
             {

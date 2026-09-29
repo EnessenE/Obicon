@@ -38,6 +38,26 @@ public class TestJob
     public int TimeoutSeconds { get; set; } = 60;
 
     /// <summary>
+    /// HTTP/HTTPS: accepted status codes, e.g. "200-399" or "200,301,302". Default: "200-399".
+    /// </summary>
+    public string ExpectedStatusCodes { get; set; } = "200-399";
+
+    /// <summary>
+    /// HTTPS: when set, the test fails if the TLS certificate expires within this many days. Null disables the check.
+    /// </summary>
+    public int? CheckCertificateExpiryDays { get; set; }
+
+    /// <summary>
+    /// DNS: when set, the test only succeeds if this address is among the resolved addresses. Null accepts any result.
+    /// </summary>
+    public string? ExpectedDnsResult { get; set; }
+
+    /// <summary>
+    /// IP version the test should use. Default: Any.
+    /// </summary>
+    public IpVersion IpVersion { get; set; } = IpVersion.Any;
+
+    /// <summary>
     /// Current status of the job. See <see cref="TestJobStatus"/> for available statuses. Default: Queued.
     /// </summary>
     public TestJobStatus Status { get; set; } = TestJobStatus.Queued;

@@ -9,7 +9,7 @@ public interface INodeService
     Task<NodeResponse> CreateNodeAsync(CreateNodeRequest request);
     Task<IEnumerable<NodeResponse>> GetAllNodesAsync();
     Task<NodeResponse?> GetNodeAsync(Guid id);
-    Task<NodeResponse?> UpdateNodeAsync(Guid id, string name);
+    Task<NodeResponse?> UpdateNodeAsync(Guid id, Models.Requests.UpdateNodeRequest request);
     Task<bool> DeleteNodeAsync(Guid id);
     Task<bool> ValidateNodeTokenAsync(string token);
     Task<Node?> GetNodeByTokenAsync(string token);
