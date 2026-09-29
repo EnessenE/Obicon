@@ -18,7 +18,8 @@ const jobStatusMap = {
     2: 'Running',
     3: 'Completed',
     4: 'Failed',
-    5: 'Timeout'
+    5: 'Timeout',
+    6: 'No run'
 };
 
 const jobStatusBadgeMap = {
@@ -27,7 +28,8 @@ const jobStatusBadgeMap = {
     2: 'bg-primary',
     3: 'bg-success',
     4: 'bg-danger',
-    5: 'bg-warning text-dark'
+    5: 'bg-warning text-dark',
+    6: 'bg-dark'
 };
 
 // Load queue on page load
@@ -73,9 +75,19 @@ function renderJobs() {
             <td><span class="badge ${jobStatusBadgeMap[job.status] || 'bg-secondary'}">${jobStatusMap[job.status] || job.status}</span></td>
             <td>${new Date(job.createdAt).toLocaleString()}</td>
             <td>${job.durationMs != null ? job.durationMs + ' ms' : '-'}</td>
-            <td class="text-truncate" style="max-width: 300px;" title="${escapeHtml(job.errorMessage || job.output || '')}">${escapeHtml(job.errorMessage || job.output || '-')}</td>
+            <td class="text-truncate" style="max-width: 300px;" title="${escapeHtml(job.errorMessage || job.output || '')}">${escapeHtml(job.errorMessage || job.output || '-')}${renderMetrics(job.metrics)}</td>
         </tr>
     `).join('');
+}
+
+// Renders the detailed measurements of a run as a compact line under the output
+function renderMetrics(metrics) {
+    if (!metrics || Object.keys(metrics).length === 0) {
+        return '';
+    }
+
+    const pairs = Object.entries(metrics).map(([key, value]) => `${key}=${value}`);
+    return `<div class="small text-muted">${escapeHtml(pairs.join(' · '))}</div>`;
 }
 
 function showQueueLoading() {

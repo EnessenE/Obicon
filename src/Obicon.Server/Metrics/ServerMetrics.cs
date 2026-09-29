@@ -24,6 +24,9 @@ public class ServerMetrics
     private static readonly Counter<long> ServerActions = ServerMeter.CreateCounter<long>(
         "obicon.server.actions", description: "Server lifecycle actions");
 
+    private static readonly Counter<long> NoRuns = ServerMeter.CreateCounter<long>(
+        "obicon.server.noruns", description: "Jobs marked NoRun, by reason");
+
     /// <summary>
     /// Records a finished test run, labeled per test and per node.
     /// </summary>
@@ -56,5 +59,13 @@ public class ServerMetrics
     public static void Action(string action)
     {
         ServerActions.Add(1, new KeyValuePair<string, object?>("action", action));
+    }
+
+    /// <summary>
+    /// Records a job marked NoRun, with the reason (never_acknowledged or never_started).
+    /// </summary>
+    public static void NoRun(string reason)
+    {
+        NoRuns.Add(1, new KeyValuePair<string, object?>("reason", reason));
     }
 }

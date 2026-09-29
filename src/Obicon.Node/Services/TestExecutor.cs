@@ -47,15 +47,30 @@ public class TestExecutor : ITestExecutor
         _slots = new SemaphoreSlim(Math.Max(1, _settings.MaxConcurrentTests));
     }
 
-    public Task ExecuteAssignmentAsync(TestAssignmentMessage assignment)
+    public async Task ExecuteAssignmentAsync(TestAssignmentMessage assignment)
     {
+        // Acknowledge immediately so the server knows the run arrived here,
+        // even while waiting for a free execution slot
+        await SendStatusUpdateAsync(assignment, TestJobStatus.Assigned, "Job accepted by node");
+
         // Dedicated task per test; the executor only gates and tracks them
         _ = RunAssignmentAsync(assignment);
-        return Task.CompletedTask;
     }
 
     private async Task RunAssignmentAsync(TestAssignmentMessage assignment)
     {
+        // Everything logged inside this scope carries the job's identifiers
+        using var _ = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["JobId"] = assignment.JobId,
+            ["TestId"] = assignment.TestId,
+            ["TestType"] = assignment.TestType.ToString(),
+            ["Target"] = assignment.Target,
+            ["IpVersion"] = assignment.IpVersion.ToString()
+        });
+        _logger.LogInformation("Starting {TestType} test against {Target} (timeout {TimeoutSeconds}s)",
+            assignment.TestType, assignment.Target, assignment.TimeoutSeconds);
+
         var stats = Statistics;
         Interlocked.Increment(ref stats.Pending);
         try
@@ -107,7 +122,7 @@ public class TestExecutor : ITestExecutor
                 outcome = new TestOutcome { Success = false, Output = $"Timed out after {timeout.TotalSeconds}s" };
             }
 
-            await ReportAsync(assignment, outcome.Success, stopwatch, outcome.Output, finalStatus);
+            await ReportAsync(assignment, outcome.Success, stopwatch, outcome.Output, finalStatus, outcome.Metrics);
         }
         catch (OperationCanceledException) when (hardKill?.IsCancellationRequested == true
                                                 && !_lifetime.ApplicationStopping.IsCancellationRequested)
@@ -140,7 +155,8 @@ public class TestExecutor : ITestExecutor
         bool success,
         Stopwatch stopwatch,
         string output,
-        TestJobStatus finalStatus)
+        TestJobStatus finalStatus,
+        Dictionary<string, object>? metrics = null)
     {
         var stats = Statistics;
         Metrics.NodeMetrics.TestExecuted(finalStatus.ToString(), assignment.TestType.ToString(), stopwatch.Elapsed.TotalMilliseconds);
@@ -169,7 +185,8 @@ public class TestExecutor : ITestExecutor
                     NodeId = string.Empty,
                     Success = success,
                     DurationMs = stopwatch.ElapsedMilliseconds,
-                    Output = output
+                    Output = output,
+                    Metrics = metrics
                 }
             });
 

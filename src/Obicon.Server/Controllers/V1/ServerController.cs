@@ -48,6 +48,7 @@ public class ServerController : ControllerBase
             CompletedJobs = jobs.Count(j => j.Status == TestJobStatus.Completed),
             FailedJobs = jobs.Count(j => j.Status == TestJobStatus.Failed),
             TimedOutJobs = jobs.Count(j => j.Status == TestJobStatus.Timeout),
+            NoRunJobs = jobs.Count(j => j.Status == TestJobStatus.NoRun),
             Uptime = DateTimeOffset.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime(),
             Timestamp = DateTime.UtcNow
         });

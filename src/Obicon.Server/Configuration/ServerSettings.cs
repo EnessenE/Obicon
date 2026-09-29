@@ -26,4 +26,10 @@ public class ServerSettings
     /// Indicates if nodes can register themselves with an enroll token. Default: false.
     /// </summary>
     public bool NodeAutoEnrollmentEnabled { get; set; }
+
+    /// <summary>
+    /// Comma-separated list of test frequencies, in seconds, offered in the UI and accepted when
+    /// creating or editing a test. Default: "10,30,60,120,300,600,3600".
+    /// </summary>
+    public string FrequencyPresetsSeconds { get; set; } = "10,30,60,120,300,600,3600";
 }

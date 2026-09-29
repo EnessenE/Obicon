@@ -22,27 +22,60 @@ const testTypeMap = {
     0: 'Ping', 1: 'Traceroute', 2: 'HTTP', 3: 'HTTPS', 4: 'TCP', 5: 'DNS'
 };
 
-const frequencyMap = {
-    0: '10 seconds', 1: '30 seconds', 2: '1 minute',
-    3: '2 minutes', 4: '5 minutes', 5: '10 minutes', 6: '1 hour'
-};
-
 const jobStatusMap = {
     0: 'Queued', 1: 'Assigned', 2: 'Running', 3: 'Completed', 4: 'Failed', 5: 'Timeout'
 };
 
-const frequencySeconds = {
-    0: 10, 1: 30, 2: 60, 3: 120, 4: 300, 5: 600, 6: 3600
-};
+// Allowed test frequencies in seconds; loaded from the FrequencyPresetsSeconds server setting,
+// falling back to the server's default list if it cannot be read
+let frequencyPresets = [10, 30, 60, 120, 300, 600, 3600];
+
+function formatFrequencyLabel(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return String(seconds);
+    if (seconds < 60) return `${seconds} seconds`;
+    if (seconds % 3600 === 0) return `${seconds / 3600} hour${seconds === 3600 ? '' : 's'}`;
+    if (seconds % 60 === 0) return `${seconds / 60} minute${seconds === 60 ? '' : 's'}`;
+    return `${seconds} seconds`;
+}
+
+async function loadFrequencyPresets() {
+    try {
+        const settings = await apiCall('GET', '/v1/settings');
+        const setting = settings.find(s => s.key === 'FrequencyPresetsSeconds');
+        const parsed = (setting ? setting.value : '')
+            .split(',')
+            .map(part => parseInt(part.trim(), 10))
+            .filter(seconds => Number.isFinite(seconds) && seconds > 0);
+        if (parsed.length > 0) {
+            frequencyPresets = [...new Set(parsed)].sort((a, b) => a - b);
+        }
+    } catch (error) {
+        console.error('Could not load frequency presets, using defaults:', error);
+    }
+
+    populateFrequencySelect(document.getElementById('testFrequency'));
+    populateFrequencySelect(document.getElementById('editFrequency'));
+    updateEstimate();
+}
+
+function populateFrequencySelect(select, extraValue = null) {
+    if (!select) return;
+    const values = extraValue && !frequencyPresets.includes(extraValue)
+        ? [...frequencyPresets, extraValue].sort((a, b) => a - b)
+        : frequencyPresets;
+    select.innerHTML = values.map(seconds =>
+        `<option value="${seconds}">${formatFrequencyLabel(seconds)}</option>`).join('');
+}
 
 const ipVersionMap = {
     0: 'Any', 1: 'IPv4', 2: 'IPv6'
 };
 
-// Load tests, nodes and pools on page load
+// Load tests, nodes, pools and the frequency presets on page load
 loadTests();
 loadNodeCheckboxes();
 loadPoolCheckboxes();
+loadFrequencyPresets();
 testTypeSelect.addEventListener('change', updateExpectationVisibility);
 updateExpectationVisibility();
 
@@ -75,7 +108,7 @@ function updateEstimate() {
         return;
     }
 
-    const seconds = frequencySeconds[parseInt(document.getElementById('testFrequency').value)] || 60;
+    const seconds = parseInt(document.getElementById('testFrequency').value) || 60;
     const perHour = targets * 3600 / seconds;
     estimateEl.textContent = `${formatNumber(perHour)}/hour, ${formatNumber(perHour * 24)}/day, ${formatNumber(perHour * 24 * 30)}/month (30d)`;
 }
@@ -189,6 +222,13 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         return null;
     }
 
+    const timeoutInput = document.getElementById('testTimeout').value.trim();
+    const timeoutSeconds = timeoutInput === '' ? 60 : parseInt(timeoutInput);
+    if (isNaN(timeoutSeconds) || timeoutSeconds < 1) {
+        showFormError('Timeout must be at least 1 second.');
+        return null;
+    }
+
     const expectedStatusCodes = document.getElementById('expectedStatusCodes').value.trim() || '200-399';
     if ((type === 2 || type === 3) && !/^\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*$/.test(expectedStatusCodes)) {
         showFormError('Expected status codes must look like 200-399 or 200,301.');
@@ -205,7 +245,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
     const ipVersion = parseInt(document.getElementById("testIpVersion").value);
 
     return {
-        name, target, type, frequency, isActive, nodeIds, poolIds, ipVersion,
+        name, target, type, frequency, isActive, nodeIds, poolIds, ipVersion, timeoutSeconds,
         expectedStatusCodes,
         checkCertExpiryDays,
         expectedDnsResult: document.getElementById('expectedDnsResult').value.trim() || null
@@ -227,7 +267,7 @@ function testTargetCount(test) {
 function estimateShort(test) {
     const targets = testTargetCount(test);
     if (targets === 0) return '-';
-    const seconds = frequencySeconds[test.frequency] || 60;
+    const seconds = test.frequency || 60;
     const perHour = targets * 3600 / seconds;
     return `${formatNumber(perHour)}/hr`;
 }
@@ -235,7 +275,7 @@ function estimateShort(test) {
 function estimateTooltip(test) {
     const targets = testTargetCount(test);
     if (targets === 0) return 'No targets';
-    const seconds = frequencySeconds[test.frequency] || 60;
+    const seconds = test.frequency || 60;
     const perHour = targets * 3600 / seconds;
     return `${targets} target(s): ${formatNumber(perHour)}/hour, ${formatNumber(perHour * 24)}/day, ${formatNumber(perHour * 24 * 30)}/month (30d)`;
 }
@@ -256,12 +296,13 @@ function renderTests() {
             <td>${escapeHtml(test.name)}</td>
             <td>${testTypeMap[test.type] || test.type}</td>
             <td><code>${escapeHtml(test.target)}</code></td>
-            <td>${frequencyMap[test.frequency] || test.frequency}${test.ipVersion ? ' <span class="text-muted">(' + (ipVersionMap[test.ipVersion] || '') + ')</span>' : ''}</td>
+            <td>${formatFrequencyLabel(test.frequency)}${test.ipVersion ? ' <span class="text-muted">(' + (ipVersionMap[test.ipVersion] || '') + ')</span>' : ''}</td>
             <td title="${estimateTooltip(test)}">${estimateShort(test)}</td>
             <td>
                 <span class="badge ${test.isActive ? 'bg-success' : 'bg-secondary'}">${test.isActive ? 'Active' : 'Inactive'}</span>
             </td>
             <td>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="openTestEdit('${test.id}')">Edit</button>
                 <button class="btn btn-sm ${test.isActive ? 'btn-outline-warning' : 'btn-outline-success'} me-1" onclick="toggleTest('${test.id}')">${test.isActive ? 'Disable' : 'Enable'}</button>
                 <button class="btn btn-sm btn-success me-1" onclick="triggerRun('${test.id}')">Run</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteTest('${test.id}')">Delete</button>
@@ -286,15 +327,17 @@ async function createTest() {
             expectedStatusCodes: values.expectedStatusCodes,
             checkCertificateExpiryDays: values.checkCertExpiryDays,
             expectedDnsResult: values.expectedDnsResult,
-            ipVersion: values.ipVersion
+            ipVersion: values.ipVersion,
+            timeoutSeconds: values.timeoutSeconds
         });
 
         // Reset form
         document.getElementById('testName').value = '';
         document.getElementById('testTarget').value = '';
         document.getElementById('testType').value = '0';
-        document.getElementById('testFrequency').value = '2';
+        document.getElementById('testFrequency').value = String(frequencyPresets.find(s => s >= 60) ?? frequencyPresets[0]);
         document.getElementById('testIsActive').checked = true;
+        document.getElementById('testTimeout').value = '60';
         document.getElementById('expectedStatusCodes').value = '200-399';
         document.getElementById('checkCertExpiryDays').value = '';
         document.getElementById('expectedDnsResult').value = '';
@@ -333,7 +376,8 @@ async function runOnRandomNode() {
             expectedStatusCodes: values.expectedStatusCodes,
             checkCertificateExpiryDays: values.checkCertExpiryDays,
             expectedDnsResult: values.expectedDnsResult,
-            ipVersion: values.ipVersion
+            ipVersion: values.ipVersion,
+            timeoutSeconds: values.timeoutSeconds
         });
 
         const finished = await pollJob(job.id, 75);
@@ -369,6 +413,97 @@ async function pollJob(jobId, maxSeconds) {
         }
     }
     throw new Error(`Job did not finish within ${maxSeconds}s`);
+}
+
+// Test editing: opens the edit modal with all fields of the test
+let editingTest = null;
+let editTestModal = null;
+
+function openTestEditModal(test) {
+    editingTest = test;
+
+    document.getElementById('editTestName').textContent = `(${test.name})`;
+    document.getElementById('editName').value = test.name;
+    document.getElementById('editType').value = String(test.type);
+    document.getElementById('editTarget').value = test.target;
+    // Keep the test's frequency selectable even if it is no longer part of the presets
+    populateFrequencySelect(document.getElementById('editFrequency'), test.frequency);
+    document.getElementById('editFrequency').value = String(test.frequency);
+    document.getElementById('editTimeout').value = test.timeoutSeconds || 60;
+    document.getElementById('editIpVersion').value = String(test.ipVersion || 0);
+    document.getElementById('editExpectedStatusCodes').value = test.expectedStatusCodes || '200-399';
+    document.getElementById('editCertExpiryDays').value = test.checkCertificateExpiryDays ?? '';
+    document.getElementById('editExpectedDnsResult').value = test.expectedDnsResult || '';
+    document.getElementById('editIsActive').checked = test.isActive;
+    document.getElementById('editError').style.display = 'none';
+
+    document.getElementById('editNodeList').innerHTML = nodes.map(node => `
+        <div class="form-check">
+            <input class="form-check-input edit-node-checkbox" type="checkbox" value="${node.id}" id="edit-node-${node.id}"
+                   ${test.nodeIds.includes(node.id) ? 'checked' : ''}>
+            <label class="form-check-label" for="edit-node-${node.id}">${escapeHtml(node.name)}</label>
+        </div>
+    `).join('') || '<span class="text-muted">No nodes exist.</span>';
+
+    document.getElementById('editPoolList').innerHTML = pools.map(pool => `
+        <div class="form-check">
+            <input class="form-check-input edit-pool-checkbox" type="checkbox" value="${pool.id}" id="edit-pool-${pool.id}"
+                   ${test.poolIds.includes(pool.id) ? 'checked' : ''}>
+            <label class="form-check-label" for="edit-pool-${pool.id}">${escapeHtml(pool.name)} <span class="text-muted">(${pool.nodeIds.length})</span></label>
+        </div>
+    `).join('') || '<span class="text-muted">No pools exist.</span>';
+
+    if (!editTestModal) {
+        editTestModal = new bootstrap.Modal(document.getElementById('editTestModal'));
+    }
+    editTestModal.show();
+}
+
+function openTestEdit(testId) {
+    const test = tests.find(t => t.id === testId);
+    if (test) {
+        openTestEditModal(test);
+    }
+}
+
+async function saveTestEdit() {
+    if (!editingTest) return;
+
+    const name = document.getElementById('editName').value.trim();
+    const target = document.getElementById('editTarget').value.trim();
+    const timeoutSeconds = parseInt(document.getElementById('editTimeout').value);
+    const nodeIds = Array.from(document.querySelectorAll('.edit-node-checkbox:checked')).map(cb => cb.value);
+    const poolIds = Array.from(document.querySelectorAll('.edit-pool-checkbox:checked')).map(cb => cb.value);
+
+    const error = document.getElementById('editError');
+    if (!name) { error.textContent = 'Name is required.'; error.style.display = 'block'; return; }
+    if (!target) { error.textContent = 'Target is required.'; error.style.display = 'block'; return; }
+    if (isNaN(timeoutSeconds) || timeoutSeconds < 1) { error.textContent = 'Timeout must be at least 1 second.'; error.style.display = 'block'; return; }
+    if (nodeIds.length === 0 && poolIds.length === 0) { error.textContent = 'Select at least one node or pool.'; error.style.display = 'block'; return; }
+
+    try {
+        await apiCall('PUT', `/v1/tests/${editingTest.id}`, {
+            type: parseInt(document.getElementById('editType').value),
+            target,
+            nodeIds,
+            poolIds,
+            frequency: parseInt(document.getElementById('editFrequency').value),
+            isActive: document.getElementById('editIsActive').checked,
+            expectedStatusCodes: document.getElementById('editExpectedStatusCodes').value.trim() || '200-399',
+            checkCertificateExpiryDays: document.getElementById('editCertExpiryDays').value.trim() === ''
+                ? null
+                : parseInt(document.getElementById('editCertExpiryDays').value),
+            expectedDnsResult: document.getElementById('editExpectedDnsResult').value.trim() || null,
+            ipVersion: parseInt(document.getElementById('editIpVersion').value),
+            timeoutSeconds
+        });
+
+        editTestModal.hide();
+        await loadTests();
+    } catch (requestError) {
+        error.textContent = requestError.message;
+        error.style.display = 'block';
+    }
 }
 
 async function deleteTest(id) {

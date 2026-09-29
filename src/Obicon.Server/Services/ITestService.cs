@@ -1,6 +1,5 @@
 using Obicon.Server.Models;
 using Obicon.Shared.Models.Enums;
-using Obicon.Server.Models.Enums;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
 

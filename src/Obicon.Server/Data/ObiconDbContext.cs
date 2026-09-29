@@ -101,6 +101,7 @@ public class ObiconDbContext : DbContext
 
         modelBuilder.Entity<TestJob>().Property(j => j.CreatedAt).HasConversion(utcConverter);
         modelBuilder.Entity<TestJob>().Property(j => j.StartedAt).HasConversion(nullableUtcConverter);
+        modelBuilder.Entity<TestJob>().Property(j => j.AcknowledgedAt).HasConversion(nullableUtcConverter);
         modelBuilder.Entity<TestJob>().Property(j => j.CompletedAt).HasConversion(nullableUtcConverter);
     }
 }

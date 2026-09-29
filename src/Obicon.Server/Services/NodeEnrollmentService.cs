@@ -49,7 +49,8 @@ public class NodeEnrollmentService : INodeEnrollmentService
         var labels = request.Labels.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
         var poolIds = await ResolveOrCreatePoolsAsync(db, request.Pools);
 
-        Node? node = null;
+        Node? node;
+        string? plainToken = null;
         if (request.NodeId is { } nodeId)
         {
             node = await db.Nodes.FindAsync(nodeId);
@@ -57,7 +58,7 @@ public class NodeEnrollmentService : INodeEnrollmentService
             {
                 throw new ArgumentException($"Unknown node ID: {nodeId}");
             }
-            if (!node.ManagedByNode)
+            if (node.EnrollmentType != NodeEnrollmentType.AutoEnrollment)
             {
                 throw new InvalidOperationException("Only nodes that enrolled themselves can update via enrollment");
             }
@@ -67,15 +68,16 @@ public class NodeEnrollmentService : INodeEnrollmentService
         }
         else
         {
+            plainToken = Guid.NewGuid().ToString();
             node = new Node
             {
                 Id = Guid.NewGuid(),
                 Name = request.NodeName,
-                AuthToken = Guid.NewGuid().ToString(),
+                AuthToken = TokenHasher.Hash(plainToken),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 Labels = labels,
-                ManagedByNode = true
+                EnrollmentType = NodeEnrollmentType.AutoEnrollment
             };
             db.Nodes.Add(node);
         }
@@ -99,7 +101,7 @@ public class NodeEnrollmentService : INodeEnrollmentService
         {
             Id = node.Id,
             Name = node.Name,
-            AuthToken = node.AuthToken,
+            AuthToken = plainToken ?? string.Empty,
             Labels = node.Labels,
             PoolIds = poolIds
         };

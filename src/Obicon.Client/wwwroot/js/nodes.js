@@ -64,10 +64,7 @@ function renderNodes(connectedById = {}) {
             <td>${escapeHtml(node.name)}</td>
             <td>${renderLabels(node.labels)}</td>
             <td>${renderPools(node.id)}</td>
-            <td>
-                <code style="word-break:break-all">${escapeHtml(node.authToken)}</code>
-                <button class="btn btn-sm btn-outline-primary py-0" onclick="copyText('${node.authToken}', this)">Copy</button>
-            </td>
+            <td>${node.enrollmentType === 'auto-enrollment' ? '<span class="badge bg-info text-dark" title="Enrolled itself with an enroll token; manages its own name, labels, and pools">Auto-enrolled</span>' : '<span class="badge bg-light text-dark border" title="Created by a user">Manual</span>'}</td>
             <td>${node.id in connectedById
                 ? (connectedById[node.id] ? '<span class="badge bg-success">Connected</span>' : '<span class="badge bg-secondary">Offline</span>')
                 : '-'}</td>

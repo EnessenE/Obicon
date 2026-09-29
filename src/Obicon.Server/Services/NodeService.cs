@@ -21,11 +21,13 @@ public class NodeService : INodeService
     {
         _logger.LogInformation("Creating a node with name: {NodeName}", request.Name);
 
+        // Only the hash of the auth token is stored; the plain value is returned once
+        var plainToken = Guid.NewGuid().ToString();
         var node = new Node
         {
             Id = Guid.NewGuid(),
             Name = request.Name,
-            AuthToken = Guid.NewGuid().ToString(),
+            AuthToken = TokenHasher.Hash(plainToken),
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             LastSeenAt = null
@@ -37,7 +39,10 @@ public class NodeService : INodeService
 
         _logger.LogInformation("Created node {NodeId} with name: {NodeName}", node.Id, node.Name);
         Metrics.ServerMetrics.Action("created_node");
-        return ToResponse(node);
+
+        var response = ToResponse(node);
+        response.AuthToken = plainToken;
+        return response;
     }
 
     public async Task<IEnumerable<NodeResponse>> GetAllNodesAsync()
@@ -69,24 +74,32 @@ public class NodeService : INodeService
             return null;
         }
 
-        if (node.ManagedByNode)
+        if (node.EnrollmentType == NodeEnrollmentType.AutoEnrollment)
         {
-            throw new InvalidOperationException($"Node {id} enrolled itself; its name, labels, and pools are managed by the node");
+            throw new InvalidOperationException($"Node {id} auto-enrolled; its name, labels, and pools are managed by the node itself");
         }
 
         node.Name = request.Name;
         node.Labels = request.Labels;
 
+        string? plainToken = null;
         if (request.RegenerateToken)
         {
-            node.AuthToken = Guid.NewGuid().ToString();
+            plainToken = Guid.NewGuid().ToString();
+            node.AuthToken = TokenHasher.Hash(plainToken);
             _logger.LogInformation("Regenerated auth token for node {NodeId}", id);
             Metrics.ServerMetrics.Action("token_regenerated");
         }
 
         await db.SaveChangesAsync();
         _logger.LogInformation("Updated node {NodeId} to name: {NewName}", id, request.Name);
-        return ToResponse(node);
+
+        var response = ToResponse(node);
+        if (plainToken != null)
+        {
+            response.AuthToken = plainToken;
+        }
+        return response;
     }
 
     public async Task<bool> DeleteNodeAsync(Guid id)
@@ -109,13 +122,15 @@ public class NodeService : INodeService
     public async Task<bool> ValidateNodeTokenAsync(string token)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Nodes.AnyAsync(n => n.AuthToken == token);
+        var hash = TokenHasher.Hash(token);
+        return await db.Nodes.AnyAsync(n => n.AuthToken == hash);
     }
 
     public async Task<Node?> GetNodeByTokenAsync(string token)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Nodes.FirstOrDefaultAsync(n => n.AuthToken == token);
+        var hash = TokenHasher.Hash(token);
+        return await db.Nodes.FirstOrDefaultAsync(n => n.AuthToken == hash);
     }
 
     public async Task UpdateNodeLastSeenAsync(Guid nodeId)
@@ -133,11 +148,12 @@ public class NodeService : INodeService
     {
         Id = node.Id,
         Name = node.Name,
-        AuthToken = node.AuthToken,
+        // The stored value is a hash; the plain token is only set by the flows that issue it
+        AuthToken = string.Empty,
         IsActive = node.IsActive,
         CreatedAt = node.CreatedAt,
         LastSeenAt = node.LastSeenAt,
         Labels = node.Labels,
-        ManagedByNode = node.ManagedByNode
+        EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual"
     };
 }

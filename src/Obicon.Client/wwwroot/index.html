@@ -3,80 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Obicon - Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css">
+    <title>Obicon · Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css?v=2">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">Obicon</a>
-            <div class="navbar-nav">
-                <a class="nav-link active" href="/">Home</a>
-                <a class="nav-link" href="/nodes.html">Nodes</a>
-                <a class="nav-link" href="/pools.html">Pools</a>
-                <a class="nav-link" href="/tests.html">Tests</a>
-                <a class="nav-link" href="/queue.html">Queue</a>
-                <a class="nav-link" href="/server.html">Server</a>
-                <a class="nav-link" href="/settings.html">Settings</a>
+    <div id="appNavbar"></div>
+
+    <main class="container">
+        <div class="page-title d-flex align-items-center justify-content-between">
+            <div>
+                <h1 class="h3 mb-1">Dashboard</h1>
+                <p class="text-muted mb-0">Synthetic monitoring across your nodes</p>
             </div>
         </div>
-    </nav>
 
-    <div class="container mt-4">
-        <h1>Obicon Dashboard</h1>
-        <div class="row mt-4">
-            <div class="col-md-4">
-                <div class="card" onclick="window.location.href='nodes.html'">
-                    <div class="card-body text-center" style="cursor: pointer;">
-                        <h3>Nodes</h3>
-                        <p>Manage monitoring nodes</p>
+        <div class="row g-3">
+            <div class="col-sm-6 col-lg-4">
+                <a class="card card-link h-100" href="nodes.html">
+                    <div class="card-body">
+                        <span class="card-icon bg-primary-subtle text-primary-emphasis mb-3"><i class="bi bi-hdd-network fs-4"></i></span>
+                        <h2 class="h5 mb-1">Nodes</h2>
+                        <p class="text-muted mb-0">Manage monitoring nodes, tokens, and labels</p>
                     </div>
-                </div>
+                </a>
             </div>
-            <div class="col-md-4">
-                <div class="card" onclick="window.location.href='pools.html'">
-                    <div class="card-body text-center" style="cursor: pointer;">
-                        <h3>Pools</h3>
-                        <p>Group nodes into pools</p>
+            <div class="col-sm-6 col-lg-4">
+                <a class="card card-link h-100" href="pools.html">
+                    <div class="card-body">
+                        <span class="card-icon bg-info-subtle text-info-emphasis mb-3"><i class="bi bi-diagram-3 fs-4"></i></span>
+                        <h2 class="h5 mb-1">Pools</h2>
+                        <p class="text-muted mb-0">Group nodes so tests can target them together</p>
                     </div>
-                </div>
+                </a>
             </div>
-            <div class="col-md-4">
-                <div class="card" onclick="window.location.href='tests.html'">
-                    <div class="card-body text-center" style="cursor: pointer;">
-                        <h3>Tests</h3>
-                        <p>Configure synthetic tests</p>
+            <div class="col-sm-6 col-lg-4">
+                <a class="card card-link h-100" href="tests.html">
+                    <div class="card-body">
+                        <span class="card-icon bg-success-subtle text-success-emphasis mb-3"><i class="bi bi-activity fs-4"></i></span>
+                        <h2 class="h5 mb-1">Tests</h2>
+                        <p class="text-muted mb-0">Configure synthetic tests and expectations</p>
                     </div>
-                </div>
+                </a>
             </div>
-            <div class="col-md-4">
-                <div class="card" onclick="window.location.href='queue.html'">
-                    <div class="card-body text-center" style="cursor: pointer;">
-                        <h3>Queue</h3>
-                        <p>View test execution jobs</p>
+            <div class="col-sm-6 col-lg-4">
+                <a class="card card-link h-100" href="queue.html">
+                    <div class="card-body">
+                        <span class="card-icon bg-secondary-subtle text-secondary-emphasis mb-3"><i class="bi bi-list-check fs-4"></i></span>
+                        <h2 class="h5 mb-1">Queue</h2>
+                        <p class="text-muted mb-0">Test execution jobs and their results</p>
                     </div>
-                </div>
+                </a>
             </div>
-            <div class="col-md-4">
-                <div class="card" onclick="window.location.href='server.html'">
-                    <div class="card-body text-center" style="cursor: pointer;">
-                        <h3>Server</h3>
-                        <p>Health and statistics</p>
+            <div class="col-sm-6 col-lg-4">
+                <a class="card card-link h-100" href="server.html">
+                    <div class="card-body">
+                        <span class="card-icon bg-warning-subtle text-warning-emphasis mb-3"><i class="bi bi-server fs-4"></i></span>
+                        <h2 class="h5 mb-1">Server</h2>
+                        <p class="text-muted mb-0">Health and statistics</p>
                     </div>
-                </div>
+                </a>
             </div>
-            <div class="col-md-4">
-                <div class="card" onclick="window.location.href='settings.html'">
-                    <div class="card-body text-center" style="cursor: pointer;">
-                        <h3>Settings</h3>
-                        <p>Server settings and enroll tokens</p>
+            <div class="col-sm-6 col-lg-4">
+                <a class="card card-link h-100" href="settings.html">
+                    <div class="card-body">
+                        <span class="card-icon bg-danger-subtle text-danger-emphasis mb-3"><i class="bi bi-gear fs-4"></i></span>
+                        <h2 class="h5 mb-1">Settings</h2>
+                        <p class="text-muted mb-0">Server settings and enroll tokens</p>
                     </div>
-                </div>
+                </a>
             </div>
         </div>
-    </div>
+    </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <div id="appFooter"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/layout.js?v=1"></script>
 </body>
 </html>

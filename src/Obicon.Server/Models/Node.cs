@@ -13,7 +13,8 @@ public class Node
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Authentication token for WebSocket connections. Generated as GUID on node creation. Default: empty string.
+    /// SHA-256 hash of the WebSocket authentication token. The plain token is only ever
+    /// returned once, at creation, regeneration, or enrollment. Default: empty string.
     /// </summary>
     public string AuthToken { get; set; } = string.Empty;
 
@@ -38,8 +39,8 @@ public class Node
     public List<string> Labels { get; set; } = new();
 
     /// <summary>
-    /// Indicates if the node enrolled itself; such nodes manage their own name, labels, and pools
-    /// and cannot be edited by users. Default: false.
+    /// How this node came to exist: Manual (created by a user) or AutoEnrollment (enrolled itself).
+    /// Auto-enrolled nodes manage their own name, labels, and pools. Default: Manual.
     /// </summary>
-    public bool ManagedByNode { get; set; }
+    public NodeEnrollmentType EnrollmentType { get; set; } = NodeEnrollmentType.Manual;
 }

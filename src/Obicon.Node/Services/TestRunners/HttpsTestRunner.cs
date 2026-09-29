@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Node.Services.TestRunners;
@@ -12,4 +13,8 @@ public class HttpsTestRunner : HttpTestRunnerBase
 
     /// <inheritdoc />
     public override TestType Type => TestType.Https;
+
+    public HttpsTestRunner(ILogger<HttpsTestRunner> logger) : base(logger)
+    {
+    }
 }

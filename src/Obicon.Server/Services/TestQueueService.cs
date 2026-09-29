@@ -121,6 +121,17 @@ public class TestQueueService : ITestQueueService
         return await db.TestJobs.CountAsync(j => j.Status == TestJobStatus.Queued);
     }
 
+    public async Task MarkJobAcknowledgedAsync(Guid jobId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var job = await db.TestJobs.FindAsync(jobId);
+        if (job != null && job.AcknowledgedAt == null)
+        {
+            job.AcknowledgedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+    }
+
     public async Task MarkJobStartedAsync(Guid jobId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();

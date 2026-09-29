@@ -53,6 +53,11 @@ public class TestJobResponse
     public DateTime? StartedAt { get; set; }
 
     /// <summary>
+    /// Timestamp when the node acknowledged the assignment. Null if the node never responded.
+    /// </summary>
+    public DateTime? AcknowledgedAt { get; set; }
+
+    /// <summary>
     /// Timestamp when the job was completed. Null if not yet completed.
     /// </summary>
     public DateTime? CompletedAt { get; set; }
@@ -78,6 +83,12 @@ public class TestJobResponse
     public string? ErrorMessage { get; set; }
 
     /// <summary>
+    /// Detailed measurements of the run: resolved addresses, phase timings, nameservers,
+    /// certificate details. Null if not yet completed. Default: null.
+    /// </summary>
+    public Dictionary<string, object>? Metrics { get; set; }
+
+    /// <summary>
     /// Maps a TestJob entity to its API response.
     /// </summary>
     /// <param name="job">The job entity to map.</param>
@@ -92,10 +103,12 @@ public class TestJobResponse
         Status = job.Status,
         CreatedAt = job.CreatedAt,
         StartedAt = job.StartedAt,
+        AcknowledgedAt = job.AcknowledgedAt,
         CompletedAt = job.CompletedAt,
         Success = job.Result?.Success,
         DurationMs = job.Result?.DurationMs,
         Output = job.Result?.Output,
-        ErrorMessage = job.ErrorMessage
+        ErrorMessage = job.ErrorMessage,
+        Metrics = job.Result?.Metrics
     };
 }

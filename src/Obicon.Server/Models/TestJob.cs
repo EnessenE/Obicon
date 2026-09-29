@@ -73,6 +73,11 @@ public class TestJob
     public DateTime? StartedAt { get; set; }
 
     /// <summary>
+    /// Timestamp when the node acknowledged the assignment. Null if the node never responded.
+    /// </summary>
+    public DateTime? AcknowledgedAt { get; set; }
+
+    /// <summary>
     /// Timestamp when the job was completed. Null if not yet completed.
     /// </summary>
     public DateTime? CompletedAt { get; set; }

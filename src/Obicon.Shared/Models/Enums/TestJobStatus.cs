@@ -33,5 +33,10 @@ public enum TestJobStatus
     /// <summary>
     /// Job timed out before completion.
     /// </summary>
-    Timeout
+    Timeout,
+
+    /// <summary>
+    /// Job was dispatched but the node never started it within the grace period.
+    /// </summary>
+    NoRun
 }

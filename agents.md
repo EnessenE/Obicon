@@ -8,15 +8,18 @@
 
 ## Build and Run
 
-- **Build everything:** `dotnet build Obicon.slnx` (no test suite exists yet; verify with a build plus manual smoke tests)
+- **Build everything:** `dotnet build Obicon.slnx`
+- **Tests:** `dotnet test tests/Obicon.Server.Tests` — xUnit with `WebApplicationFactory<Program>` integration tests (each factory instance gets an isolated temp SQLite database) plus unit tests. Add a test for every security-relevant behavior (e.g. enrollment disabled, forced settings, token expiry)
 - **Server:** `dotnet run --project src/Obicon.Server` → http://localhost:5000, Swagger at `/swagger`
   - API auth: header `Authorization: uwu`. `/ws`, `/metrics`, and `/swagger` are exempt (WebSocket authenticates with the node token instead)
-  - Data: SQLite file `obicon.db` in the project directory, schema created on startup (no migrations — extend `ObiconDbContext` and delete the file or migrate manually)
+  - Data: SQLite file `obicon.db` in the project directory, schema created on startup. `Data/SchemaMigrator.cs` then adds any missing tables/columns with sensible defaults and applies one-time data conversions (recorded in its `SchemaMigrations` table, e.g. enum frequencies to seconds), so upgrades keep the existing `obicon.db` — no need to delete it. Only *changing* an existing column (type, rename) still requires manual migration
 - **Node:** `Node__Token="<token>" dotnet run --project src/Obicon.Node`
   - Every setting in `appsettings.json` (`Node` section) can be overridden by env vars: `Node__ServerUrl`, `Node__MaxConcurrentTests`, etc.
   - Health endpoint: `http://localhost:8080/health` (HttpListener, not Kestrel)
   - On Linux, ping/traceroute need raw-socket privileges (`cap_net_raw`) — without them these tests fail with a clear error, which is expected
 - **Client (frontend):** `dotnet run --project src/Obicon.Client --urls http://localhost:5003` — plain static files from `wwwroot`, no build step; a browser refresh picks up changes
+  - Shared chrome lives in `js/layout.js`: every page has empty `<div id="appNavbar"></div>` and `<div id="appFooter"></div>` placeholders that it fills (nav links + active state). Do not copy the navbar into pages
+  - Styling is Bootstrap 5.3.8 via CDN (there is no 5.4.8 release) plus Bootstrap Icons and `css/styles.css`; page JS references elements by `id`, so keep ids stable when editing markup
 
 ## Project Layout
 
@@ -38,7 +41,8 @@ Rules:
 - **Every setting must have a description** in `Configuration/ServerSettingDefinitions.cs` — it is shown in the settings UI and API. A setting without a description is incomplete work
 - When adding a setting: add it to `ServerSettings` (config binding + property doc comment) AND to `ServerSettingDefinitions.All` (description, type, default). Consumers read values through `IServerSettingsService.GetAsync<T>(key)`, never directly from `IOptions`, so database overrides take effect
 - The settings service caches effective values; the cache is invalidated on change
-- Enroll tokens are stored as SHA-256 hashes only; the plain value is returned exactly once at creation. Node identity (`node-identity.json`) contains the node auth token and is gitignored
+- **Test frequencies are plain seconds** (`Test.Frequency`, no enum). The allowed values come from the `FrequencyPresetsSeconds` setting (default `10,30,60,120,300,600,3600`); `TestService` validates create/update against it and the tests page loads its dropdowns from `/v1/settings`. The scheduler treats the value directly as the interval in seconds
+- Enroll tokens are stored as SHA-256 hashes only; the plain value is returned exactly once at creation. **Node auth tokens follow the same rule**: `Node.AuthToken` holds a hash, lookups hash the presented token (`TokenHasher`), and the plain value only appears in the response of creation, regeneration, or enrollment — never in list endpoints. Node identity (`node-identity.json`) contains the node auth token and is gitignored
 
 ## Logging Standard
 

@@ -1,4 +1,3 @@
-using Obicon.Server.Models.Enums;
 using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Server.Models;
@@ -36,9 +35,9 @@ public class Test
     public List<Guid> PoolIds { get; set; } = new();
 
     /// <summary>
-    /// How often the test should be executed. See <see cref="TestFrequency"/> for available frequencies.
+    /// How often the test should be executed, in seconds. Must be one of the FrequencyPresetsSeconds server setting values.
     /// </summary>
-    public TestFrequency Frequency { get; set; }
+    public int Frequency { get; set; }
 
     /// <summary>
     /// Indicates if the test is currently active and should be scheduled. Default: true.
@@ -66,6 +65,11 @@ public class Test
     /// IP version the test should use. Default: Any.
     /// </summary>
     public IpVersion IpVersion { get; set; } = IpVersion.Any;
+
+    /// <summary>
+    /// Maximum execution time per run in seconds, between 1 and the server's MaxTestTimeoutSeconds. Default: 60.
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 60;
 
     /// <summary>
     /// Timestamp when the scheduler last enqueued this test. Null if never scheduled.

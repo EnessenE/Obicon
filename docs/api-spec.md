@@ -57,7 +57,7 @@ Creates a new node and returns its authentication token.
 {
   "Id": "00000000-0000-0000-0000-000000000000",
   "Name": "My Node",
-  "AuthToken": "12345678-1234-1234-1234-123456789012",
+  "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
   "IsActive": true,
   "CreatedAt": "2024-01-01T00:00:00Z",
   "LastSeenAt": null
@@ -76,10 +76,11 @@ Returns all registered nodes.
   {
     "Id": "00000000-0000-0000-0000-000000000000",
     "Name": "My Node",
-    "AuthToken": "12345678-1234-1234-1234-123456789012",
+    "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
     "IsActive": true,
     "CreatedAt": "2024-01-01T00:00:00Z",
     "LastSeenAt": "2024-01-01T00:00:01Z",
+    "EnrollmentType": "manual",
     "Labels": []
   }
 ]
@@ -96,10 +97,11 @@ Returns details for a specific node.
 {
   "Id": "00000000-0000-0000-0000-000000000000",
   "Name": "My Node",
-  "AuthToken": "12345678-1234-1234-1234-123456789012",
+  "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
   "IsActive": true,
   "CreatedAt": "2024-01-01T00:00:00Z",
   "LastSeenAt": "2024-01-01T00:00:01Z",
+    "EnrollmentType": "manual",
     "Labels": []
 }
 ```
@@ -114,6 +116,7 @@ Updates a node's name and labels, and optionally regenerates its auth token. A r
 ```json
 {
   "Name": "Node Updated Name",
+  "EnrollmentType": "manual",
   "Labels": ["edge", "eu-west"],
   "RegenerateToken": false
 }
@@ -124,11 +127,12 @@ Updates a node's name and labels, and optionally regenerates its auth token. A r
 {
   "Id": "00000000-0000-0000-0000-000000000000",
   "Name": "Node Updated Name",
-  "AuthToken": "12345678-1234-1234-1234-123456789012",
+  "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
   "IsActive": true,
   "CreatedAt": "2024-01-01T00:00:00Z",
   "LastSeenAt": "2024-01-01T00:00:01Z",
-  "Labels": ["edge", "eu-west"]
+  "EnrollmentType": "manual",
+  "Labels": ["edge", "eu-west"],
 }
 ```
 
@@ -258,16 +262,17 @@ Creates a new test.
   "Target": "http://example.com/health",
   "NodeIds": ["11111111-1111-1111-1111-111111111111"],
   "PoolIds": ["55555555-5555-5555-5555-555555555555"],
-  "Frequency": 2,  // TwoMinutes = 2
+  "Frequency": 120,  // interval in seconds; must be one of the FrequencyPresetsSeconds presets
   "IsActive": true,
   "IpVersion": 0,  // Any = 0, Ipv4 = 1, Ipv6 = 2
+  "TimeoutSeconds": 30,  // max execution time per run, seconds
   "ExpectedStatusCodes": "200-399",
   "CheckCertificateExpiryDays": 14,
   "ExpectedDnsResult": null
 }
 ```
 
-Validation (returns 400 with details on failure): `Name` and `Target` are required, at least one node ID or pool ID must be given, `Type` and `Frequency` must be valid enum values, `ExpectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `CheckCertificateExpiryDays` must be 0-3650.
+Validation (returns 400 with details on failure): `Name` and `Target` are required, at least one node ID or pool ID must be given, `Type` must be a valid enum value, `Frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `TimeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `ExpectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `CheckCertificateExpiryDays` must be 0-3650.
 
 Targeting: the test runs on the union of `NodeIds` and all members of `PoolIds` (deduplicated).
 
@@ -285,8 +290,10 @@ Expectations, evaluated by the node:
   "Target": "http://example.com/health",
   "NodeIds": ["11111111-1111-1111-1111-111111111111"],
   "PoolIds": ["55555555-5555-5555-5555-555555555555"],
-  "Frequency": 2,
+  "Frequency": 120,
   "IsActive": true,
+  "IpVersion": 0,
+  "TimeoutSeconds": 30,
   "ExpectedStatusCodes": "200-399",
   "CheckCertificateExpiryDays": 14,
   "ExpectedDnsResult": null,
@@ -309,7 +316,7 @@ Returns all tests.
     "Name": "My HTTP Test",
     "Type": 3,
     "NodeIds": ["11111111-1111-1111-1111-111111111111"],
-    "Frequency": 2,
+    "Frequency": 120,
     "IsActive": true,
     "CreatedAt": "2024-01-01T00:00:00Z",
     "UpdatedAt": null
@@ -337,7 +344,7 @@ Updates a test.
   "Type": 2,
   "Target": "http://example.com/health",
   "NodeIds": ["11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"],
-  "Frequency": 1,
+  "Frequency": 60,
   "IsActive": true
 }
 ```
@@ -406,7 +413,7 @@ GET /metrics
 ```
 Prometheus scrape endpoint (no auth). Exposes:
 - `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) and `obicon.tests.duration_ms` (histogram, dims `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) from the `Obicon.Tests` meter. One label set per test and node combination
-- `obicon.server.actions` (counter, dim `action` e.g. `created_node`, `created_pool`, `created_test`, `token_regenerated`, `job_dispatched`) from the `Obicon.Server` meter
+- `obicon.server.actions` (counter, dim `action`) and `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`) from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
 Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.node.test_duration_ms`, `obicon.node.heartbeats`, `obicon.node.reconnects`) on `http://localhost:9464/metrics` by default, configurable via `Node:MetricsUrlPrefix`.
@@ -531,6 +538,7 @@ Returns aggregated statistics about the server.
   "CompletedJobs": 12,
   "FailedJobs": 1,
   "TimedOutJobs": 0,
+  "NoRunJobs": 0,
   "Uptime": "1.02:03:04",
   "Timestamp": "2024-01-01T00:00:00Z"
 }
@@ -558,16 +566,18 @@ Returns all test jobs in the queue, newest first.
     "TimeoutSeconds": 60,
     "Status": 0,
     "CreatedAt": "2024-01-01T00:00:00Z",
+    "AcknowledgedAt": null,
     "StartedAt": null,
     "CompletedAt": null,
     "Success": null,
     "DurationMs": null,
     "Output": null,
-    "ErrorMessage": null
+    "ErrorMessage": null,
+    "Metrics": null
   }
 ]
 ```
-For one-off runs (from `POST /v1/tests/run-once`), `TestId` is `00000000-0000-0000-0000-000000000000`.
+For one-off runs) (from `POST /v1/tests/run-once`), `TestId` is `00000000-0000-0000-0000-000000000000`.
 
 #### Get Job
 ```
@@ -581,11 +591,12 @@ Returns a single test job.
 | Value | Description |
 |-------|-------------|
 | 0 | Queued |
-| 1 | Assigned |
+| 1 | Assigned - dispatched; the node acknowledged receipt but has not started it |
 | 2 | Running |
 | 3 | Completed |
 | 4 | Failed |
 | 5 | Timeout |
+| 6 | NoRun - the job never ran: assigned but never acknowledged within [test timeout] / NoRunGraceFactor, acknowledged but never started within [test timeout] + 15s, or the node was never connected within [test timeout] + 15s while the job sat queued |
 
 ---
 
@@ -599,19 +610,13 @@ Returns a single test job.
 | 4 | Tcp |
 | 5 | Dns |
 
-## TestFrequency Enum
+## Test Frequency
+
+`Frequency` is the interval between runs, in plain seconds (no enum). The allowed values come from the `FrequencyPresetsSeconds` server setting (default: `10,30,60,120,300,600,3600`); create and update reject any value outside it. Adjust the setting on the Settings page or via `PUT /v1/settings/FrequencyPresetsSeconds` to offer different intervals, e.g. `15,45,1800`.
 
 Frequencies are enforced by a scheduler that scans every 5 seconds. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
 
-| Value | Description | Seconds |
-|-------|-------------|---------|
-| 0 | TenSeconds | 10 |
-| 1 | ThirtySeconds | 30 |
-| 2 | OneMinute | 60 |
-| 3 | TwoMinutes | 120 |
-| 4 | FiveMinutes | 300 |
-| 5 | TenMinutes | 600 |
-| 6 | OneHour | 3600 |
+Databases from before this change stored `Frequency` as the old `TestFrequency` enum (0-6); the server converts those rows to seconds once at startup (`SchemaMigrations` table records it).
 
 ## IpVersion Enum
 | Value | Description |
@@ -673,7 +678,7 @@ Sent by server to assign a test to a node.
     "TestId": "string",
     "TestType": 0-5,
     "Target": "string",
-    "Frequency": 0-6
+    "Frequency": 60  // seconds
   }
 }
 ```
@@ -689,12 +694,15 @@ Sent by node to report test results.
     "NodeId": "string",
     "Success": true/false,
     "DurationMs": 1234,
-    "Output": "string"
+    "Output": "string",
+    "Metrics": { "dns_resolved": "93.184.216.34", "dns_ms": 12.5, "connect_ms": 3.2, "tls_ms": 41.0, "ttfb_ms": 120.7, "transfer_ms": 8.1, "bytes_read": 1256 }
   }
 }
 ```
 
-#### TestStatusUpdate
+The `Metrics` dictionary carries detailed measurements: HTTP/HTTPS runs report DNS resolution, TCP connect, TLS handshake (including protocol and cipher), time to first byte, and transfer timings plus certificate details; DNS runs report the nameservers queried, which one answered, its round-trip time, and the A/AAAA records; ping, TCP, and traceroute report the resolved address and phase timings.
+
+#### TestStatusUpdate)
 Sent by node to update test status.
 ```json
 {

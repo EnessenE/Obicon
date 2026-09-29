@@ -13,7 +13,8 @@ public class NodeResponse
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Authentication token for WebSocket connections. Only returned on creation.
+    /// Plain authentication token, only filled on creation, regeneration, or enrollment.
+    /// Default: empty string.
     /// </summary>
     public string AuthToken { get; set; } = string.Empty;
 
@@ -38,7 +39,7 @@ public class NodeResponse
     public List<string> Labels { get; set; } = new();
 
     /// <summary>
-    /// Indicates if the node enrolled itself and manages its own name, labels, and pools.
+    /// How this node came to exist: "manual" or "auto-enrollment".
     /// </summary>
-    public bool ManagedByNode { get; set; }
+    public string EnrollmentType { get; set; } = "manual";
 }

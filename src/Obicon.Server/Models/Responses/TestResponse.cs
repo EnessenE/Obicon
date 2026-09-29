@@ -1,4 +1,3 @@
-using Obicon.Server.Models.Enums;
 using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Server.Models.Responses;
@@ -36,9 +35,9 @@ public class TestResponse
     public List<Guid> PoolIds { get; set; } = new();
 
     /// <summary>
-    /// How often the test should be executed. See <see cref="TestFrequency"/> for available frequencies.
+    /// How often the test should be executed, in seconds.
     /// </summary>
-    public TestFrequency Frequency { get; set; }
+    public int Frequency { get; set; }
 
     /// <summary>
     /// Indicates if the test is currently active.
@@ -64,6 +63,11 @@ public class TestResponse
     /// IP version the test should use. Default: Any.
     /// </summary>
     public IpVersion IpVersion { get; set; } = IpVersion.Any;
+
+    /// <summary>
+    /// Maximum execution time per run in seconds. Default: 60.
+    /// </summary>
+    public int TimeoutSeconds { get; set; }
 
     /// <summary>
     /// Timestamp when the test was created.

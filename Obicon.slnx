@@ -3,4 +3,5 @@
   <Project Path="src/Obicon.Server/Obicon.Server.csproj" />
   <Project Path="src/Obicon.Node/Obicon.Node.csproj" />
   <Project Path="src/Obicon.Client/Obicon.Client.csproj" />
+  <Project Path="tests/Obicon.Server.Tests/Obicon.Server.Tests.csproj" />
 </Solution>

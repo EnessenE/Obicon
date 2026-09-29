@@ -73,6 +73,9 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ObiconDbContext>();
     await db.Database.EnsureCreatedAsync();
+
+    // EnsureCreated only builds an empty database; reconcile older schemas in place
+    SchemaMigrator.Migrate(db);
 }
 
 // Enable CORS for frontend on port 5003
@@ -107,3 +110,5 @@ app.MapHealthChecks("/v1/health", new HealthCheckOptions
 app.MapPrometheusScrapingEndpoint();
 
 app.Run();
+
+public partial class Program { }

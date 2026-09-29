@@ -51,6 +51,11 @@ public class ServerStatsResponse
     public int TimedOutJobs { get; set; }
 
     /// <summary>
+    /// Number of jobs marked NoRun because their node never acknowledged or started them.
+    /// </summary>
+    public int NoRunJobs { get; set; }
+
+    /// <summary>
     /// Server uptime.
     /// </summary>
     public TimeSpan Uptime { get; set; }

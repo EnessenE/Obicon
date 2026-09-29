@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Obicon.Server.Models.Enums;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
 using Obicon.Server.Services;

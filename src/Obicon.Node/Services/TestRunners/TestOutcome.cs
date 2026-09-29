@@ -14,4 +14,10 @@ public class TestOutcome
     /// Human-readable output describing the test result. Default: empty string.
     /// </summary>
     public string Output { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Detailed measurements of the test run: resolved addresses, phase timings,
+    /// nameservers, certificate details, and anything else worth recording. Default: empty.
+    /// </summary>
+    public Dictionary<string, object> Metrics { get; init; } = new();
 }

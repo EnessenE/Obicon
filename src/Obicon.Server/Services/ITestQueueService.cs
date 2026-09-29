@@ -15,5 +15,6 @@ public interface ITestQueueService
     Task<IEnumerable<TestJob>> GetActiveJobsAsync();
     Task<int> GetQueueLengthAsync();
     Task MarkJobStartedAsync(Guid jobId);
+    Task MarkJobAcknowledgedAsync(Guid jobId);
     Task MarkJobAssignedAsync(Guid jobId);
 }

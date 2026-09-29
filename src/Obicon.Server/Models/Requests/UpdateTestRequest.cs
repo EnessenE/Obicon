@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Obicon.Server.Models.Enums;
 using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Server.Models.Requests;
@@ -29,10 +28,10 @@ public class UpdateTestRequest
     public List<Guid> PoolIds { get; set; } = new();
 
     /// <summary>
-    /// How often the test should be executed. See <see cref="TestFrequency"/> for available frequencies.
+    /// How often the test should be executed, in seconds. Must be one of the FrequencyPresetsSeconds server setting values.
     /// </summary>
-    [EnumDataType(typeof(TestFrequency))]
-    public TestFrequency Frequency { get; set; }
+    [Range(1, int.MaxValue)]
+    public int Frequency { get; set; }
 
     /// <summary>
     /// Indicates if the test should be active. Default: false.
@@ -61,4 +60,10 @@ public class UpdateTestRequest
     /// </summary>
     [EnumDataType(typeof(IpVersion))]
     public IpVersion IpVersion { get; set; } = IpVersion.Any;
+
+    /// <summary>
+    /// Maximum execution time per run in seconds, between 1 and the server's MaxTestTimeoutSeconds. Default: 60.
+    /// </summary>
+    [Range(1, 3600)]
+    public int TimeoutSeconds { get; set; } = 60;
 }

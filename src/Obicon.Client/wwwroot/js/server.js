@@ -45,6 +45,7 @@ async function loadAll() {
         setText('statCompletedJobs', stats.value.completedJobs);
         setText('statFailedJobs', stats.value.failedJobs);
         setText('statTimedOutJobs', stats.value.timedOutJobs);
+        setText('statNoRunJobs', stats.value.noRunJobs);
     }
 
     const failures = [health, stats].filter(r => r.status === 'rejected');

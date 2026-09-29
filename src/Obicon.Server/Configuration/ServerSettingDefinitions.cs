@@ -71,6 +71,20 @@ public static class ServerSettingDefinitions
             Description = "If enabled, nodes can register themselves with a valid enroll token, providing their name, labels, and pools. Nodes that enrolled themselves manage their own labels and pools.",
             ValueType = typeof(bool),
             Default = "false"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "NoRunGraceFactor",
+            Description = "A dispatched job that the node never started is marked as NoRun and removed from the queue after [test timeout] divided by this factor, in seconds.",
+            ValueType = typeof(int),
+            Default = "2"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "FrequencyPresetsSeconds",
+            Description = "Comma-separated list of test frequencies in seconds, offered in the UI and required when creating or editing a test. Any positive seconds are allowed; e.g. \"15,45,3600\".",
+            ValueType = typeof(string),
+            Default = "10,30,60,120,300,600,3600"
         }
     };
 }

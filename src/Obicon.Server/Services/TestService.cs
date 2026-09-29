@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using Obicon.Server.Configuration;
 using Obicon.Server.Data;
 using Obicon.Server.WebSockets;
 using Obicon.Server.Models;
-using Obicon.Server.Models.Enums;
 using Obicon.Shared.Models.Enums;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
@@ -16,6 +16,7 @@ public class TestService : ITestService
     private readonly INodeService _nodeService;
     private readonly INodePoolService _poolService;
     private readonly ITestQueueService _queueService;
+    private readonly IServerSettingsService _settingsService;
     private readonly NodeConnectionManager _connectionManager;
     private readonly ILogger<TestService> _logger;
 
@@ -24,6 +25,7 @@ public class TestService : ITestService
         INodeService nodeService,
         INodePoolService poolService,
         ITestQueueService queueService,
+        IServerSettingsService settingsService,
         NodeConnectionManager connectionManager,
         ILogger<TestService> logger)
     {
@@ -32,12 +34,14 @@ public class TestService : ITestService
         _nodeService = nodeService;
         _poolService = poolService;
         _queueService = queueService;
+        _settingsService = settingsService;
         _connectionManager = connectionManager;
     }
 
     public async Task<TestResponse> CreateTestAsync(CreateTestRequest request)
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
+        await ValidateFrequencyAsync(request.Frequency);
 
         var test = new Test
         {
@@ -53,6 +57,7 @@ public class TestService : ITestService
             CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
             ExpectedDnsResult = request.ExpectedDnsResult,
             IpVersion = request.IpVersion,
+            TimeoutSeconds = request.TimeoutSeconds,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = null
         };
@@ -83,6 +88,7 @@ public class TestService : ITestService
     public async Task<TestResponse?> UpdateTestAsync(Guid id, UpdateTestRequest request)
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
+        await ValidateFrequencyAsync(request.Frequency);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         var test = await db.Tests.FindAsync(id);
@@ -101,6 +107,7 @@ public class TestService : ITestService
         test.CheckCertificateExpiryDays = request.CheckCertificateExpiryDays;
         test.ExpectedDnsResult = request.ExpectedDnsResult;
         test.IpVersion = request.IpVersion;
+        test.TimeoutSeconds = request.TimeoutSeconds;
         test.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
@@ -168,7 +175,7 @@ public class TestService : ITestService
         var scheduled = 0;
         foreach (var test in activeTests)
         {
-            var interval = TimeSpan.FromSeconds(FrequencyToSeconds(test.Frequency));
+            var interval = TimeSpan.FromSeconds(Math.Max(1, test.Frequency));
             var anchor = test.LastScheduledAt ?? test.CreatedAt;
 
             if (now - anchor < interval)
@@ -176,32 +183,62 @@ public class TestService : ITestService
                 continue;
             }
 
-            await EnqueueJobsForTestAsync(test);
+            // Persist LastScheduledAt before enqueuing: if this row cannot be
+            // updated (e.g. externally imported data), the jobs must not be
+            // created either or the test would re-enqueue on every tick
+            var previous = test.LastScheduledAt;
             test.LastScheduledAt = now;
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                test.LastScheduledAt = previous;
+                _logger.LogWarning(ex, "Scheduler could not persist LastScheduledAt for test {TestId} ({TestName}); skipping this cycle", test.Id, test.Name);
+                continue;
+            }
+
+            await EnqueueJobsForTestAsync(test);
             scheduled++;
 
             _logger.LogInformation("Scheduler enqueued test {TestId} ({TestName})", test.Id, test.Name);
         }
 
-        if (scheduled > 0)
-        {
-            await db.SaveChangesAsync();
-        }
-
         return scheduled;
     }
 
-    private static int FrequencyToSeconds(TestFrequency frequency) => frequency switch
+    /// <summary>
+    /// Parses the FrequencyPresetsSeconds setting into a sorted list of positive second values.
+    /// Falls back to the default presets when the stored value is unusable.
+    /// </summary>
+    private async Task<List<int>> GetFrequencyPresetsAsync()
     {
-        TestFrequency.TenSeconds => 10,
-        TestFrequency.ThirtySeconds => 30,
-        TestFrequency.OneMinute => 60,
-        TestFrequency.TwoMinutes => 120,
-        TestFrequency.FiveMinutes => 300,
-        TestFrequency.TenMinutes => 600,
-        TestFrequency.OneHour => 3600,
-        _ => 3600
-    };
+        var raw = await _settingsService.GetAsync<string>("FrequencyPresetsSeconds");
+        var presets = raw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part => int.TryParse(part, out var seconds) ? seconds : 0)
+            .Where(seconds => seconds > 0)
+            .Distinct()
+            .OrderBy(seconds => seconds)
+            .ToList();
+
+        return presets.Count > 0
+            ? presets
+            : ServerSettingDefinitions.All.First(d => d.Key == "FrequencyPresetsSeconds").Default
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(int.Parse)
+                .ToList();
+    }
+
+    private async Task ValidateFrequencyAsync(int frequency)
+    {
+        var presets = await GetFrequencyPresetsAsync();
+        if (!presets.Contains(frequency))
+        {
+            throw new ArgumentException($"Frequency must be one of the configured presets (in seconds): {string.Join(", ", presets)}");
+        }
+    }
 
     private async Task EnqueueJobsForTestAsync(Test test)
     {
@@ -214,7 +251,7 @@ public class TestService : ITestService
                 NodeId = nodeId,
                 TestType = test.Type,
                 Target = test.Target,
-                TimeoutSeconds = 60,
+                TimeoutSeconds = test.TimeoutSeconds,
                 ExpectedStatusCodes = test.ExpectedStatusCodes,
                 CheckCertificateExpiryDays = test.CheckCertificateExpiryDays,
                 ExpectedDnsResult = test.ExpectedDnsResult,
@@ -318,6 +355,7 @@ public class TestService : ITestService
         CheckCertificateExpiryDays = test.CheckCertificateExpiryDays,
         ExpectedDnsResult = test.ExpectedDnsResult,
         IpVersion = test.IpVersion,
+        TimeoutSeconds = test.TimeoutSeconds,
         CreatedAt = test.CreatedAt,
         UpdatedAt = test.UpdatedAt
     };

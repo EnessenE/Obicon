@@ -177,7 +177,8 @@ public class WebSocketMiddleware
         {
             Success = result.Success,
             DurationMs = result.DurationMs,
-            Output = result.Output
+            Output = result.Output,
+            Metrics = result.Metrics
         };
 
         await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
@@ -208,10 +209,16 @@ public class WebSocketMiddleware
             return;
         }
 
-        // Final statuses are derived from the TestResult message; only track execution start here
+        // Final statuses are derived from the TestResult message; track the
+        // assignment acknowledgment and execution start here
         if (update.Status == TestJobStatus.Running)
         {
             await _queueService.MarkJobStartedAsync(jobId);
+        }
+        else if (update.Status == TestJobStatus.Assigned)
+        {
+            await _queueService.MarkJobAcknowledgedAsync(jobId);
+            _logger.LogInformation("Node {NodeId} acknowledged job {JobId}", nodeId, jobId);
         }
     }
 

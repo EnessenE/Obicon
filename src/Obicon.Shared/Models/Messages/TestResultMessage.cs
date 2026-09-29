@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 namespace Obicon.Shared.Models.Messages;
 
 /// <summary>
@@ -34,4 +35,11 @@ public class TestResultMessage
     /// Text output from the test execution. Default: null.
     /// </summary>
     public string? Output { get; set; }
+
+    /// <summary>
+    /// Detailed measurements of the test run: resolved addresses, phase timings,
+    /// nameservers, certificate details. Default: null.
+    /// </summary>
+    [JsonPropertyName("Metrics")]
+    public Dictionary<string, object>? Metrics { get; set; }
 }

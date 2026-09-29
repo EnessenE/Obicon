@@ -12,7 +12,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfiguration
     .ReadFrom.Configuration(builder.Configuration)
-    .WriteTo.Console());
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}"));
 
 builder.Services.Configure<NodeSettings>(builder.Configuration.GetSection("Node"));
 
