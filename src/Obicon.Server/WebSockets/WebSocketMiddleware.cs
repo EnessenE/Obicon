@@ -1,8 +1,10 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Obicon.Server.Models;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
+using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Server.WebSockets;
@@ -12,17 +14,20 @@ public class WebSocketMiddleware
     private readonly RequestDelegate _next;
     private readonly NodeConnectionManager _connectionManager;
     private readonly INodeService _nodeService;
+    private readonly ITestQueueService _queueService;
     private readonly ILogger<WebSocketMiddleware> _logger;
 
     public WebSocketMiddleware(
         RequestDelegate next,
         NodeConnectionManager connectionManager,
         INodeService nodeService,
+        ITestQueueService queueService,
         ILogger<WebSocketMiddleware> logger)
     {
         _next = next;
         _connectionManager = connectionManager;
         _nodeService = nodeService;
+        _queueService = queueService;
         _logger = logger;
     }
 
@@ -107,16 +112,16 @@ public class WebSocketMiddleware
         switch (message.Type)
         {
             case MessageType.NodeRegistration:
-                HandleNodeRegistration(nodeId);
+                await HandleNodeRegistration(nodeId);
                 break;
             case MessageType.NodeHeartbeat:
-                HandleNodeHeartbeat(nodeId);
+                await HandleNodeHeartbeat(nodeId);
                 break;
             case MessageType.TestResult:
-                HandleTestResult(nodeId, message);
+                await HandleTestResult(nodeId, message);
                 break;
             case MessageType.TestStatusUpdate:
-                HandleTestStatusUpdate(nodeId, message);
+                await HandleTestStatusUpdate(nodeId, message);
                 break;
             case MessageType.ErrorReport:
                 HandleErrorReport(nodeId, message);
@@ -127,26 +132,56 @@ public class WebSocketMiddleware
         }
     }
 
-    private void HandleNodeRegistration(string nodeId)
+    private async Task HandleNodeRegistration(string nodeId)
     {
         _logger.LogInformation("Node {NodeId} registered", nodeId);
         _connectionManager.UpdateLastSeen(nodeId);
+        await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
     }
 
-    private void HandleNodeHeartbeat(string nodeId)
+    private async Task HandleNodeHeartbeat(string nodeId)
     {
         _logger.LogDebug("Heartbeat from {NodeId}", nodeId);
         _connectionManager.UpdateLastSeen(nodeId);
+        await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
     }
 
-    private void HandleTestResult(string nodeId, WebSocketMessage message)
+    private async Task HandleTestResult(string nodeId, WebSocketMessage message)
     {
-        _logger.LogInformation("Test result from {NodeId}", nodeId);
+        var result = (message.Data as JsonElement?)?.Deserialize<TestResultMessage>();
+        if (result == null || !Guid.TryParse(result.JobId, out var jobId))
+        {
+            _logger.LogWarning("Received test result from {NodeId} without a valid job ID", nodeId);
+            return;
+        }
+
+        var status = result.Success ? TestJobStatus.Completed : TestJobStatus.Failed;
+        var testResult = new TestResult
+        {
+            Success = result.Success,
+            DurationMs = result.DurationMs,
+            Output = result.Output
+        };
+
+        await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
+        _logger.LogInformation("Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms",
+            jobId, nodeId, result.Success, result.DurationMs);
     }
 
-    private void HandleTestStatusUpdate(string nodeId, WebSocketMessage message)
+    private async Task HandleTestStatusUpdate(string nodeId, WebSocketMessage message)
     {
-        _logger.LogInformation("Test status update from {NodeId}", nodeId);
+        var update = (message.Data as JsonElement?)?.Deserialize<TestStatusUpdateMessage>();
+        if (update == null || !Guid.TryParse(update.JobId, out var jobId))
+        {
+            _logger.LogWarning("Received status update from {NodeId} without a valid job ID", nodeId);
+            return;
+        }
+
+        // Final statuses are derived from the TestResult message; only track execution start here
+        if (update.Status == TestJobStatus.Running)
+        {
+            await _queueService.MarkJobStartedAsync(jobId);
+        }
     }
 
     private void HandleErrorReport(string nodeId, WebSocketMessage message)

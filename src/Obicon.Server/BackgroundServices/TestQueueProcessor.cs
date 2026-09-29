@@ -1,17 +1,31 @@
-using Microsoft.Extensions.Hosting;
-using Obicon.Server.Models;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using Obicon.Server.Services;
+using Obicon.Server.WebSockets;
+using Obicon.Shared.Models.Enums;
+using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Server.BackgroundServices;
 
+/// <summary>
+/// Dispatches queued test jobs to connected nodes and reaps jobs whose node never reported back.
+/// </summary>
 public class TestQueueProcessor : BackgroundService
 {
-    private readonly IServiceProvider _services;
+    private static readonly JsonSerializerOptions JsonOptions = new();
+
+    private readonly ITestQueueService _queueService;
+    private readonly NodeConnectionManager _connectionManager;
     private readonly ILogger<TestQueueProcessor> _logger;
 
-    public TestQueueProcessor(IServiceProvider services, ILogger<TestQueueProcessor> logger)
+    public TestQueueProcessor(
+        ITestQueueService queueService,
+        NodeConnectionManager connectionManager,
+        ILogger<TestQueueProcessor> logger)
     {
-        _services = services;
+        _queueService = queueService;
+        _connectionManager = connectionManager;
         _logger = logger;
     }
 
@@ -23,25 +37,88 @@ public class TestQueueProcessor : BackgroundService
         {
             try
             {
-                using var scope = _services.CreateScope();
-                var queueService = scope.ServiceProvider.GetRequiredService<ITestQueueService>();
-                var nodeService = scope.ServiceProvider.GetRequiredService<INodeService>();
-                var testService = scope.ServiceProvider.GetRequiredService<ITestService>();
-
-                var queueLength = await queueService.GetQueueLengthAsync();
-                _logger.LogDebug("Queue length: {QueueLength}", queueLength);
-
-                // TODO: Assign jobs to available nodes
-                // This will be implemented when WebSocket communication is set up
+                await DispatchPendingJobsAsync(stoppingToken);
+                await ReapStaleJobsAsync();
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in TestQueueProcessor");
             }
 
-            await Task.Delay(1000, stoppingToken);
+            try
+            {
+                await Task.Delay(1000, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
 
         _logger.LogInformation("TestQueueProcessor stopped");
+    }
+
+    private async Task DispatchPendingJobsAsync(CancellationToken stoppingToken)
+    {
+        var jobs = await _queueService.GetPendingJobsAsync();
+
+        foreach (var job in jobs)
+        {
+            var connection = _connectionManager.GetConnection(job.NodeId.ToString());
+            if (connection == null)
+            {
+                continue;
+            }
+
+            var assignment = new WebSocketMessage
+            {
+                Type = MessageType.TestAssignment,
+                Data = new TestAssignmentMessage
+                {
+                    JobId = job.Id.ToString(),
+                    TestId = job.TestId.ToString(),
+                    TestType = job.TestType,
+                    Target = job.Target,
+                    TimeoutSeconds = job.TimeoutSeconds
+                }
+            };
+
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(assignment, JsonOptions));
+                await connection.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, stoppingToken);
+                await _queueService.MarkJobAssignedAsync(job.Id);
+                _logger.LogInformation("Assigned job {JobId} to node {NodeId} ({TestType} {Target})",
+                    job.Id, job.NodeId, job.TestType, job.Target);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to assign job {JobId} to node {NodeId}", job.Id, job.NodeId);
+            }
+        }
+    }
+
+    private async Task ReapStaleJobsAsync()
+    {
+        var activeJobs = await _queueService.GetActiveJobsAsync();
+
+        foreach (var job in activeJobs)
+        {
+            var reference = job.Status == TestJobStatus.Running ? job.StartedAt : job.CreatedAt;
+            if (reference == null)
+            {
+                continue;
+            }
+
+            var limit = TimeSpan.FromSeconds(job.TimeoutSeconds + 15);
+            if (DateTime.UtcNow - reference > limit)
+            {
+                await _queueService.UpdateJobStatusAsync(
+                    job.Id,
+                    TestJobStatus.Timeout,
+                    errorMessage: $"No result from node within {job.TimeoutSeconds + 15}s");
+                _logger.LogWarning("Reaped job {JobId}: no result from node {NodeId}", job.Id, job.NodeId);
+            }
+        }
     }
 }

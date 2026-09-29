@@ -70,6 +70,18 @@ public class ServerConnection : BackgroundService, IServerConnection
             _logger.LogError("No token configured. Set Node:Token in appsettings.json or the Node__Token environment variable");
         }
 
+        if (!Uri.TryCreate(_settings.ServerUrl, UriKind.Absolute, out var serverUri) ||
+            (serverUri.Scheme != "ws" && serverUri.Scheme != "wss"))
+        {
+            _logger.LogError("Invalid ServerUrl '{ServerUrl}'. It must be an absolute ws:// or wss:// URL", _settings.ServerUrl);
+            return;
+        }
+
+        if (_settings.HeartbeatIntervalSeconds < 1 || _settings.MaxConcurrentTests < 1 || _settings.DefaultTestTimeoutSeconds < 1)
+        {
+            _logger.LogWarning("HeartbeatIntervalSeconds, MaxConcurrentTests and DefaultTestTimeoutSeconds should be at least 1; they are clamped to 1");
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try

@@ -50,6 +50,7 @@ public class TestsController : ControllerBase
         var test = await _testService.UpdateTestAsync(
             id,
             request.Type,
+            request.Target,
             request.NodeIds,
             request.Frequency,
             request.IsActive);
@@ -81,6 +82,21 @@ public class TestsController : ControllerBase
             return NotFound();
         }
         return Ok(new { Message = "Test run triggered" });
+    }
+
+    /// <summary>
+    /// Runs a single test immediately on the given node without creating a test.
+    /// The returned job can be polled at GET /v1/queue/{jobId}.
+    /// </summary>
+    [HttpPost("run-once")]
+    public async Task<IActionResult> RunTestOnce([FromBody] RunTestOnceRequest request)
+    {
+        var job = await _testService.RunOnceAsync(request);
+        if (job == null)
+        {
+            return BadRequest(new { Message = "Node not found or not connected" });
+        }
+        return Ok(TestJobResponse.From(job));
     }
 
     [HttpGet("node/{nodeId}")]

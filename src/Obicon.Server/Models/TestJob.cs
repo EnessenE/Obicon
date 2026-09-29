@@ -23,6 +23,21 @@ public class TestJob
     public Guid NodeId { get; set; }
 
     /// <summary>
+    /// Type of test this job executes. See <see cref="TestType"/> for available types.
+    /// </summary>
+    public TestType TestType { get; set; }
+
+    /// <summary>
+    /// Target of the test: URL for HTTP(S), host:port for TCP, hostname or IP for the rest. Default: empty string.
+    /// </summary>
+    public string Target { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Maximum execution time for this job in seconds. Default: 60.
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 60;
+
+    /// <summary>
     /// Current status of the job. See <see cref="TestJobStatus"/> for available statuses. Default: Queued.
     /// </summary>
     public TestJobStatus Status { get; set; } = TestJobStatus.Queued;

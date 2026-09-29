@@ -21,6 +21,11 @@ public class Test
     public TestType Type { get; set; }
 
     /// <summary>
+    /// Target of the test: URL for HTTP(S), host:port for TCP, hostname or IP for the rest. Default: empty string.
+    /// </summary>
+    public string Target { get; set; } = string.Empty;
+
+    /// <summary>
     /// List of node IDs that should execute this test. Default: empty list.
     /// </summary>
     public List<Guid> NodeIds { get; set; } = new();

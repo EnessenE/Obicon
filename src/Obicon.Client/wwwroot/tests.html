@@ -15,7 +15,8 @@
                 <a class="nav-link" href="/">Home</a>
                 <a class="nav-link" href="/nodes.html">Nodes</a>
                 <a class="nav-link active" href="/tests.html">Tests</a>
-                <a class="nav-link" href="/health.html">Health</a>
+                <a class="nav-link" href="/queue.html">Queue</a>
+                <a class="nav-link" href="/server.html">Server</a>
             </div>
         </div>
     </nav>
@@ -25,19 +26,22 @@
         <div class="card mb-4">
             <div class="card-header"><h5>Create Test</h5></div>
             <div class="card-body">
-                <div class="row">
+                <div class="row g-2">
                     <div class="col-md-2">
                         <input id="testName" class="form-control" placeholder="Name">
                     </div>
                     <div class="col-md-2">
                         <select id="testType" class="form-select">
                             <option value="0">Ping</option>
-                            <option value="1">HTTP</option>
-                            <option value="2">HTTPS</option>
-                            <option value="3">TCP</option>
-                            <option value="4">DNS</option>
-                            <option value="5">Traceroute</option>
+                            <option value="2">HTTP</option>
+                            <option value="3">HTTPS</option>
+                            <option value="4">TCP</option>
+                            <option value="5">DNS</option>
+                            <option value="1">Traceroute</option>
                         </select>
+                    </div>
+                    <div class="col-md-3">
+                        <input id="testTarget" class="form-control" placeholder="Target (host, host:port, or URL)">
                     </div>
                     <div class="col-md-2">
                         <select id="testFrequency" class="form-select">
@@ -50,13 +54,24 @@
                             <option value="6">1 hour</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <input id="testIsActive" type="checkbox" class="form-check-input"> <label class="form-check-label">Active</label>
-                    </div>
-                    <div class="col-md-4">
-                        <button class="btn btn-primary w-100" onclick="createTest()">Create Test</button>
+                    <div class="col-md-2 d-flex align-items-center">
+                        <input id="testIsActive" type="checkbox" class="form-check-input" checked> <label class="form-check-label ms-1">Active</label>
                     </div>
                 </div>
+                <div class="row mt-2">
+                    <div class="col-md-6">
+                        <label class="form-label mb-1">Nodes</label>
+                        <div id="nodeSelectList" class="border rounded p-2" style="max-height: 120px; overflow-y: auto;">
+                            <span class="text-muted">Loading nodes...</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end gap-2">
+                        <button class="btn btn-primary" onclick="createTest()">Create Test</button>
+                        <button class="btn btn-outline-primary" onclick="runOnRandomNode()" id="dryRunBtn">Run once on a random node</button>
+                    </div>
+                </div>
+                <div id="testFormError" class="alert alert-danger mt-3 mb-0" style="display:none;"></div>
+                <div id="dryRunResult" class="alert mt-3 mb-0" style="display:none;"></div>
             </div>
         </div>
         <button class="btn btn-secondary mb-3" onclick="loadTests()">
@@ -73,6 +88,7 @@
                     <th>ID</th>
                     <th>Name</th>
                     <th>Type</th>
+                    <th>Target</th>
                     <th>Frequency</th>
                     <th>Active</th>
                     <th>Actions</th>
@@ -85,7 +101,7 @@
     </div>
 
     <script src="js/api.js?v=2"></script>
-    <script src="js/tests.js"></script>
+    <script src="js/tests.js?v=3"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

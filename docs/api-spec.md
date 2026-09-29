@@ -139,19 +139,23 @@ Creates a new test.
 ```json
 {
   "Name": "My HTTP Test",
-  "Type": 3,  // Http = 2, Https = 3
+  "Type": 2,  // Http = 2, see TestType enum below
+  "Target": "http://example.com/health",
   "NodeIds": ["11111111-1111-1111-1111-111111111111"],
   "Frequency": 2,  // TwoMinutes = 2
   "IsActive": true
 }
 ```
 
+Validation (returns 400 with details on failure): `Name` and `Target` are required, at least one node ID must be given, `Type` and `Frequency` must be valid enum values.
+
 **Response:** 201 Created
 ```json
 {
   "Id": "22222222-2222-2222-2222-222222222222",
   "Name": "My HTTP Test",
-  "Type": 3,
+  "Type": 2,
+  "Target": "http://example.com/health",
   "NodeIds": ["11111111-1111-1111-1111-111111111111"],
   "Frequency": 2,
   "IsActive": true,
@@ -200,6 +204,7 @@ Updates a test.
 ```json
 {
   "Type": 2,
+  "Target": "http://example.com/health",
   "NodeIds": ["11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"],
   "Frequency": 1,
   "IsActive": true
@@ -220,7 +225,7 @@ Deletes a test.
 ```
 POST /v1/tests/{id}/run
 ```
-Triggers immediate execution of a test.
+Triggers immediate execution of a test. Enqueues one job per assigned node; the queue processor sends each job to its node and stores the reported result on the job.
 
 **Response:** 200 OK
 ```json
@@ -228,6 +233,105 @@ Triggers immediate execution of a test.
   "Message": "Test run triggered"
 }
 ```
+
+#### Run Test Once (dry run)
+```
+POST /v1/tests/run-once
+```
+Runs a single test immediately on the given node without creating a test first. The node must exist and be connected.
+
+**Request Body:**
+```json
+{
+  "Type": 5,  // Dns
+  "Target": "example.com",
+  "NodeId": "11111111-1111-1111-1111-111111111111",
+  "TimeoutSeconds": 30
+}
+```
+`TimeoutSeconds` is optional (default 60, range 1-60).
+
+**Response:** 200 OK - the created job; poll `GET /v1/queue/{id}` until `Status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
+
+**Error:** 400 Bad Request if the node does not exist or is not connected.
+
+---
+
+### Server Stats
+
+#### Stats
+```
+GET /v1/server/stats
+```
+Returns aggregated statistics about the server.
+
+**Response:** 200 OK
+```json
+{
+  "TotalTests": 3,
+  "ActiveTests": 2,
+  "TotalNodes": 4,
+  "ConnectedNodes": 1,
+  "QueuedJobs": 0,
+  "RunningJobs": 0,
+  "CompletedJobs": 12,
+  "FailedJobs": 1,
+  "TimedOutJobs": 0,
+  "Uptime": "1.02:03:04",
+  "Timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+---
+
+### Queue
+
+#### List Queue
+```
+GET /v1/queue
+```
+Returns all test jobs in the queue, newest first.
+
+**Response:** 200 OK
+```json
+[
+  {
+    "Id": "44444444-4444-4444-4444-444444444444",
+    "TestId": "22222222-2222-2222-2222-222222222222",
+    "NodeId": "11111111-1111-1111-1111-111111111111",
+    "TestType": 5,
+    "Target": "example.com",
+    "TimeoutSeconds": 60,
+    "Status": 0,
+    "CreatedAt": "2024-01-01T00:00:00Z",
+    "StartedAt": null,
+    "CompletedAt": null,
+    "Success": null,
+    "DurationMs": null,
+    "Output": null,
+    "ErrorMessage": null
+  }
+]
+```
+For one-off runs (from `POST /v1/tests/run-once`), `TestId` is `00000000-0000-0000-0000-000000000000`.
+
+#### Get Job
+```
+GET /v1/queue/{id}
+```
+Returns a single test job.
+
+**Response:** 200 OK (same structure as List Queue entries)
+
+## TestJobStatus Enum
+| Value | Description |
+|-------|-------------|
+| 0 | Queued |
+| 1 | Assigned |
+| 2 | Running |
+| 3 | Completed |
+| 4 | Failed |
+| 5 | Timeout |
 
 ---
 

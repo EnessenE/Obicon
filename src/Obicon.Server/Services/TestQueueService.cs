@@ -1,3 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Obicon.Server.Configuration;
+using Obicon.Server.Data;
 using Obicon.Server.Models;
 using Obicon.Shared.Models.Enums;
 
@@ -5,101 +9,145 @@ namespace Obicon.Server.Services;
 
 public class TestQueueService : ITestQueueService
 {
-    private readonly List<TestJob> _jobs = new();
-    private readonly object _lock = new();
+    private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly ServerSettings _settings;
 
-    public Task<TestJob> EnqueueTestAsync(Guid testId, Guid nodeId)
+    public TestQueueService(IDbContextFactory<ObiconDbContext> dbFactory, IOptions<ServerSettings> settings)
+    {
+        _dbFactory = dbFactory;
+        _settings = settings.Value;
+    }
+
+    public async Task<TestJob> EnqueueTestAsync(Guid testId, Guid nodeId, TestType testType, string target, int? timeoutSeconds = null)
     {
         var job = new TestJob
         {
             Id = Guid.NewGuid(),
             TestId = testId,
             NodeId = nodeId,
+            TestType = testType,
+            Target = target,
+            TimeoutSeconds = Math.Clamp(timeoutSeconds ?? _settings.MaxTestTimeoutSeconds, 1, Math.Max(1, _settings.MaxTestTimeoutSeconds)),
             Status = TestJobStatus.Queued,
             CreatedAt = DateTime.UtcNow
         };
 
-        lock (_lock)
-        {
-            _jobs.Add(job);
-        }
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        db.TestJobs.Add(job);
+        await db.SaveChangesAsync();
 
-        return Task.FromResult(job);
+        return job;
     }
 
-    public Task<TestJob?> DequeueTestAsync(Guid nodeId)
+    public async Task<TestJob?> DequeueTestAsync(Guid nodeId)
     {
-        lock (_lock)
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var job = await db.TestJobs
+            .Where(j => j.NodeId == nodeId && j.Status == TestJobStatus.Queued)
+            .OrderBy(j => j.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (job != null)
         {
-            var job = _jobs.FirstOrDefault(j =>
-                j.NodeId == nodeId &&
-                j.Status == TestJobStatus.Queued);
-            
-            if (job != null)
-            {
-                job.Status = TestJobStatus.Assigned;
-            }
-            return Task.FromResult<TestJob?>(job);
+            job.Status = TestJobStatus.Assigned;
+            await db.SaveChangesAsync();
+        }
+
+        return job;
+    }
+
+    public async Task UpdateJobStatusAsync(Guid jobId, TestJobStatus status, TestResult? result = null, string? errorMessage = null)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var job = await db.TestJobs.FindAsync(jobId);
+        if (job == null)
+        {
+            return;
+        }
+
+        job.Status = status;
+        job.Result = result;
+        job.ErrorMessage = errorMessage;
+
+        if (status == TestJobStatus.Running)
+        {
+            job.StartedAt = DateTime.UtcNow;
+        }
+
+        if (status is TestJobStatus.Completed or TestJobStatus.Failed or TestJobStatus.Timeout)
+        {
+            job.CompletedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<TestJob?> GetJobAsync(Guid jobId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.TestJobs.FindAsync(jobId);
+    }
+
+    public async Task<IEnumerable<TestJob>> GetJobsForNodeAsync(Guid nodeId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.TestJobs
+            .Where(j => j.NodeId == nodeId)
+            .OrderByDescending(j => j.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<TestJob>> GetAllJobsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.TestJobs
+            .OrderByDescending(j => j.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<TestJob>> GetPendingJobsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.TestJobs
+            .Where(j => j.Status == TestJobStatus.Queued)
+            .OrderBy(j => j.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<TestJob>> GetActiveJobsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.TestJobs
+            .Where(j => j.Status == TestJobStatus.Assigned || j.Status == TestJobStatus.Running)
+            .ToListAsync();
+    }
+
+    public async Task<int> GetQueueLengthAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.TestJobs.CountAsync(j => j.Status == TestJobStatus.Queued);
+    }
+
+    public async Task MarkJobStartedAsync(Guid jobId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var job = await db.TestJobs.FindAsync(jobId);
+        if (job != null)
+        {
+            job.Status = TestJobStatus.Running;
+            job.StartedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
         }
     }
 
-    public Task UpdateJobStatusAsync(Guid jobId, TestJobStatus status, TestResult? result = null, string? errorMessage = null)
+    public async Task MarkJobAssignedAsync(Guid jobId)
     {
-        lock (_lock)
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var job = await db.TestJobs.FindAsync(jobId);
+        if (job != null)
         {
-            var job = _jobs.FirstOrDefault(j => j.Id == jobId);
-            if (job != null)
-            {
-                job.Status = status;
-                job.Result = result;
-                job.ErrorMessage = errorMessage;
-                job.CompletedAt = DateTime.UtcNow;
-
-                if (status == TestJobStatus.Running)
-                {
-                    job.StartedAt = DateTime.UtcNow;
-                }
-            }
+            job.Status = TestJobStatus.Assigned;
+            await db.SaveChangesAsync();
         }
-        return Task.CompletedTask;
-    }
-
-    public Task<TestJob?> GetJobAsync(Guid jobId)
-    {
-        lock (_lock)
-        {
-            return Task.FromResult<TestJob?>(_jobs.FirstOrDefault(j => j.Id == jobId));
-        }
-    }
-
-    public Task<IEnumerable<TestJob>> GetJobsForNodeAsync(Guid nodeId)
-    {
-        lock (_lock)
-        {
-            return Task.FromResult<IEnumerable<TestJob>>(
-                _jobs.Where(j => j.NodeId == nodeId).ToList());
-        }
-    }
-
-    public Task<int> GetQueueLengthAsync()
-    {
-        lock (_lock)
-        {
-            return Task.FromResult(_jobs.Count(j => j.Status == TestJobStatus.Queued));
-        }
-    }
-
-    public Task MarkJobStartedAsync(Guid jobId)
-    {
-        lock (_lock)
-        {
-            var job = _jobs.FirstOrDefault(j => j.Id == jobId);
-            if (job != null)
-            {
-                job.Status = TestJobStatus.Running;
-                job.StartedAt = DateTime.UtcNow;
-            }
-        }
-        return Task.CompletedTask;
     }
 }

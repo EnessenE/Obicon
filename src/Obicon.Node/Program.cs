@@ -4,8 +4,13 @@ using Microsoft.Extensions.Logging;
 using Obicon.Node.Configuration;
 using Obicon.Node.Services;
 using Obicon.Node.Services.TestRunners;
+using Serilog;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfiguration
+    .ReadFrom.Configuration(builder.Configuration)
+    .WriteTo.Console());
 
 builder.Services.Configure<NodeSettings>(builder.Configuration.GetSection("Node"));
 

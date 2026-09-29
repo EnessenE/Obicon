@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Obicon.Server.Data;
 using Obicon.Server.Models;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
@@ -6,15 +8,16 @@ namespace Obicon.Server.Services;
 
 public class NodeService : INodeService
 {
-    private readonly List<Node> _nodes = new();
+    private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly ILogger<NodeService> _logger;
 
-    public NodeService(ILogger<NodeService> logger)
+    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, ILogger<NodeService> logger)
     {
+        _dbFactory = dbFactory;
         _logger = logger;
     }
 
-    public Task<NodeResponse> CreateNodeAsync(CreateNodeRequest request)
+    public async Task<NodeResponse> CreateNodeAsync(CreateNodeRequest request)
     {
         _logger.LogInformation("Creating a node with name: {NodeName}", request.Name);
 
@@ -28,124 +31,95 @@ public class NodeService : INodeService
             LastSeenAt = null
         };
 
-        _nodes.Add(node);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        db.Nodes.Add(node);
+        await db.SaveChangesAsync();
 
         _logger.LogInformation("Created node {NodeId} with name: {NodeName}", node.Id, node.Name);
-
-        var response = new NodeResponse
-        {
-            Id = node.Id,
-            Name = node.Name,
-            AuthToken = node.AuthToken,
-            IsActive = node.IsActive,
-            CreatedAt = node.CreatedAt,
-            LastSeenAt = node.LastSeenAt
-        };
-
-        return Task.FromResult(response);
+        return ToResponse(node);
     }
 
-    public Task<IEnumerable<NodeResponse>> GetAllNodesAsync()
+    public async Task<IEnumerable<NodeResponse>> GetAllNodesAsync()
     {
-        _logger.LogInformation("Getting all nodes");
-        
-        var responses = _nodes.Select(n => new NodeResponse
-        {
-            Id = n.Id,
-            Name = n.Name,
-            AuthToken = n.AuthToken,
-            IsActive = n.IsActive,
-            CreatedAt = n.CreatedAt,
-            LastSeenAt = n.LastSeenAt
-        });
-
-        _logger.LogInformation("Returning {Count} nodes", responses.Count());
-        return Task.FromResult(responses);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var nodes = await db.Nodes.OrderBy(n => n.CreatedAt).ToListAsync();
+        return nodes.Select(ToResponse);
     }
 
-    public Task<NodeResponse?> GetNodeAsync(Guid id)
+    public async Task<NodeResponse?> GetNodeAsync(Guid id)
     {
-        _logger.LogInformation("Getting node with id: {NodeId}", id);
-        
-        var node = _nodes.FirstOrDefault(n => n.Id == id);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var node = await db.Nodes.FindAsync(id);
         if (node == null)
         {
             _logger.LogWarning("Node with id {NodeId} not found", id);
-            return Task.FromResult<NodeResponse?>(null);
+            return null;
         }
-
-        _logger.LogInformation("Found node: {NodeName}", node.Name);
-        return Task.FromResult<NodeResponse?>(new NodeResponse
-        {
-            Id = node.Id,
-            Name = node.Name,
-            AuthToken = node.AuthToken,
-            IsActive = node.IsActive,
-            CreatedAt = node.CreatedAt,
-            LastSeenAt = node.LastSeenAt
-        });
+        return ToResponse(node);
     }
 
-    public Task<NodeResponse?> UpdateNodeAsync(Guid id, string name)
+    public async Task<NodeResponse?> UpdateNodeAsync(Guid id, string name)
     {
-        _logger.LogInformation("Updating node {NodeId} with new name: {NewName}", id, name);
-        
-        var node = _nodes.FirstOrDefault(n => n.Id == id);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var node = await db.Nodes.FindAsync(id);
         if (node == null)
         {
             _logger.LogWarning("Cannot update node {NodeId}: not found", id);
-            return Task.FromResult<NodeResponse?>(null);
+            return null;
         }
 
         node.Name = name;
+        await db.SaveChangesAsync();
         _logger.LogInformation("Updated node {NodeId} to name: {NewName}", id, name);
-
-        return Task.FromResult<NodeResponse?>(new NodeResponse
-        {
-            Id = node.Id,
-            Name = node.Name,
-            AuthToken = node.AuthToken,
-            IsActive = node.IsActive,
-            CreatedAt = node.CreatedAt,
-            LastSeenAt = node.LastSeenAt
-        });
+        return ToResponse(node);
     }
 
-    public Task<bool> DeleteNodeAsync(Guid id)
+    public async Task<bool> DeleteNodeAsync(Guid id)
     {
-        _logger.LogInformation("Deleting node with id: {NodeId}", id);
-        
-        var node = _nodes.FirstOrDefault(n => n.Id == id);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var node = await db.Nodes.FindAsync(id);
         if (node == null)
         {
             _logger.LogWarning("Cannot delete node {NodeId}: not found", id);
-            return Task.FromResult(false);
+            return false;
         }
 
-        _nodes.Remove(node);
+        db.Nodes.Remove(node);
+        await db.SaveChangesAsync();
         _logger.LogInformation("Deleted node {NodeId}", id);
-        return Task.FromResult(true);
+        return true;
     }
 
-    public Task<bool> ValidateNodeTokenAsync(string token)
+    public async Task<bool> ValidateNodeTokenAsync(string token)
     {
-        var exists = _nodes.Any(n => n.AuthToken == token);
-        return Task.FromResult(exists);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Nodes.AnyAsync(n => n.AuthToken == token);
     }
 
-    public Task<Node?> GetNodeByTokenAsync(string token)
+    public async Task<Node?> GetNodeByTokenAsync(string token)
     {
-        var node = _nodes.FirstOrDefault(n => n.AuthToken == token);
-        return Task.FromResult(node);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Nodes.FirstOrDefaultAsync(n => n.AuthToken == token);
     }
 
-    public Task UpdateNodeLastSeenAsync(Guid nodeId)
+    public async Task UpdateNodeLastSeenAsync(Guid nodeId)
     {
-        var node = _nodes.FirstOrDefault(n => n.Id == nodeId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var node = await db.Nodes.FindAsync(nodeId);
         if (node != null)
         {
             node.LastSeenAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
         }
-        return Task.CompletedTask;
     }
+
+    private static NodeResponse ToResponse(Node node) => new()
+    {
+        Id = node.Id,
+        Name = node.Name,
+        AuthToken = node.AuthToken,
+        IsActive = node.IsActive,
+        CreatedAt = node.CreatedAt,
+        LastSeenAt = node.LastSeenAt
+    };
 }

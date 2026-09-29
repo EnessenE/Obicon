@@ -1,9 +1,10 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using Obicon.Server.BackgroundServices;
-using Swashbuckle.AspNetCore.SwaggerGen;
 using Obicon.Server.Configuration;
+using Obicon.Server.Data;
 using Obicon.Server.Middleware;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
@@ -43,9 +44,18 @@ builder.Services.AddSingleton<ITestService, TestService>();
 builder.Services.AddSingleton<ITestQueueService, TestQueueService>();
 builder.Services.AddSingleton<NodeConnectionManager>();
 builder.Services.AddSingleton<IConfigRepository, JsonConfigRepository>();
+builder.Services.AddDbContextFactory<ObiconDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddHostedService<TestQueueProcessor>();
 
 var app = builder.Build();
+
+// Create the SQLite schema on startup if the database does not exist yet
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ObiconDbContext>();
+    await db.Database.EnsureCreatedAsync();
+}
 
 // Enable CORS for frontend on port 5003
 app.UseCors(builder => builder
