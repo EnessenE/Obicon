@@ -107,19 +107,19 @@ public class WebSocketMiddleware
         switch (message.Type)
         {
             case MessageType.NodeRegistration:
-                await HandleNodeRegistration(nodeId, webSocket);
+                HandleNodeRegistration(nodeId);
                 break;
             case MessageType.NodeHeartbeat:
                 HandleNodeHeartbeat(nodeId);
                 break;
             case MessageType.TestResult:
-                await HandleTestResult(nodeId, message);
+                HandleTestResult(nodeId, message);
                 break;
             case MessageType.TestStatusUpdate:
-                await HandleTestStatusUpdate(nodeId, message);
+                HandleTestStatusUpdate(nodeId, message);
                 break;
             case MessageType.ErrorReport:
-                await HandleErrorReport(nodeId, message);
+                HandleErrorReport(nodeId, message);
                 break;
             default:
                 _logger.LogWarning("Unknown message type: {MessageType}", message.Type);
@@ -127,16 +127,10 @@ public class WebSocketMiddleware
         }
     }
 
-    private async Task HandleNodeRegistration(string nodeId, WebSocket webSocket)
+    private void HandleNodeRegistration(string nodeId)
     {
         _logger.LogInformation("Node {NodeId} registered", nodeId);
         _connectionManager.UpdateLastSeen(nodeId);
-        
-        await SendMessage(webSocket, new WebSocketMessage
-        {
-            Type = MessageType.TestAssignment,
-            Data = new { Message = "Registration acknowledged" }
-        });
     }
 
     private void HandleNodeHeartbeat(string nodeId)
@@ -145,32 +139,18 @@ public class WebSocketMiddleware
         _connectionManager.UpdateLastSeen(nodeId);
     }
 
-    private async Task HandleTestResult(string nodeId, WebSocketMessage message)
+    private void HandleTestResult(string nodeId, WebSocketMessage message)
     {
         _logger.LogInformation("Test result from {NodeId}", nodeId);
     }
 
-    private async Task HandleTestStatusUpdate(string nodeId, WebSocketMessage message)
+    private void HandleTestStatusUpdate(string nodeId, WebSocketMessage message)
     {
         _logger.LogInformation("Test status update from {NodeId}", nodeId);
     }
 
-    private async Task HandleErrorReport(string nodeId, WebSocketMessage message)
+    private void HandleErrorReport(string nodeId, WebSocketMessage message)
     {
         _logger.LogError("Error report from {NodeId}", nodeId);
-    }
-
-    private async Task SendMessage(WebSocket socket, WebSocketMessage message)
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(message);
-            var bytes = Encoding.UTF8.GetBytes(json);
-            await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending WebSocket message");
-        }
     }
 }

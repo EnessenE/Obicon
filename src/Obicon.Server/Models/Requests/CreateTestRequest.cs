@@ -1,4 +1,5 @@
 using Obicon.Server.Models.Enums;
+using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Server.Models.Requests;
 

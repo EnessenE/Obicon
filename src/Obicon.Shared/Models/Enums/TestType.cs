@@ -1,4 +1,4 @@
-namespace Obicon.Server.Models.Enums;
+namespace Obicon.Shared.Models.Enums;
 
 /// <summary>
 /// Types of synthetic tests that can be executed by nodes.

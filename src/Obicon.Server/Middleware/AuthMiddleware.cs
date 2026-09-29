@@ -30,7 +30,8 @@ public class AuthMiddleware
 
     private static bool IsExcludedPath(PathString path)
     {
-        var excludedPaths = new[] { "/metrics", "/swagger", "/swagger-ui" };
+        // /ws/nodes authenticates with the node token instead of the API Authorization header
+        var excludedPaths = new[] { "/metrics", "/swagger", "/swagger-ui", "/ws" };
         return excludedPaths.Any(p => path.StartsWithSegments(p));
     }
 }
