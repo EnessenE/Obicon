@@ -26,6 +26,12 @@ public class ServerSettingResponse
     public bool IsForced { get; set; }
 
     /// <summary>
+    /// Indicates if this setting is derived from other settings and cannot be changed
+    /// through the API or UI (e.g. SchedulerLoopIntervalSeconds).
+    /// </summary>
+    public bool IsReadOnly { get; set; }
+
+    /// <summary>
     /// Where the effective value comes from: "Configuration (forced)", "Database", or "Default".
     /// </summary>
     public string Source { get; set; } = string.Empty;

@@ -21,6 +21,12 @@ public class ServerSettingDefinition
     public Type ValueType { get; init; } = typeof(string);
 
     /// <summary>
+    /// Read-only settings are derived from other settings instead of being stored;
+    /// they cannot be changed through the API or UI. Default: false.
+    /// </summary>
+    public bool IsReadOnly { get; init; }
+
+    /// <summary>
     /// Default value as string, used when nothing is configured or stored. Default: empty string.
     /// </summary>
     public string Default { get; init; } = string.Empty;
@@ -85,6 +91,14 @@ public static class ServerSettingDefinitions
             Description = "Comma-separated list of test frequencies in seconds, offered in the UI and required when creating or editing a test. Any positive seconds are allowed; e.g. \"15,45,3600\".",
             ValueType = typeof(string),
             Default = "10,30,60,120,300,600,3600"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "SchedulerLoopIntervalSeconds",
+            Description = "Read-only, derived from the lowest FrequencyPresetsSeconds preset. The test scheduler wakes this often to scan for due tests. Each wake is one SQLite query plus an in-memory scan, after which the loop sleeps (Task.Delay), so the CPU cost is one short database burst per wake - a lower interval means proportionally more wakes per hour (e.g. 10 seconds = 360 scans/hour). Adjust FrequencyPresetsSeconds to change it.",
+            ValueType = typeof(int),
+            Default = "10",
+            IsReadOnly = true
         }
     };
 }

@@ -215,20 +215,7 @@ public class TestService : ITestService
     private async Task<List<int>> GetFrequencyPresetsAsync()
     {
         var raw = await _settingsService.GetAsync<string>("FrequencyPresetsSeconds");
-        var presets = raw
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(part => int.TryParse(part, out var seconds) ? seconds : 0)
-            .Where(seconds => seconds > 0)
-            .Distinct()
-            .OrderBy(seconds => seconds)
-            .ToList();
-
-        return presets.Count > 0
-            ? presets
-            : ServerSettingDefinitions.All.First(d => d.Key == "FrequencyPresetsSeconds").Default
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(int.Parse)
-                .ToList();
+        return FrequencyPresets.Parse(raw);
     }
 
     private async Task ValidateFrequencyAsync(int frequency)

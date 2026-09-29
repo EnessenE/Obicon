@@ -70,6 +70,42 @@ public class SettingsTests : IClassFixture<ObiconServerFactory>
     }
 
     [Fact]
+    public async Task SchedulerInterval_IsDerivedFromLowestPreset()
+    {
+        var settings = await _client.GetFromJsonAsync<JsonElement>("/v1/settings");
+        var interval = settings.EnumerateArray().Single(s => s.GetProperty("key").GetString() == "SchedulerLoopIntervalSeconds");
+
+        Assert.True(interval.GetProperty("isReadOnly").GetBoolean());
+        Assert.Equal("Derived", interval.GetProperty("source").GetString());
+        Assert.Equal("10", interval.GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task Set_ReturnsConflict_ForReadOnlySetting()
+    {
+        var response = await _client.PutAsJsonAsync("/v1/settings/SchedulerLoopIntervalSeconds", new { Value = "5" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SchedulerInterval_FollowsPresetOverride()
+    {
+        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "15,45,300" });
+        change.EnsureSuccessStatusCode();
+        try
+        {
+            var settings = await _client.GetFromJsonAsync<JsonElement>("/v1/settings");
+            var interval = settings.EnumerateArray().Single(s => s.GetProperty("key").GetString() == "SchedulerLoopIntervalSeconds");
+            Assert.Equal("15", interval.GetProperty("value").GetString());
+        }
+        finally
+        {
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "10,30,60,120,300,600,3600" });
+        }
+    }
+
+    [Fact]
     public async Task Api_RequiresAuthorizationHeader()
     {
         using var factory = new ObiconServerFactory();

@@ -27,32 +27,37 @@ async function loadSettings() {
 
 function renderSettings() {
     settingsList.innerHTML = settings.map(setting => {
+        const locked = setting.isForced || setting.isReadOnly;
         const control = isBoolean(setting)
             ? `
                 <div class="form-check form-switch">
                     <input class="form-check-input setting-switch" type="checkbox" role="switch"
                            id="setting-input-${escapeHtml(setting.key)}"
                            ${setting.value === 'true' ? 'checked' : ''}
-                           ${setting.isForced ? 'disabled' : ''}
+                           ${locked ? 'disabled' : ''}
                            onchange="toggleSetting('${escapeHtml(setting.key)}', this.checked, this)">
                 </div>`
             : `
                 <input id="setting-input-${escapeHtml(setting.key)}" class="form-control" value="${escapeHtml(setting.value)}"
-                       ${setting.isForced ? 'disabled' : ''}>`;
+                       ${locked ? 'readonly' : ''}>`;
 
-        const action = setting.isForced
+        const action = locked
             ? '<span class="text-muted small">Read-only</span>'
             : isBoolean(setting)
                 ? ''
                 : `<button class="btn btn-sm btn-primary" onclick="saveSetting('${escapeHtml(setting.key)}')">Save</button>`;
 
+        const badge = setting.isReadOnly
+            ? '<span class="badge bg-secondary ms-1" title="Derived from other settings; cannot be changed directly">Derived</span>'
+            : setting.isForced
+                ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>'
+                : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`;
+
         return `
         <div class="row align-items-center mb-3 pb-3 border-bottom">
             <div class="col-md-5">
                 <strong>${escapeHtml(setting.key)}</strong>
-                ${setting.isForced
-                    ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>'
-                    : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`}
+                ${badge}
                 <div class="small text-muted">${escapeHtml(setting.description)}</div>
             </div>
             <div class="col-md-4">

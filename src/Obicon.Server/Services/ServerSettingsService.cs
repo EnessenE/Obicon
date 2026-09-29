@@ -40,19 +40,28 @@ public class ServerSettingsService : IServerSettingsService
 
         return ServerSettingDefinitions.All.Select(definition =>
         {
-            var forced = IsForced(definition.Key);
-            var source = "Default";
             var value = definition.Default;
+            var source = "Default";
+            var forced = false;
 
-            if (forced)
+            if (definition.IsReadOnly)
             {
-                source = "Configuration (forced)";
-                value = _configuration[$"{ConfigSection}:{definition.Key}"] ?? value;
+                source = "Derived";
+                value = ComputeReadOnly(definition.Key, EffectiveRawValue(FindDefinition("FrequencyPresetsSeconds"), overrides));
             }
-            else if (overrides.TryGetValue(definition.Key, out var stored))
+            else
             {
-                source = "Database";
-                value = stored;
+                forced = IsForced(definition.Key);
+                if (forced)
+                {
+                    source = "Configuration (forced)";
+                    value = _configuration[$"{ConfigSection}:{definition.Key}"] ?? value;
+                }
+                else if (overrides.TryGetValue(definition.Key, out var stored))
+                {
+                    source = "Database";
+                    value = stored;
+                }
             }
 
             return new ServerSettingResponse
@@ -61,6 +70,7 @@ public class ServerSettingsService : IServerSettingsService
                 Description = definition.Description,
                 Value = value,
                 IsForced = forced,
+                IsReadOnly = definition.IsReadOnly,
                 Source = source
             };
         });
@@ -70,6 +80,11 @@ public class ServerSettingsService : IServerSettingsService
     {
         var definition = ServerSettingDefinitions.All.FirstOrDefault(d => d.Key == key)
             ?? throw new ArgumentException($"Unknown setting: {key}");
+
+        if (definition.IsReadOnly)
+        {
+            throw new InvalidOperationException($"Setting {key} is read-only; it is derived from FrequencyPresetsSeconds");
+        }
 
         if (IsForced(key))
         {
@@ -119,21 +134,12 @@ public class ServerSettingsService : IServerSettingsService
         var definition = ServerSettingDefinitions.All.FirstOrDefault(d => d.Key == key)
             ?? throw new ArgumentException($"Unknown setting: {key}");
 
-        var value = definition.Default;
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var overrides = await db.ServerSettingValues.ToDictionaryAsync(s => s.Key, s => s.Value);
 
-        if (IsForced(key))
-        {
-            value = _configuration[$"{ConfigSection}:{key}"] ?? value;
-        }
-        else
-        {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            var stored = await db.ServerSettingValues.FindAsync(key);
-            if (stored != null)
-            {
-                value = stored.Value;
-            }
-        }
+        var value = definition.IsReadOnly
+            ? ComputeReadOnly(definition.Key, EffectiveRawValue(FindDefinition("FrequencyPresetsSeconds"), overrides))
+            : EffectiveRawValue(definition, overrides);
 
         var converted = TryConvert(definition, value, out var result)
             ? result
@@ -141,6 +147,37 @@ public class ServerSettingsService : IServerSettingsService
 
         _cache[key] = converted;
         return (T)converted;
+    }
+
+    private static ServerSettingDefinition FindDefinition(string key)
+    {
+        return ServerSettingDefinitions.All.First(d => d.Key == key);
+    }
+
+    /// <summary>
+    /// The effective raw value of a stored setting: forced configuration, database override, or default.
+    /// </summary>
+    private string EffectiveRawValue(ServerSettingDefinition definition, Dictionary<string, string> overrides)
+    {
+        if (IsForced(definition.Key))
+        {
+            return _configuration[$"{ConfigSection}:{definition.Key}"] ?? definition.Default;
+        }
+
+        return overrides.TryGetValue(definition.Key, out var stored) ? stored : definition.Default;
+    }
+
+    /// <summary>
+    /// Computes the value of a read-only setting from the settings it derives from.
+    /// </summary>
+    private static string ComputeReadOnly(string key, string frequencyPresets)
+    {
+        if (key == "SchedulerLoopIntervalSeconds")
+        {
+            return FrequencyPresets.SchedulerIntervalSeconds(frequencyPresets).ToString();
+        }
+
+        throw new ArgumentException($"No computation for read-only setting: {key}");
     }
 
     private bool IsForced(string key)

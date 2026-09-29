@@ -420,7 +420,7 @@ Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.no
 
 ### Settings
 
-Server settings resolve as: forced by appsettings/env (read-only) → database override → default.
+Server settings resolve as: forced by appsettings/env (read-only) → database override → default. Read-only derived settings (e.g. `SchedulerLoopIntervalSeconds`) are computed from other settings: `PUT` returns 409 for them, and their `Source` is `Derived`.
 
 #### List Settings
 ```
@@ -614,7 +614,7 @@ Returns a single test job.
 
 `Frequency` is the interval between runs, in plain seconds (no enum). The allowed values come from the `FrequencyPresetsSeconds` server setting (default: `10,30,60,120,300,600,3600`); create and update reject any value outside it. Adjust the setting on the Settings page or via `PUT /v1/settings/FrequencyPresetsSeconds` to offer different intervals, e.g. `15,45,1800`.
 
-Frequencies are enforced by a scheduler that scans every 5 seconds. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
+Frequencies are enforced by the `TestScheduler` background loop, which wakes every `SchedulerLoopIntervalSeconds` (a read-only setting derived from the lowest `FrequencyPresetsSeconds` preset, default 10). Each wake runs one SQLite query plus an in-memory scan and then sleeps (`Task.Delay`), so the CPU cost is one short database burst per wake — a lower interval means proportionally more wakes per hour. Changing `FrequencyPresetsSeconds` takes effect on the next cycle without a restart. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
 
 Databases from before this change stored `Frequency` as the old `TestFrequency` enum (0-6); the server converts those rows to seconds once at startup (`SchemaMigrations` table records it).
 
