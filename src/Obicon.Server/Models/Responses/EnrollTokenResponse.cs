@@ -31,6 +31,12 @@ public class EnrollTokenResponse
     public DateTime? RevokedAt { get; set; }
 
     /// <summary>
+    /// Pool the token is scoped to: enrolled nodes are always added to this pool.
+    /// Null for a server-wide token. Default: null.
+    /// </summary>
+    public Guid? PoolId { get; set; }
+
+    /// <summary>
     /// Plain token. Only returned by the create endpoint, never stored on the server.
     /// </summary>
     public string? Token { get; set; }
@@ -45,6 +51,7 @@ public class EnrollTokenResponse
         Name = token.Name,
         CreatedAt = token.CreatedAt,
         ExpiresAt = token.ExpiresAt,
-        RevokedAt = token.RevokedAt
+        RevokedAt = token.RevokedAt,
+        PoolId = token.PoolId
     };
 }

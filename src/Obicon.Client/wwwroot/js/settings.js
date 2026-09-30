@@ -1,18 +1,35 @@
 // Settings page functionality
 let settings = [];
 let tokens = [];
+let pools = [];
 
 // DOM elements
 const settingsList = document.getElementById('settingsList');
 const settingsError = document.getElementById('settingsError');
-const tokensTable = document.getElementById('tokensTable');
-const tokensTableBody = document.getElementById('tokensTableBody');
+const tokensList = document.getElementById('tokensList');
 const noTokensMessage = document.getElementById('noTokensMessage');
 const tokenCreated = document.getElementById('tokenCreated');
 
 // Load everything on page load
 loadSettings();
 loadTokens();
+loadPools();
+
+// Pools are used to scope enroll tokens and to show the scope in the tokens table
+async function loadPools() {
+    try {
+        pools = await apiCall('GET', '/v1/pools');
+        const select = document.getElementById('tokenPool');
+        const previous = select.value;
+        select.innerHTML = '<option value="">Entire server (any pool)</option>' +
+            pools.map(pool => `<option value="${pool.id}">${escapeHtml(pool.name)}</option>`).join('');
+        if (previous) {
+            select.value = previous;
+        }
+    } catch (error) {
+        console.error('Could not load pools:', error);
+    }
+}
 
 async function loadSettings() {
     settingsList.innerHTML = '<div class="text-center my-4"><div class="spinner-border"></div></div>';
@@ -26,36 +43,52 @@ async function loadSettings() {
 }
 
 function renderSettings() {
-    settingsList.innerHTML = settings.map(setting => {
-        const locked = setting.isForced || setting.isReadOnly;
-        const control = isBoolean(setting)
-            ? `
-                <div class="form-check form-switch">
-                    <input class="form-check-input setting-switch" type="checkbox" role="switch"
-                           id="setting-input-${escapeHtml(setting.key)}"
-                           ${setting.value === 'true' ? 'checked' : ''}
-                           ${locked ? 'disabled' : ''}
-                           onchange="toggleSetting('${escapeHtml(setting.key)}', this.checked, this)">
-                </div>`
-            : `
-                <input id="setting-input-${escapeHtml(setting.key)}"
-                       class="form-control${locked ? ' bg-body-tertiary text-secondary' : ''}"
-                       value="${escapeHtml(setting.value)}"
-                       ${locked ? 'readonly' : ''}>`;
+    // Settings arrive in definition order; group them into sections for display
+    const groups = new Map();
+    for (const setting of settings) {
+        const group = setting.group || 'General';
+        if (!groups.has(group)) {
+            groups.set(group, []);
+        }
+        groups.get(group).push(setting);
+    }
 
-        const action = locked
-            ? '<span class="text-muted small">Read-only</span>'
-            : isBoolean(setting)
-                ? ''
-                : `<button class="btn btn-sm btn-primary" onclick="saveSetting('${escapeHtml(setting.key)}')">Save</button>`;
+    settingsList.innerHTML = [...groups.entries()].map(([group, groupSettings]) => `
+        <h6 class="text-uppercase text-muted small mt-4 mb-3 border-bottom pb-1">${escapeHtml(group)}</h6>
+        ${groupSettings.map(renderSettingRow).join('')}
+    `).join('');
+}
 
-        const badge = setting.isReadOnly
-            ? '<span class="badge bg-secondary ms-1" title="Derived from other settings; cannot be changed directly">Derived</span>'
-            : setting.isForced
-                ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>'
-                : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`;
+function renderSettingRow(setting) {
+    const locked = setting.isForced || setting.isReadOnly;
+    const control = isBoolean(setting)
+        ? `
+            <div class="form-check form-switch">
+                <input class="form-check-input setting-switch" type="checkbox" role="switch"
+                       id="setting-input-${escapeHtml(setting.key)}"
+                       ${setting.value === 'true' ? 'checked' : ''}
+                       ${locked ? 'disabled' : ''}
+                       onchange="toggleSetting('${escapeHtml(setting.key)}', this.checked, this)">
+            </div>`
+        : `
+            <input id="setting-input-${escapeHtml(setting.key)}"
+                   class="form-control${locked ? ' bg-body-tertiary text-secondary' : ''}"
+                   value="${escapeHtml(setting.value)}"
+                   ${locked ? 'readonly' : ''}>`;
 
-        return `
+    const action = locked
+        ? '<span class="text-muted small">Read-only</span>'
+        : isBoolean(setting)
+            ? ''
+            : `<button class="btn btn-sm btn-primary" onclick="saveSetting('${escapeHtml(setting.key)}')">Save</button>`;
+
+    const badge = setting.isReadOnly
+        ? '<span class="badge bg-secondary ms-1" title="Derived from other settings; cannot be changed directly">Derived</span>'
+        : setting.isForced
+            ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>'
+            : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`;
+
+    return `
         <div class="row align-items-center mb-3 pb-3 border-bottom">
             <div class="col-md-5">
                 <strong>${escapeHtml(setting.key)}</strong>
@@ -70,7 +103,6 @@ function renderSettings() {
             </div>
         </div>
     `;
-    }).join('');
 }
 
 function isBoolean(setting) {
@@ -114,14 +146,14 @@ async function loadTokens() {
 function renderTokens() {
     if (tokens.length === 0) {
         noTokensMessage.style.display = 'block';
-        tokensTable.style.display = 'none';
+        tokensList.style.display = 'none';
         return;
     }
 
     noTokensMessage.style.display = 'none';
-    tokensTable.style.display = 'table';
+    tokensList.style.display = 'block';
 
-    tokensTableBody.innerHTML = tokens.map(token => {
+    tokensList.innerHTML = tokens.map(token => {
         const revoked = token.revokedAt != null;
         const expired = token.expiresAt != null && new Date(token.expiresAt) <= new Date();
         const state = revoked
@@ -131,33 +163,59 @@ function renderTokens() {
                 : '<span class="badge bg-success">Active</span>';
 
         return `
-            <tr>
-                <td>${escapeHtml(token.name)}</td>
-                <td>${new Date(token.createdAt).toLocaleString()}</td>
-                <td>${token.expiresAt ? new Date(token.expiresAt).toLocaleString() : 'Never'}</td>
-                <td>${state}</td>
-                <td>
+            <div class="row g-2 g-lg-3 list-row px-3">
+                <div class="col-12 col-lg-3">
+                    <div class="fw-semibold">${escapeHtml(token.name)}</div>
+                    <div class="text-muted small">Created ${new Date(token.createdAt).toLocaleString()}</div>
+                </div>
+                <div class="col-6 col-lg-2">
+                    <div class="field-label">Expires</div>
+                    ${token.expiresAt ? new Date(token.expiresAt).toLocaleString() : 'Never'}
+                </div>
+                <div class="col-6 col-lg-2">
+                    <div class="field-label">Scope</div>
+                    ${renderTokenScope(token.poolId)}
+                </div>
+                <div class="col-6 col-lg-2">
+                    <div class="field-label">State</div>
+                    ${state}
+                </div>
+                <div class="col-12 col-lg-3 d-flex align-items-end justify-content-lg-end">
                     ${!revoked ? `<button class="btn btn-sm btn-outline-warning me-1" onclick="revokeToken('${token.id}')">Revoke</button>` : ''}
                     <button class="btn btn-sm btn-danger" onclick="deleteToken('${token.id}')">Delete</button>
-                </td>
-            </tr>
+                </div>
+            </div>
         `;
     }).join('');
+}
+
+// Shows the pool a token is scoped to, or "Server" when it enrolls into any pool
+function renderTokenScope(poolId) {
+    if (!poolId) {
+        return '<span class="badge bg-light text-dark border">Server</span>';
+    }
+    const pool = pools.find(p => p.id === poolId);
+    return pool
+        ? `<span class="badge bg-info text-dark" title="Enrolled nodes are always added to this pool">${escapeHtml(pool.name)}</span>`
+        : `<span class="badge bg-info text-dark" title="${poolId}">Pool</span>`;
 }
 
 async function createToken() {
     const name = document.getElementById('tokenName').value.trim();
     const expiryInput = document.getElementById('tokenExpiry').value;
+    const poolId = document.getElementById('tokenPool').value;
 
     const body = {};
     if (name) body.name = name;
     if (expiryInput) body.expiresAt = new Date(expiryInput).toISOString();
+    if (poolId) body.poolId = poolId;
 
     try {
         const token = await apiCall('POST', '/v1/enroll-tokens', body);
 
         document.getElementById('tokenName').value = '';
         document.getElementById('tokenExpiry').value = '';
+        document.getElementById('tokenPool').value = '';
 
         document.getElementById('tokenCreatedName').textContent = token.name;
         document.getElementById('tokenCreatedValue').textContent = token.token;

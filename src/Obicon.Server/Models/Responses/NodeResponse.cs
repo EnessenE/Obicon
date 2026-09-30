@@ -42,4 +42,20 @@ public class NodeResponse
     /// How this node came to exist: "manual" or "auto-enrollment".
     /// </summary>
     public string EnrollmentType { get; set; } = "manual";
+
+    /// <summary>
+    /// Version of the node software, reported on connection. Null if the node never connected.
+    /// </summary>
+    public string? Version { get; set; }
+
+    /// <summary>
+    /// IP address the server observed on the node's connection. Null if the node never connected.
+    /// </summary>
+    public string? IpAddress { get; set; }
+
+    /// <summary>
+    /// Operating settings the node reported on its last connection, e.g. MaxConcurrentTests.
+    /// Default: empty dictionary.
+    /// </summary>
+    public Dictionary<string, string> Settings { get; set; } = new();
 }

@@ -33,5 +33,17 @@ public enum MessageType
     /// <summary>
     /// Sent by node to report errors.
     /// </summary>
-    ErrorReport
+    ErrorReport,
+
+    /// <summary>
+    /// Sent by server right after accepting a node's WebSocket connection,
+    /// announcing the server version so the node can log it and check compatibility.
+    /// </summary>
+    ServerHello,
+
+    /// <summary>
+    /// Sent by node to ship one of its log entries to the server.
+    /// Only accepted when the server's NodeLogShippingEnabled setting is on.
+    /// </summary>
+    NodeLog
 }

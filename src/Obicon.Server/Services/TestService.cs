@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
 using Obicon.Server.WebSockets;
@@ -42,6 +43,7 @@ public class TestService : ITestService
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
         await ValidateFrequencyAsync(request.Frequency);
+        ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
         var test = new Test
         {
@@ -58,6 +60,10 @@ public class TestService : ITestService
             ExpectedDnsResult = request.ExpectedDnsResult,
             IpVersion = request.IpVersion,
             TimeoutSeconds = request.TimeoutSeconds,
+            ExpectedBodyPattern = request.ExpectedBodyPattern,
+            Headers = request.Headers ?? new Dictionary<string, string>(),
+            ProxyUrl = request.ProxyUrl,
+            CacheBust = request.CacheBust,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = null
         };
@@ -89,6 +95,7 @@ public class TestService : ITestService
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
         await ValidateFrequencyAsync(request.Frequency);
+        ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         var test = await db.Tests.FindAsync(id);
@@ -108,6 +115,10 @@ public class TestService : ITestService
         test.ExpectedDnsResult = request.ExpectedDnsResult;
         test.IpVersion = request.IpVersion;
         test.TimeoutSeconds = request.TimeoutSeconds;
+        test.ExpectedBodyPattern = request.ExpectedBodyPattern;
+        test.Headers = request.Headers ?? new Dictionary<string, string>();
+        test.ProxyUrl = request.ProxyUrl;
+        test.CacheBust = request.CacheBust;
         test.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
@@ -227,6 +238,61 @@ public class TestService : ITestService
         }
     }
 
+    /// <summary>
+    /// Validates HTTP/HTTPS expectations: the body regex must compile, headers must have
+    /// usable names, and the proxy must be an absolute http(s) URL. Non-HTTP types get the
+    /// fields ignored (empty), so stale values cannot leak into e.g. a DNS test.
+    /// </summary>
+    private static void ValidateHttpExpectations(
+        Shared.Models.Enums.TestType type,
+        string? expectedBodyPattern,
+        Dictionary<string, string>? headers,
+        string? proxyUrl)
+    {
+        var isHttp = type is Shared.Models.Enums.TestType.Http or Shared.Models.Enums.TestType.Https;
+        if (!isHttp)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(expectedBodyPattern))
+        {
+            try
+            {
+                _ = new Regex(expectedBodyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException($"Expected body pattern is not a valid regular expression: {ex.Message}");
+            }
+        }
+
+        if (headers != null)
+        {
+            foreach (var header in headers)
+            {
+                var name = header.Key?.Trim();
+                if (string.IsNullOrEmpty(name))
+                {
+                    throw new ArgumentException("Header names must not be empty");
+                }
+                if (name.IndexOfAny([' ', '\t', '\r', '\n', ':']) >= 0)
+                {
+                    throw new ArgumentException($"Header name '{name}' contains invalid characters (whitespace or colon)");
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(proxyUrl))
+        {
+            if (!Uri.TryCreate(proxyUrl, UriKind.Absolute, out var proxy) ||
+                (proxy.Scheme != "http" && proxy.Scheme != "https"))
+            {
+                throw new ArgumentException("Proxy must be an absolute http:// or https:// URL");
+            }
+        }
+    }
+
     private async Task EnqueueJobsForTestAsync(Test test)
     {
         // One job per targeted node: direct node IDs plus all pool members, deduplicated
@@ -242,7 +308,11 @@ public class TestService : ITestService
                 ExpectedStatusCodes = test.ExpectedStatusCodes,
                 CheckCertificateExpiryDays = test.CheckCertificateExpiryDays,
                 ExpectedDnsResult = test.ExpectedDnsResult,
-                IpVersion = test.IpVersion
+                IpVersion = test.IpVersion,
+                ExpectedBodyPattern = test.ExpectedBodyPattern,
+                Headers = test.Headers,
+                ProxyUrl = test.ProxyUrl,
+                CacheBust = test.CacheBust
             });
         }
     }
@@ -260,6 +330,8 @@ public class TestService : ITestService
             return null;
         }
 
+        ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
+
         var job = await _queueService.EnqueueJobAsync(new TestJob
         {
             TestId = Guid.Empty,
@@ -270,7 +342,11 @@ public class TestService : ITestService
             ExpectedStatusCodes = request.ExpectedStatusCodes,
             CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
             ExpectedDnsResult = request.ExpectedDnsResult,
-            IpVersion = request.IpVersion
+            IpVersion = request.IpVersion,
+            ExpectedBodyPattern = request.ExpectedBodyPattern,
+            Headers = request.Headers ?? new Dictionary<string, string>(),
+            ProxyUrl = request.ProxyUrl,
+            CacheBust = request.CacheBust
         });
 
         _logger.LogInformation("Run-once job {JobId} enqueued on node {NodeId} ({TestType} {Target})", job.Id, request.NodeId, request.Type, request.Target);
@@ -343,6 +419,10 @@ public class TestService : ITestService
         ExpectedDnsResult = test.ExpectedDnsResult,
         IpVersion = test.IpVersion,
         TimeoutSeconds = test.TimeoutSeconds,
+        ExpectedBodyPattern = test.ExpectedBodyPattern,
+        Headers = test.Headers,
+        ProxyUrl = test.ProxyUrl,
+        CacheBust = test.CacheBust,
         CreatedAt = test.CreatedAt,
         UpdatedAt = test.UpdatedAt
     };

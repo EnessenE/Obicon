@@ -7,7 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
-    <link rel="stylesheet" href="css/styles.css?v=2">
+    <link rel="stylesheet" href="css/styles.css?v=5">
 </head>
 <body>
     <div id="appNavbar"></div>
@@ -99,6 +99,24 @@
                                 <label class="form-label mb-1">Expected DNS result <span class="text-muted">(empty = anything)</span></label>
                                 <input id="expectedDnsResult" class="form-control" placeholder="anything">
                             </div>
+                            <div class="col-md-6 http-expectation">
+                                <label class="form-label mb-1">Body must match regex <span class="text-muted">(empty = no check)</span></label>
+                                <input id="expectedBodyPattern" class="form-control" placeholder="\"status\":\s*\"up\"">
+                            </div>
+                            <div class="col-md-6 http-expectation">
+                                <label class="form-label mb-1">Proxy URL <span class="text-muted">(empty = direct)</span></label>
+                                <input id="proxyUrl" class="form-control" placeholder="http://proxy:8080">
+                            </div>
+                            <div class="col-md-6 http-expectation">
+                                <label class="form-label mb-1">Headers <span class="text-muted">(one per line, "Name: Value")</span></label>
+                                <textarea id="testHeaders" class="form-control" rows="2" placeholder="Authorization: Bearer ..."></textarea>
+                            </div>
+                            <div class="col-md-6 http-expectation d-flex align-items-end">
+                                <div class="form-check">
+                                    <input id="cacheBust" type="checkbox" class="form-check-input">
+                                    <label class="form-check-label" for="cacheBust" title="Appends a unique query parameter so caches serve a fresh response">Cache busting</label>
+                                </div>
+                            </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mt-3">
                             <button class="btn btn-primary" onclick="createTest()"><i class="bi bi-plus-lg me-1"></i>Create Test</button>
@@ -124,24 +142,7 @@
         <div id="testsErrorMessage" class="alert alert-danger" style="display:none;"></div>
 
         <div class="card">
-            <div class="table-responsive">
-                <table id="testsTable" class="table table-striped table-hover align-middle mb-0" style="display:none;">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Target</th>
-                            <th>Frequency</th>
-                            <th>Est. checks</th>
-                            <th>Active</th>
-                            <th class="text-end">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="testsTableBody">
-                    </tbody>
-                </table>
-            </div>
+            <div id="testsList"></div>
         </div>
         <div id="noTestsMessage" class="alert alert-info" style="display:none;">No tests found.</div>
     </main>
@@ -214,6 +215,26 @@
                             <input id="editExpectedDnsResult" class="form-control" placeholder="anything">
                         </div>
                     </div>
+                    <div class="row g-3 mb-2 http-expectation">
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Body must match regex</label>
+                            <input id="editExpectedBodyPattern" class="form-control" placeholder="empty = no check">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Proxy URL</label>
+                            <input id="editProxyUrl" class="form-control" placeholder="http://proxy:8080">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Headers <span class="text-muted">(one per line, "Name: Value")</span></label>
+                            <textarea id="editTestHeaders" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-center">
+                            <div class="form-check">
+                                <input id="editCacheBust" type="checkbox" class="form-check-input">
+                                <label class="form-check-label" for="editCacheBust">Cache busting</label>
+                            </div>
+                        </div>
+                    </div>
                     <div class="row g-3 mb-2">
                         <div class="col-md-4">
                             <label class="form-label mb-1">Nodes</label>
@@ -245,6 +266,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=2"></script>
-    <script src="js/tests.js?v=7"></script>
+    <script src="js/tests.js?v=11"></script>
 </body>
 </html>

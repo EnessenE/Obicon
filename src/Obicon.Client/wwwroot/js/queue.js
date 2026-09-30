@@ -3,8 +3,7 @@ let jobs = [];
 let autoRefreshTimer = null;
 
 // DOM elements
-const queueTable = document.getElementById('queueTable');
-const queueTableBody = document.getElementById('queueTableBody');
+const queueList = document.getElementById('queueList');
 const noJobsMessage = document.getElementById('noJobsMessage');
 const queueLoadingMessage = document.getElementById('queueLoadingMessage');
 const queueErrorMessage = document.getElementById('queueErrorMessage');
@@ -60,23 +59,40 @@ async function loadQueue() {
 function renderJobs() {
     if (jobs.length === 0) {
         noJobsMessage.style.display = 'block';
-        queueTable.style.display = 'none';
+        queueList.style.display = 'none';
         return;
     }
 
     noJobsMessage.style.display = 'none';
-    queueTable.style.display = 'table';
+    queueList.style.display = 'block';
 
-    queueTableBody.innerHTML = jobs.map(job => `
-        <tr>
-            <td title="${job.id}">${job.id.substring(0, 8)}</td>
-            <td title="${job.testId}">${job.testId.substring(0, 8)}</td>
-            <td title="${job.nodeId}">${job.nodeId.substring(0, 8)}</td>
-            <td><span class="badge ${jobStatusBadgeMap[job.status] || 'bg-secondary'}">${jobStatusMap[job.status] || job.status}</span></td>
-            <td>${new Date(job.createdAt).toLocaleString()}</td>
-            <td>${job.durationMs != null ? job.durationMs + ' ms' : '-'}</td>
-            <td class="text-truncate" style="max-width: 300px;" title="${escapeHtml(job.errorMessage || job.output || '')}">${escapeHtml(job.errorMessage || job.output || '-')}${renderMetrics(job.metrics)}</td>
-        </tr>
+    queueList.innerHTML = jobs.map(job => `
+        <div class="row g-2 g-lg-3 list-row px-3">
+            <div class="col-12 col-lg-2">
+                <div class="field-label">Job ID</div>
+                <span title="${job.id}">${job.id.substring(0, 8)}</span>
+                <div class="small text-muted">${new Date(job.createdAt).toLocaleString()}</div>
+            </div>
+            <div class="col-6 col-lg-2">
+                <div class="field-label">Test / Node</div>
+                <span title="${job.testId}">${job.testId === '00000000-0000-0000-0000-000000000000' ? 'run-once' : job.testId.substring(0, 8)}</span>
+                <span class="text-muted"> · </span>
+                <span title="${job.nodeId}">${job.nodeId.substring(0, 8)}</span>
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Status</div>
+                <span class="badge ${jobStatusBadgeMap[job.status] || 'bg-secondary'}">${jobStatusMap[job.status] || job.status}</span>
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Duration</div>
+                ${job.durationMs != null ? job.durationMs + ' ms' : '-'}
+            </div>
+            <div class="col-12 col-lg-6">
+                <div class="field-label">Result</div>
+                <code class="text-break">${escapeHtml(job.errorMessage || job.output || '-')}</code>
+                ${renderMetrics(job.metrics)}
+            </div>
+        </div>
     `).join('');
 }
 

@@ -74,4 +74,29 @@ public class CreateTestRequest
     /// </summary>
     [Range(1, 3600)]
     public int TimeoutSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// HTTP/HTTPS: when set, the response body must match this regular expression
+    /// or the run fails. Null disables the check. Default: null.
+    /// </summary>
+    [MaxLength(2000)]
+    public string? ExpectedBodyPattern { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: custom headers sent with the request, e.g. authentication headers. Default: empty dictionary.
+    /// </summary>
+    public Dictionary<string, string>? Headers { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: absolute http:// or https:// URL of a proxy the request goes through.
+    /// Null connects directly. Default: null.
+    /// </summary>
+    [MaxLength(500)]
+    public string? ProxyUrl { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: when true, a unique query parameter is appended to the request URL
+    /// so caches serve a fresh response. Default: false.
+    /// </summary>
+    public bool CacheBust { get; set; }
 }

@@ -4,8 +4,7 @@ let nodes = [];
 let pools = [];
 
 // DOM elements
-const testsTable = document.getElementById('testsTable');
-const testsTableBody = document.getElementById('testsTableBody');
+const testsList = document.getElementById('testsList');
 const noTestsMessage = document.getElementById('noTestsMessage');
 const testsLoadingMessage = document.getElementById('testsLoadingMessage');
 const testsErrorMessage = document.getElementById('testsErrorMessage');
@@ -77,7 +76,28 @@ loadNodeCheckboxes();
 loadPoolCheckboxes();
 loadFrequencyPresets();
 testTypeSelect.addEventListener('change', updateExpectationVisibility);
+document.getElementById('editType').addEventListener('change', updateEditExpectationVisibility);
 updateExpectationVisibility();
+
+// Parses a "Name: Value" textarea into a header object; returns null on a malformed line
+function parseHeaders(text) {
+    const headers = {};
+    for (const line of text.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const colon = trimmed.indexOf(':');
+        if (colon <= 0) {
+            return { error: `Header line "${trimmed}" must look like "Name: Value".` };
+        }
+        const name = trimmed.slice(0, colon).trim();
+        const value = trimmed.slice(colon + 1).trim();
+        if (!name) {
+            return { error: `Header line "${trimmed}" has an empty name.` };
+        }
+        headers[name] = value;
+    }
+    return { headers };
+}
 
 // Live estimate: recompute whenever targeting or frequency changes
 ['change', 'click', 'input'].forEach(evt => {
@@ -181,6 +201,13 @@ function updateExpectationVisibility() {
         el.style.display = (type === 5) ? '' : 'none');
 }
 
+// Same for the edit modal, driven by its own type select
+function updateEditExpectationVisibility() {
+    const type = parseInt(document.getElementById('editType').value);
+    document.querySelectorAll('#editTestModal .http-expectation').forEach(el =>
+        el.style.display = (type === 2 || type === 3) ? '' : 'none');
+}
+
 function getSelectedNodeIds() {
     return Array.from(document.querySelectorAll('.node-checkbox:checked')).map(cb => cb.value);
 }
@@ -244,11 +271,46 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
 
     const ipVersion = parseInt(document.getElementById("testIpVersion").value);
 
+    // HTTP-only extras: body regex, headers, proxy, cache busting
+    let expectedBodyPattern = null;
+    let headers = null;
+    let proxyUrl = null;
+    let cacheBust = false;
+    if (type === 2 || type === 3) {
+        expectedBodyPattern = document.getElementById('expectedBodyPattern').value.trim() || null;
+        if (expectedBodyPattern) {
+            try {
+                new RegExp(expectedBodyPattern);
+            } catch (error) {
+                showFormError('Body pattern is not a valid regular expression.');
+                return null;
+            }
+        }
+
+        const parsed = parseHeaders(document.getElementById('testHeaders').value);
+        if (parsed.error) {
+            showFormError(parsed.error);
+            return null;
+        }
+        headers = Object.keys(parsed.headers).length > 0 ? parsed.headers : null;
+
+        proxyUrl = document.getElementById('proxyUrl').value.trim() || null;
+        if (proxyUrl && !/^https?:\/\/.+/.test(proxyUrl)) {
+            showFormError('Proxy must be an absolute http:// or https:// URL.');
+            return null;
+        }
+        cacheBust = document.getElementById('cacheBust').checked;
+    }
+
     return {
         name, target, type, frequency, isActive, nodeIds, poolIds, ipVersion, timeoutSeconds,
         expectedStatusCodes,
         checkCertExpiryDays,
-        expectedDnsResult: document.getElementById('expectedDnsResult').value.trim() || null
+        expectedDnsResult: document.getElementById('expectedDnsResult').value.trim() || null,
+        expectedBodyPattern,
+        headers,
+        proxyUrl,
+        cacheBust
     };
 }
 
@@ -283,31 +345,42 @@ function estimateTooltip(test) {
 function renderTests() {
     if (tests.length === 0) {
         noTestsMessage.style.display = 'block';
-        testsTable.style.display = 'none';
+        testsList.style.display = 'none';
         return;
     }
 
     noTestsMessage.style.display = 'none';
-    testsTable.style.display = 'table';
+    testsList.style.display = 'block';
 
-    testsTableBody.innerHTML = tests.map(test => `
-        <tr>
-            <td title="${test.id}">${test.id.substring(0, 8)}</td>
-            <td>${escapeHtml(test.name)}</td>
-            <td>${testTypeMap[test.type] || test.type}</td>
-            <td><code>${escapeHtml(test.target)}</code></td>
-            <td>${formatFrequencyLabel(test.frequency)}${test.ipVersion ? ' <span class="text-muted">(' + (ipVersionMap[test.ipVersion] || '') + ')</span>' : ''}</td>
-            <td title="${estimateTooltip(test)}">${estimateShort(test)}</td>
-            <td>
+    testsList.innerHTML = tests.map(test => `
+        <div class="row g-2 g-lg-3 list-row px-3">
+            <div class="col-12 col-lg-4">
+                <div class="fw-semibold">${escapeHtml(test.name)}</div>
+                <div class="text-muted small" title="${test.id}"><code class="small">${escapeHtml(test.target)}</code></div>
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Type</div>
+                ${testTypeMap[test.type] || test.type}
+            </div>
+            <div class="col-6 col-lg-2">
+                <div class="field-label">Frequency</div>
+                ${formatFrequencyLabel(test.frequency)}${test.ipVersion ? ' <span class="text-muted">(' + (ipVersionMap[test.ipVersion] || '') + ')</span>' : ''}
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Est. checks</div>
+                <span title="${estimateTooltip(test)}">${estimateShort(test)}</span>
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">State</div>
                 <span class="badge ${test.isActive ? 'bg-success' : 'bg-secondary'}">${test.isActive ? 'Active' : 'Inactive'}</span>
-            </td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="openTestEdit('${test.id}')">Edit</button>
-                <button class="btn btn-sm ${test.isActive ? 'btn-outline-warning' : 'btn-outline-success'} me-1" onclick="toggleTest('${test.id}')">${test.isActive ? 'Disable' : 'Enable'}</button>
-                <button class="btn btn-sm btn-success me-1" onclick="triggerRun('${test.id}')">Run</button>
-                <button class="btn btn-sm btn-danger" onclick="deleteTest('${test.id}')">Delete</button>
-            </td>
-        </tr>
+            </div>
+            <div class="col-12 col-lg-3 d-flex flex-wrap align-items-end justify-content-lg-end">
+                <button class="btn btn-sm btn-outline-primary me-1 mb-1" onclick="openTestEdit('${test.id}')">Edit</button>
+                <button class="btn btn-sm ${test.isActive ? 'btn-outline-warning' : 'btn-outline-success'} me-1 mb-1" onclick="toggleTest('${test.id}')">${test.isActive ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-sm btn-success me-1 mb-1" onclick="triggerRun('${test.id}')">Run</button>
+                <button class="btn btn-sm btn-danger mb-1" onclick="deleteTest('${test.id}')">Delete</button>
+            </div>
+        </div>
     `).join('');
 }
 
@@ -328,7 +401,11 @@ async function createTest() {
             checkCertificateExpiryDays: values.checkCertExpiryDays,
             expectedDnsResult: values.expectedDnsResult,
             ipVersion: values.ipVersion,
-            timeoutSeconds: values.timeoutSeconds
+            timeoutSeconds: values.timeoutSeconds,
+            expectedBodyPattern: values.expectedBodyPattern,
+            headers: values.headers,
+            proxyUrl: values.proxyUrl,
+            cacheBust: values.cacheBust
         });
 
         // Reset form
@@ -341,6 +418,10 @@ async function createTest() {
         document.getElementById('expectedStatusCodes').value = '200-399';
         document.getElementById('checkCertExpiryDays').value = '';
         document.getElementById('expectedDnsResult').value = '';
+        document.getElementById('expectedBodyPattern').value = '';
+        document.getElementById('testHeaders').value = '';
+        document.getElementById('proxyUrl').value = '';
+        document.getElementById('cacheBust').checked = false;
         document.querySelectorAll('.node-checkbox:checked, .pool-checkbox:checked').forEach(cb => cb.checked = false);
         updateExpectationVisibility();
 
@@ -377,7 +458,11 @@ async function runOnRandomNode() {
             checkCertificateExpiryDays: values.checkCertExpiryDays,
             expectedDnsResult: values.expectedDnsResult,
             ipVersion: values.ipVersion,
-            timeoutSeconds: values.timeoutSeconds
+            timeoutSeconds: values.timeoutSeconds,
+            expectedBodyPattern: values.expectedBodyPattern,
+            headers: values.headers,
+            proxyUrl: values.proxyUrl,
+            cacheBust: values.cacheBust
         });
 
         const finished = await pollJob(job.id, 75);
@@ -434,8 +519,15 @@ function openTestEditModal(test) {
     document.getElementById('editExpectedStatusCodes').value = test.expectedStatusCodes || '200-399';
     document.getElementById('editCertExpiryDays').value = test.checkCertificateExpiryDays ?? '';
     document.getElementById('editExpectedDnsResult').value = test.expectedDnsResult || '';
+    document.getElementById('editExpectedBodyPattern').value = test.expectedBodyPattern || '';
+    document.getElementById('editTestHeaders').value = Object.entries(test.headers || {})
+        .map(([name, value]) => `${name}: ${value}`)
+        .join('\n');
+    document.getElementById('editProxyUrl').value = test.proxyUrl || '';
+    document.getElementById('editCacheBust').checked = !!test.cacheBust;
     document.getElementById('editIsActive').checked = test.isActive;
     document.getElementById('editError').style.display = 'none';
+    updateEditExpectationVisibility();
 
     document.getElementById('editNodeList').innerHTML = nodes.map(node => `
         <div class="form-check">
@@ -474,6 +566,7 @@ async function saveTestEdit() {
     const timeoutSeconds = parseInt(document.getElementById('editTimeout').value);
     const nodeIds = Array.from(document.querySelectorAll('.edit-node-checkbox:checked')).map(cb => cb.value);
     const poolIds = Array.from(document.querySelectorAll('.edit-pool-checkbox:checked')).map(cb => cb.value);
+    const type = parseInt(document.getElementById('editType').value);
 
     const error = document.getElementById('editError');
     if (!name) { error.textContent = 'Name is required.'; error.style.display = 'block'; return; }
@@ -481,9 +574,43 @@ async function saveTestEdit() {
     if (isNaN(timeoutSeconds) || timeoutSeconds < 1) { error.textContent = 'Timeout must be at least 1 second.'; error.style.display = 'block'; return; }
     if (nodeIds.length === 0 && poolIds.length === 0) { error.textContent = 'Select at least one node or pool.'; error.style.display = 'block'; return; }
 
+    // HTTP-only extras, read from the modal's own fields
+    let expectedBodyPattern = null;
+    let headers = null;
+    let proxyUrl = null;
+    let cacheBust = false;
+    if (type === 2 || type === 3) {
+        expectedBodyPattern = document.getElementById('editExpectedBodyPattern').value.trim() || null;
+        if (expectedBodyPattern) {
+            try {
+                new RegExp(expectedBodyPattern);
+            } catch (regexError) {
+                error.textContent = 'Body pattern is not a valid regular expression.';
+                error.style.display = 'block';
+                return;
+            }
+        }
+
+        const parsed = parseHeaders(document.getElementById('editTestHeaders').value);
+        if (parsed.error) {
+            error.textContent = parsed.error;
+            error.style.display = 'block';
+            return;
+        }
+        headers = Object.keys(parsed.headers).length > 0 ? parsed.headers : null;
+
+        proxyUrl = document.getElementById('editProxyUrl').value.trim() || null;
+        if (proxyUrl && !/^https?:\/\/.+/.test(proxyUrl)) {
+            error.textContent = 'Proxy must be an absolute http:// or https:// URL.';
+            error.style.display = 'block';
+            return;
+        }
+        cacheBust = document.getElementById('editCacheBust').checked;
+    }
+
     try {
         await apiCall('PUT', `/v1/tests/${editingTest.id}`, {
-            type: parseInt(document.getElementById('editType').value),
+            type,
             target,
             nodeIds,
             poolIds,
@@ -495,7 +622,11 @@ async function saveTestEdit() {
                 : parseInt(document.getElementById('editCertExpiryDays').value),
             expectedDnsResult: document.getElementById('editExpectedDnsResult').value.trim() || null,
             ipVersion: parseInt(document.getElementById('editIpVersion').value),
-            timeoutSeconds
+            timeoutSeconds,
+            expectedBodyPattern,
+            headers,
+            proxyUrl,
+            cacheBust
         });
 
         editTestModal.hide();

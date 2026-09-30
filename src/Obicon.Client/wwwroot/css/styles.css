@@ -53,3 +53,24 @@ code, .text-break-all {
 .table {
     --bs-table-bg: #fff;
 }
+
+/*
+ * List pages are Bootstrap grid rows (row/col-*), not tables: each record is a
+ * .list-row of labeled fields that align on large screens and stack on small ones.
+ */
+.list-row {
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+.list-row:last-child {
+    border-bottom: 0;
+}
+
+/* Field label above its value; the value itself never wraps unless it says so */
+.list-row .field-label {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    margin-bottom: 0.15rem;
+}

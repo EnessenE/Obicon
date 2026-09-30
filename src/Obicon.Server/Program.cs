@@ -109,6 +109,8 @@ app.MapHealthChecks("/v1/health", new HealthCheckOptions
 });
 app.MapPrometheusScrapingEndpoint();
 
+app.Logger.LogInformation("Obicon Server v{Version} starting", ServerInfo.Version);
+
 app.Run();
 
 public partial class Program { }

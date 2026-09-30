@@ -31,6 +31,7 @@ dotnet run --project src/Obicon.Node
 | `MetricsHost` / `MetricsPort` | `localhost` / `9464` | Prometheus metrics listener |
 | `EnrollToken` | *(empty)* | Enroll token for auto-enrollment |
 | `Labels` / `Pools` | *(empty)* | Self-managed labels and pool names (used at enrollment) |
+| `AllowUnsupportedServerVersion` | `false` | Stay connected to a server outside the supported version range |
 
 Endpoints the node exposes:
 
@@ -43,9 +44,13 @@ Endpoints the node exposes:
 
 **Auto-enrollment:** enable the `NodeAutoEnrollmentEnabled` setting on the server, create an enroll token on the settings page, then start the node with `Node__EnrollToken` instead of `Node__Token`. The node registers itself (creating or updating its identity in the local `node-identity.json`), manages its own name, labels, and pools, and receives its auth token automatically. Enroll tokens expire and can be revoked.
 
+## Version compatibility
+
+On every connection the node logs the server's version and a notice whenever it changes. A server is supported while it shares the node's major and minor version (node 0.2.x supports server 0.2.y). An unsupported server connection is closed; set `Node:AllowUnsupportedServerVersion` to continue anyway. The server mirrors this gate with its own `AllowUnsupportedNodeVersions` setting.
+
 ## Test execution
 
-The node runs one task per assigned test, capped at `MaxConcurrentTests`. Each run is hard-killed at its timeout plus 5 seconds. Supported types: ping, traceroute, HTTP, HTTPS, TCP, DNS — including expected status codes, TLS certificate expiry checks, and DNS result expectations (evaluated on the node).
+The node runs one task per assigned test, capped at `MaxConcurrentTests`. Each run is hard-killed at its timeout plus 5 seconds. Supported types: ping, traceroute, HTTP, HTTPS, TCP, DNS — including expected status codes, body regex checks, custom headers, proxies, and cache busting for HTTP(S), TLS certificate expiry checks, and DNS result expectations (evaluated on the node).
 
 On Linux, ping and traceroute need raw-socket privileges: grant `cap_net_raw` to the binary or run with `sudo`.
 

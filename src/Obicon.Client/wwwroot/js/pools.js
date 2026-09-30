@@ -3,10 +3,10 @@ let pools = [];
 let allNodes = [];
 let editingPool = null;
 let membersModal = null;
+let editPoolModal = null;
 
 // DOM elements
-const poolsTable = document.getElementById('poolsTable');
-const poolsTableBody = document.getElementById('poolsTableBody');
+const poolsList = document.getElementById('poolsList');
 const noPoolsMessage = document.getElementById('noPoolsMessage');
 const poolsError = document.getElementById('poolsError');
 const poolsRefreshSpinner = document.getElementById('poolsRefreshSpinner');
@@ -43,38 +43,89 @@ async function loadAll() {
 function renderPools() {
     if (pools.length === 0) {
         noPoolsMessage.style.display = 'block';
-        poolsTable.style.display = 'none';
+        poolsList.style.display = 'none';
         return;
     }
 
     noPoolsMessage.style.display = 'none';
-    poolsTable.style.display = 'table';
+    poolsList.style.display = 'block';
 
-    poolsTableBody.innerHTML = pools.map(pool => `
-        <tr>
-            <td>${escapeHtml(pool.name)}</td>
-            <td>${pool.nodeIds.length} node${pool.nodeIds.length === 1 ? '' : 's'}</td>
-            <td>
+    poolsList.innerHTML = pools.map(pool => `
+        <div class="row g-2 g-lg-3 list-row px-3">
+            <div class="col-12 col-lg-3">
+                <div class="fw-semibold">${escapeHtml(pool.name)}</div>
+                <div class="text-muted small">Created ${new Date(pool.createdAt).toLocaleString()}</div>
+            </div>
+            <div class="col-12 col-lg-5">
+                <div class="field-label">Description</div>
+                <span class="text-muted">${escapeHtml(pool.description || '-')}</span>
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Nodes</div>
+                ${pool.nodeIds.length} node${pool.nodeIds.length === 1 ? '' : 's'}
+            </div>
+            <div class="col-6 col-lg-3 d-flex align-items-end justify-content-end">
                 <button class="btn btn-sm btn-primary me-1" onclick="openMembersModal('${pool.id}')">Nodes</button>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditPoolModal('${pool.id}')">Edit</button>
                 <button class="btn btn-sm btn-danger" onclick="deletePool('${pool.id}')">Delete</button>
-            </td>
-        </tr>
+            </div>
+        </div>
     `).join('');
 }
 
 async function createPool() {
     const name = document.getElementById('newPoolName').value.trim();
+    const description = document.getElementById('newPoolDescription').value.trim();
     if (!name) {
         showPoolsError('Pool name is required.');
         return;
     }
 
     try {
-        await apiCall('POST', '/v1/pools', { name });
+        await apiCall('POST', '/v1/pools', { name, description });
         document.getElementById('newPoolName').value = '';
+        document.getElementById('newPoolDescription').value = '';
         await loadAll();
     } catch (error) {
         showPoolsError(error.message);
+    }
+}
+
+function openEditPoolModal(poolId) {
+    editingPool = pools.find(p => p.id === poolId);
+    if (!editingPool) return;
+
+    document.getElementById('editPoolName').value = editingPool.name;
+    document.getElementById('editPoolDescription').value = editingPool.description || '';
+    document.getElementById('editPoolError').style.display = 'none';
+
+    if (!editPoolModal) {
+        editPoolModal = new bootstrap.Modal(document.getElementById('editPoolModal'));
+    }
+    editPoolModal.show();
+}
+
+async function savePoolEdit() {
+    if (!editingPool) return;
+
+    const name = document.getElementById('editPoolName').value.trim();
+    const description = document.getElementById('editPoolDescription').value.trim();
+
+    if (!name) {
+        const error = document.getElementById('editPoolError');
+        error.textContent = 'Pool name is required.';
+        error.style.display = 'block';
+        return;
+    }
+
+    try {
+        await apiCall('PUT', `/v1/pools/${editingPool.id}`, { name, description });
+        editPoolModal.hide();
+        await loadAll();
+    } catch (error) {
+        const errorDiv = document.getElementById('editPoolError');
+        errorDiv.textContent = error.message;
+        errorDiv.style.display = 'block';
     }
 }
 

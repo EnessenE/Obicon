@@ -33,6 +33,13 @@ public class EnrollTokenService : IEnrollTokenService
 
     public async Task<EnrollTokenResponse> CreateAsync(CreateEnrollTokenRequest request)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        if (request.PoolId is { } poolId && !await db.NodePools.AnyAsync(p => p.Id == poolId))
+        {
+            throw new ArgumentException($"Unknown pool ID: {poolId}");
+        }
+
         var plainToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var token = new EnrollToken
         {
@@ -43,14 +50,15 @@ public class EnrollTokenService : IEnrollTokenService
             TokenHash = Hash(plainToken),
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = request.ExpiresAt,
-            RevokedAt = null
+            RevokedAt = null,
+            PoolId = request.PoolId
         };
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
         db.EnrollTokens.Add(token);
         await db.SaveChangesAsync();
 
-        _logger.LogInformation("Created enroll token {TokenId} ({TokenName})", token.Id, token.Name);
+        _logger.LogInformation("Created enroll token {TokenId} ({TokenName}){Scope}",
+            token.Id, token.Name, token.PoolId is { } pid ? $" scoped to pool {pid}" : string.Empty);
         Metrics.ServerMetrics.Action("created_enroll_token");
 
         var response = EnrollTokenResponse.From(token);

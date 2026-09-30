@@ -54,5 +54,5 @@ builder.Services.AddHostedService<MonitoringService>();
 
 var host = builder.Build();
 host.Services.GetRequiredService<ILogger<Program>>().LogInformation(
-    "Obicon Node starting; metrics on http://{MetricsHost}:{MetricsPort}/metrics", metricsHost, metricsPort);
+    "Obicon Node v{Version} starting; metrics on http://{MetricsHost}:{MetricsPort}/metrics", NodeInfo.Version, metricsHost, metricsPort);
 await host.RunAsync();

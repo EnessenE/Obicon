@@ -44,6 +44,22 @@ public class ObiconDbContext : DbContext
     {
     }
 
+    /// <summary>
+    /// Rows created before the Headers column existed may hold a JSON array default
+    /// (e.g. '[]' from an earlier schema migration); fall back to an empty dictionary.
+    /// </summary>
+    private static Dictionary<string, string> DeserializeHeaders(string v)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, string>();
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>();
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var guidListConverter = new ValueConverter<List<Guid>, string>(
@@ -53,6 +69,10 @@ public class ObiconDbContext : DbContext
         var stringListConverter = new ValueConverter<List<string>, string>(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
             v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>());
+
+        var stringDictionaryConverter = new ValueConverter<Dictionary<string, string>, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => DeserializeHeaders(v));
 
         var testResultConverter = new ValueConverter<TestResult?, string>(
             v => v == null ? string.Empty : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
@@ -86,12 +106,24 @@ public class ObiconDbContext : DbContext
             .Property(t => t.PoolIds)
             .HasConversion(guidListConverter);
 
+        modelBuilder.Entity<Test>()
+            .Property(t => t.Headers)
+            .HasConversion(stringDictionaryConverter);
+
+        modelBuilder.Entity<TestJob>()
+            .Property(j => j.Headers)
+            .HasConversion(stringDictionaryConverter);
+
         modelBuilder.Entity<TestJob>()
             .Property(j => j.Result)
             .HasConversion(testResultConverter);
 
         modelBuilder.Entity<TestJob>()
             .HasIndex(j => new { j.NodeId, j.Status });
+
+        modelBuilder.Entity<Node>()
+            .Property(n => n.Settings)
+            .HasConversion(stringDictionaryConverter);
 
         modelBuilder.Entity<Node>().Property(n => n.CreatedAt).HasConversion(utcConverter);
         modelBuilder.Entity<Node>().Property(n => n.LastSeenAt).HasConversion(nullableUtcConverter);

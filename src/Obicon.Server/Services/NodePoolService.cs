@@ -23,6 +23,7 @@ public class NodePoolService : INodePoolService
         {
             Id = Guid.NewGuid(),
             Name = request.Name,
+            Description = request.Description ?? string.Empty,
             NodeIds = new List<Guid>(),
             CreatedAt = DateTime.UtcNow
         };
@@ -60,9 +61,10 @@ public class NodePoolService : INodePoolService
         }
 
         pool.Name = request.Name;
+        pool.Description = request.Description ?? string.Empty;
         await db.SaveChangesAsync();
 
-        _logger.LogInformation("Renamed pool {PoolId} to {PoolName}", id, pool.Name);
+        _logger.LogInformation("Updated pool {PoolId}: name {PoolName}", id, pool.Name);
         return PoolResponse.From(pool);
     }
 

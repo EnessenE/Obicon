@@ -24,6 +24,12 @@ public class NodeIdentityStore
     /// </summary>
     public string? AuthToken { get; private set; }
 
+    /// <summary>
+    /// Server version seen on the last connection, e.g. "0.2.0". Null when never connected.
+    /// Used to log a notice when the server is upgraded or downgraded.
+    /// </summary>
+    public string? LastServerVersion { get; private set; }
+
     public NodeIdentityStore(string path = "node-identity.json")
     {
         _path = path;
@@ -54,7 +60,42 @@ public class NodeIdentityStore
     {
         NodeId = nodeId;
         AuthToken = authToken;
-        File.WriteAllText(_path, JsonSerializer.Serialize(new { NodeId = nodeId, AuthToken = authToken }, JsonOptions));
+        File.WriteAllText(_path, JsonSerializer.Serialize(new
+        {
+            NodeId = nodeId,
+            AuthToken = authToken,
+            LastServerVersion = LastServerVersion
+        }, JsonOptions));
+    }
+
+    /// <summary>
+    /// Remembers the server version seen on the last connection so a change can be logged.
+    /// </summary>
+    public void SaveServerVersion(string serverVersion)
+    {
+        LastServerVersion = serverVersion;
+
+        // The identity file may not exist on manually registered nodes; only rewrite it when it does
+        if (!File.Exists(_path))
+        {
+            return;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(_path));
+            var json = JsonSerializer.Serialize(new
+            {
+                NodeId = document.RootElement.TryGetProperty("NodeId", out var id) ? id.GetString() : null,
+                AuthToken = document.RootElement.TryGetProperty("AuthToken", out var token) ? token.GetString() : null,
+                LastServerVersion = serverVersion
+            }, JsonOptions);
+            File.WriteAllText(_path, json);
+        }
+        catch (Exception)
+        {
+            // best effort: the version notice is not worth failing the connection over
+        }
     }
 
     private void Load()
@@ -69,6 +110,7 @@ public class NodeIdentityStore
             using var document = JsonDocument.Parse(File.ReadAllText(_path));
             NodeId = document.RootElement.TryGetProperty("NodeId", out var id) ? id.GetString() : null;
             AuthToken = document.RootElement.TryGetProperty("AuthToken", out var token) ? token.GetString() : null;
+            LastServerVersion = document.RootElement.TryGetProperty("LastServerVersion", out var version) ? version.GetString() : null;
         }
         catch (Exception)
         {

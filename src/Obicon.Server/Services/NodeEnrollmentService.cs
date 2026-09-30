@@ -49,6 +49,13 @@ public class NodeEnrollmentService : INodeEnrollmentService
         var labels = request.Labels.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
         var poolIds = await ResolveOrCreatePoolsAsync(db, request.Pools);
 
+        // A pool-scoped token always puts the enrolled node into its pool,
+        // on top of the pools the node asked for itself
+        if (enrollToken.PoolId is { } tokenPoolId && !poolIds.Contains(tokenPoolId))
+        {
+            poolIds.Add(tokenPoolId);
+        }
+
         Node? node;
         string? plainToken = null;
         if (request.NodeId is { } nodeId)

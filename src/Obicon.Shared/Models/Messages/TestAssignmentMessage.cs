@@ -63,4 +63,32 @@ public class TestAssignmentMessage
     /// </summary>
     [JsonPropertyName("IpVersion")]
     public IpVersion IpVersion { get; set; } = IpVersion.Any;
+
+    /// <summary>
+    /// HTTP/HTTPS: when set, the response body must match this regular expression
+    /// or the run fails. Null disables the check. Default: null.
+    /// </summary>
+    [JsonPropertyName("ExpectedBodyPattern")]
+    public string? ExpectedBodyPattern { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: custom headers sent with the request, e.g. authentication headers.
+    /// Default: empty dictionary.
+    /// </summary>
+    [JsonPropertyName("Headers")]
+    public Dictionary<string, string>? Headers { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: URL of an HTTP proxy the request goes through, e.g. "http://proxy:8080".
+    /// Null connects directly. Default: null.
+    /// </summary>
+    [JsonPropertyName("ProxyUrl")]
+    public string? ProxyUrl { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: when true, a unique query parameter is appended to the request URL
+    /// so caches serve a fresh response. Default: false.
+    /// </summary>
+    [JsonPropertyName("CacheBust")]
+    public bool CacheBust { get; set; }
 }

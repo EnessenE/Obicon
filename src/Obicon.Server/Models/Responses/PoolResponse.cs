@@ -16,6 +16,11 @@ public class PoolResponse
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
+    /// Free-form description of the pool. Default: empty string.
+    /// </summary>
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>
     /// IDs of the nodes in this pool. Default: empty list.
     /// </summary>
     public List<Guid> NodeIds { get; set; } = new();
@@ -33,6 +38,7 @@ public class PoolResponse
     {
         Id = pool.Id,
         Name = pool.Name,
+        Description = pool.Description,
         NodeIds = pool.NodeIds,
         CreatedAt = pool.CreatedAt
     };

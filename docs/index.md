@@ -25,11 +25,13 @@ Obicon is a self-hosted synthetic API testing solution. A central server schedul
 
 ## Feature summary
 
-- Six test types with per-test timeout, IP version selection, and expectations (HTTP status codes, TLS certificate expiry, DNS results)
-- Tests target individual nodes and/or node pools; nodes carry labels
+- Six test types with per-test timeout, IP version selection, and expectations: HTTP status codes, response body regex, custom headers, proxies, and cache busting for HTTP(S); TLS certificate expiry; DNS results
+- Tests target individual nodes and/or node pools; nodes carry labels, and pools have descriptions
 - Frequency-based scheduling from configurable presets, with catch-up-free recovery after downtime
 - Job queue with NoRun detection (node never acknowledged, never started, or never came online)
-- Node management: manual token flow or self-enrollment with expiring enroll tokens
+- Node management: manual token flow or self-enrollment with expiring enroll tokens, optionally scoped to a pool
+- Version compatibility between server and nodes (same major.minor), overridable by feature flags on both sides
+- Node info at a glance: version and connection IP on the nodes page
 - Server settings resolved in three layers (forced by config → database override → default), editable from the UI
 - OpenTelemetry metrics exported for Prometheus on the server and each node
 

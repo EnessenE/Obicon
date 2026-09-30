@@ -71,7 +71,8 @@ public class ServerSettingsService : IServerSettingsService
                 Value = value,
                 IsForced = forced,
                 IsReadOnly = definition.IsReadOnly,
-                Source = source
+                Source = source,
+                Group = definition.Group
             };
         });
     }
@@ -120,7 +121,8 @@ public class ServerSettingsService : IServerSettingsService
             Description = definition.Description,
             Value = value,
             IsForced = false,
-            Source = "Database"
+            Source = "Database",
+            Group = definition.Group
         };
     }
 

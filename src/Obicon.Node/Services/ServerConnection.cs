@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
+using Obicon.Shared;
 using Obicon.Shared.Models.Messages;
 using Obicon.Shared.Models.Enums;
 
@@ -186,7 +187,17 @@ public class ServerConnection : BackgroundService, IServerConnection
             await SendAsync(new WebSocketMessage
             {
                 Type = MessageType.NodeRegistration,
-                Data = new NodeRegistrationMessage { NodeId = string.Empty, NodeName = nodeName }
+                Data = new NodeRegistrationMessage
+                {
+                    NodeId = string.Empty,
+                    NodeName = nodeName,
+                    NodeVersion = NodeInfo.Version,
+                    MaxConcurrentTests = Math.Max(1, _settings.MaxConcurrentTests),
+                    HeartbeatIntervalSeconds = Math.Max(1, _settings.HeartbeatIntervalSeconds),
+                    DefaultTestTimeoutSeconds = Math.Max(1, _settings.DefaultTestTimeoutSeconds),
+                    MaxTestTimeoutSeconds = Math.Max(1, _settings.MaxTestTimeoutSeconds),
+                    ReconnectDelaySeconds = Math.Max(1, _settings.ReconnectDelaySeconds)
+                }
             });
 
             using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -220,6 +231,68 @@ public class ServerConnection : BackgroundService, IServerConnection
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Handles the server's hello message: logs the server version (and a notice when it
+    /// changed since the last connection), then checks compatibility. An unsupported server
+    /// version closes the connection unless AllowUnsupportedServerVersion is enabled.
+    /// </summary>
+    private async Task HandleServerHelloAsync(ServerHelloMessage? hello)
+    {
+        var serverVersion = hello?.ServerVersion;
+        if (string.IsNullOrWhiteSpace(serverVersion))
+        {
+            _logger.LogWarning("Server hello did not include a version; skipping the compatibility check");
+            return;
+        }
+
+        var previous = _identityStore.LastServerVersion;
+        if (previous == null)
+        {
+            _logger.LogInformation("Connected to Obicon server v{ServerVersion}", serverVersion);
+        }
+        else if (!string.Equals(previous, serverVersion, StringComparison.Ordinal))
+        {
+            _logger.LogInformation("Server version changed: v{PreviousVersion} is now v{ServerVersion}", previous, serverVersion);
+        }
+        else
+        {
+            _logger.LogDebug("Server version unchanged: v{ServerVersion}", serverVersion);
+        }
+        _identityStore.SaveServerVersion(serverVersion);
+
+        // Supported servers are within the same major.minor version as this node
+        if (ObiconVersions.IsSupported(serverVersion, NodeInfo.Version))
+        {
+            return;
+        }
+
+        if (_settings.AllowUnsupportedServerVersion)
+        {
+            _logger.LogWarning("Server v{ServerVersion} is outside this node's supported range (same major.minor as v{NodeVersion}); AllowUnsupportedServerVersion is enabled, continuing anyway",
+                serverVersion, NodeInfo.Version);
+            return;
+        }
+
+        _logger.LogError("Server v{ServerVersion} is not supported by this node (v{NodeVersion}, same major.minor required). Disconnecting; upgrade the node or the server, or set Node:AllowUnsupportedServerVersion to continue anyway",
+            serverVersion, NodeInfo.Version);
+
+        var socket = _socket;
+        if (socket != null)
+        {
+            try
+            {
+                using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Server version not supported", closeCts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Close handshake after unsupported server version failed");
+            }
+        }
+
+        _socket = null;
     }
 
     private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
@@ -292,6 +365,10 @@ public class ServerConnection : BackgroundService, IServerConnection
 
         switch (message.Type)
         {
+            case MessageType.ServerHello when message.Data is JsonElement helloElement:
+                await HandleServerHelloAsync(helloElement.Deserialize<ServerHelloMessage>());
+                break;
+
             case MessageType.TestAssignment when message.Data is JsonElement element:
                 var assignment = element.Deserialize<TestAssignmentMessage>();
                 if (assignment == null)

@@ -144,6 +144,32 @@ public class NodeService : INodeService
         }
     }
 
+    public async Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, string? ipAddress, Dictionary<string, string>? settings)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var node = await db.Nodes.FindAsync(nodeId);
+        if (node == null)
+        {
+            return;
+        }
+
+        var reportedSettings = settings ?? new Dictionary<string, string>();
+        var changed = node.Version != version ||
+                      node.IpAddress != ipAddress ||
+                      !node.Settings.OrderBy(kv => kv.Key).SequenceEqual(reportedSettings.OrderBy(kv => kv.Key));
+        if (!changed)
+        {
+            return;
+        }
+
+        node.Version = version;
+        node.IpAddress = ipAddress;
+        node.Settings = reportedSettings;
+        await db.SaveChangesAsync();
+
+        _logger.LogInformation("Node {NodeId} connection info updated: version={Version} ip={IpAddress}", nodeId, version, ipAddress);
+    }
+
     private static NodeResponse ToResponse(Node node) => new()
     {
         Id = node.Id,
@@ -154,6 +180,9 @@ public class NodeService : INodeService
         CreatedAt = node.CreatedAt,
         LastSeenAt = node.LastSeenAt,
         Labels = node.Labels,
-        EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual"
+        EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual",
+        Version = node.Version,
+        IpAddress = node.IpAddress,
+        Settings = node.Settings
     };
 }

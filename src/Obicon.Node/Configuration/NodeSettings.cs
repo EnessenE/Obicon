@@ -82,4 +82,10 @@ public class NodeSettings
     /// Names of pools this node puts itself into when enrolling. Default: empty list.
     /// </summary>
     public List<string> Pools { get; set; } = new();
+
+    /// <summary>
+    /// If enabled, this node stays connected even when the server reports a version outside
+    /// the supported range (same major.minor as the node). Default: false.
+    /// </summary>
+    public bool AllowUnsupportedServerVersion { get; set; }
 }

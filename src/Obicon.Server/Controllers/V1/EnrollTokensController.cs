@@ -22,8 +22,15 @@ public class EnrollTokensController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateEnrollTokenRequest request)
     {
-        var token = await _enrollTokenService.CreateAsync(request);
-        return CreatedAtAction(nameof(GetAll), new { id = token.Id }, token);
+        try
+        {
+            var token = await _enrollTokenService.CreateAsync(request);
+            return CreatedAtAction(nameof(GetAll), new { id = token.Id }, token);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
     }
 
     /// <summary>

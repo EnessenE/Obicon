@@ -14,4 +14,5 @@ public interface INodeService
     Task<bool> ValidateNodeTokenAsync(string token);
     Task<Node?> GetNodeByTokenAsync(string token);
     Task UpdateNodeLastSeenAsync(Guid nodeId);
+    Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, string? ipAddress, Dictionary<string, string>? settings);
 }

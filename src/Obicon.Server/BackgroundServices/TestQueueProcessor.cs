@@ -96,7 +96,11 @@ public class TestQueueProcessor : BackgroundService
                     ExpectedStatusCodes = job.ExpectedStatusCodes,
                     CheckCertificateExpiryDays = job.CheckCertificateExpiryDays,
                     ExpectedDnsResult = job.ExpectedDnsResult,
-                    IpVersion = job.IpVersion
+                    IpVersion = job.IpVersion,
+                    ExpectedBodyPattern = job.ExpectedBodyPattern,
+                    Headers = job.Headers,
+                    ProxyUrl = job.ProxyUrl,
+                    CacheBust = job.CacheBust
                 }
             };
 
