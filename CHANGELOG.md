@@ -33,12 +33,13 @@ separate version; its changes are listed under the server release.
 
 ## [Node 0.2.0] - 2026-09-30
 
-- Reports its version on registration; logs the server version on startup and whenever it changes; disconnects from servers outside its supported range (same major.minor) unless `Node:AllowUnsupportedServerVersion` is enabled
+- Reports its version on registration; logs the server version on every connection or reconnection, plus a notice whenever it changes; disconnects from servers outside its supported range (same major.minor) unless `Node:AllowUnsupportedServerVersion` is enabled
 - Reports its operating settings (max concurrent tests, heartbeat interval, default and max test timeouts, reconnect delay) on registration, so the server can show what each node can do
 - Log shipping: a capture sink in the Serilog pipeline queues every log event and a background shipper sends the entries to the server as `NodeLog` messages with full metadata (node name, version, timestamp, level, message, exception, structured properties). Controlled by the server's observability settings, with node-side overrides (`Node:LogShippingEnabled`, `Node:LogShippingMinLevel`, `Node:LocalLoggingEnabled`); a server-side local-logging policy mutes only test-related output on the node's console (lifecycle logs stay visible) while shipping continues; every policy change is logged before it takes effect
 - Policy changes propagate live: `ServerPolicyUpdate` messages from the server apply new shipping and local-logging settings on the fly, without reconnecting; the node's local override still wins
 - Address reporting: the node resolves its internal (LAN) IPv4 and IPv6 addresses and its external (public) IPv4 and IPv6 addresses via configurable check services on an interval, logs changes, and pushes them to the server as `NodeInfoUpdate` messages; unavailable families are reported as such and current values also travel with every registration
 - HTTP/HTTPS test enhancements: body regex checks (with a 1-second match timeout), custom request headers, proxy support, and cache busting via a unique query parameter
+- TLS required by default (`Node:RequireTls`): plain `ws://` connections are refused unless the host is loopback or the setting is overridden
 
 ## [Server 0.1.0] - 2026-09-29
 

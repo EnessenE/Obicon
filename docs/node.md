@@ -20,6 +20,7 @@ dotnet run --project src/Obicon.Node
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `ServerUrl` | `ws://localhost:5000/ws/nodes` | Server WebSocket URL |
+| `RequireTls` | `true` | Require `wss://`; plain `ws://` is refused unless the host is loopback. Set to `false` to override |
 | `Token` | *(empty)* | Node auth token (skip if enrolling) |
 | `NodeName` | *(empty)* | Name shown in the UI |
 | `HeartbeatIntervalSeconds` | `1` | Heartbeat cadence |
@@ -62,7 +63,7 @@ Endpoints the node exposes:
 
 ## Version compatibility
 
-On every connection the node logs the server's version and a notice whenever it changes. A server is supported while it shares the node's major and minor version (node 0.2.x supports server 0.2.y). An unsupported server connection is closed; set `Node:AllowUnsupportedServerVersion` to continue anyway. The server mirrors this gate with its own `AllowUnsupportedNodeVersions` setting.
+On every connection (and reconnection) the node logs the server's version, plus a notice whenever it changed since the last connection. A server is supported while it shares the node's major and minor version (node 0.2.x supports server 0.2.y). An unsupported server connection is closed; set `Node:AllowUnsupportedServerVersion` to continue anyway. The server mirrors this gate with its own `AllowUnsupportedNodeVersions` setting.
 
 ## Test execution
 

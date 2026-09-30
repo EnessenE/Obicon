@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -90,6 +91,16 @@ public class ServerConnection : BackgroundService, IServerConnection
             return;
         }
 
+        // TLS is required by default: unencrypted ws:// is refused, except for
+        // loopback addresses (local development)
+        if (_settings.RequireTls && serverUri.Scheme == "ws" && !IsLoopbackHost(serverUri.Host))
+        {
+            _logger.LogError(
+                "ServerUrl '{ServerUrl}' is an unencrypted ws:// connection, but TLS is required by default. " +
+                "Use a wss:// URL, or set Node:RequireTls to false to override", _settings.ServerUrl);
+            return;
+        }
+
         if (_settings.HeartbeatIntervalSeconds < 1 || _settings.MaxConcurrentTests < 1 || _settings.DefaultTestTimeoutSeconds < 1)
         {
             _logger.LogWarning("HeartbeatIntervalSeconds, MaxConcurrentTests and DefaultTestTimeoutSeconds should be at least 1; they are clamped to 1");
@@ -140,6 +151,20 @@ public class ServerConnection : BackgroundService, IServerConnection
     private static bool IsUnauthorized(WebSocketException ex)
     {
         return ex.Message.Contains("401", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True for loopback targets (localhost or a loopback IP), which are exempt from
+    /// the TLS requirement so local development keeps working over ws://.
+    /// </summary>
+    private static bool IsLoopbackHost(string host)
+    {
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address);
     }
 
 
@@ -257,19 +282,14 @@ public class ServerConnection : BackgroundService, IServerConnection
             return;
         }
 
+        // The server version is logged on every (re)connection, plus an explicit
+        // notice when it changed since the last connection
         var previous = _identityStore.LastServerVersion;
-        if (previous == null)
-        {
-            _logger.LogInformation("Connected to Obicon server v{ServerVersion}", serverVersion);
-        }
-        else if (!string.Equals(previous, serverVersion, StringComparison.Ordinal))
+        if (previous != null && !string.Equals(previous, serverVersion, StringComparison.Ordinal))
         {
             _logger.LogInformation("Server version changed: v{PreviousVersion} is now v{ServerVersion}", previous, serverVersion);
         }
-        else
-        {
-            _logger.LogDebug("Server version unchanged: v{ServerVersion}", serverVersion);
-        }
+        _logger.LogInformation("Connected to Obicon server v{ServerVersion}", serverVersion);
         _identityStore.SaveServerVersion(serverVersion);
 
         // Observability policy from the server: log shipping gate and the

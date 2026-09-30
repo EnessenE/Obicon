@@ -12,6 +12,13 @@ public class NodeSettings
     public string ServerUrl { get; set; } = "ws://localhost:5000/ws/nodes";
 
     /// <summary>
+    /// If enabled, the server URL must use wss:// (TLS): a plain ws:// URL is refused
+    /// with an error. Override to false to allow unencrypted connections, e.g. in
+    /// development. Default: true.
+    /// </summary>
+    public bool RequireTls { get; set; } = true;
+
+    /// <summary>
     /// Authentication token of this node, created on the primary server. Default: empty string.
     /// </summary>
     public string Token { get; set; } = string.Empty;
