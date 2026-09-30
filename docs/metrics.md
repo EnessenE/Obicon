@@ -38,4 +38,4 @@ scrape_configs:
       - targets: ["node-1:9464", "node-2:9464"]
 ```
 
-Alert rules and ready-made dashboards are planned (tracked as Phase 14 in the project todo).
+A ready-made Grafana dashboard for these metrics lives in [`observability/obicon-dashboard.json`](../observability/obicon-dashboard.json).
