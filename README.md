@@ -1,5 +1,7 @@
 # Obicon
 
+<p align="center"><img src="assets/logo-512.png" alt="Obicon logo" width="200"></p>
+
 Self-hosted synthetic monitoring, built for observability. Lightweight nodes deployed anywhere run your tests (ping, traceroute, HTTP, HTTPS, TCP, DNS) and report back through a central server, and everything lands in your observability stack, no glue needed.
 
 ## Quick start

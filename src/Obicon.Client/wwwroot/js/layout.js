@@ -26,7 +26,7 @@
         navbar.innerHTML =
             '<nav class="navbar navbar-expand-lg sticky-top bg-dark" data-bs-theme="dark">' +
             '  <div class="container">' +
-            '    <a class="navbar-brand fw-semibold" href="/"><i class="bi bi-broadcast me-2 text-primary"></i>Obicon</a>' +
+            '    <a class="navbar-brand fw-semibold" href="/"><img src="/logo-32-inverted.png" alt="" width="24" height="24" class="me-2">Obicon</a>' +
             '    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"' +
             '            aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">' +
             '      <span class="navbar-toggler-icon"></span>' +
