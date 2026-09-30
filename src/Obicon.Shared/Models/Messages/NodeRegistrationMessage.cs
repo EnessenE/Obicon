@@ -45,4 +45,26 @@ public class NodeRegistrationMessage
     /// Delay this node waits before reconnecting after a disconnect, in seconds. Null when not reported.
     /// </summary>
     public int? ReconnectDelaySeconds { get; set; }
+
+    /// <summary>
+    /// The node's internal (LAN) IPv4 address at connection time. Null when unavailable.
+    /// </summary>
+    public string? InternalIpv4 { get; set; }
+
+    /// <summary>
+    /// The node's internal (LAN) IPv6 address at connection time. Null when unavailable.
+    /// </summary>
+    public string? InternalIpv6 { get; set; }
+
+    /// <summary>
+    /// The node's external (public internet) IPv4 address at connection time.
+    /// Null when the check has not succeeded yet.
+    /// </summary>
+    public string? ExternalIpv4 { get; set; }
+
+    /// <summary>
+    /// The node's external (public internet) IPv6 address at connection time.
+    /// Null when unavailable.
+    /// </summary>
+    public string? ExternalIpv6 { get; set; }
 }

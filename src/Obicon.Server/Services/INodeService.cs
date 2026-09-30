@@ -15,4 +15,5 @@ public interface INodeService
     Task<Node?> GetNodeByTokenAsync(string token);
     Task UpdateNodeLastSeenAsync(Guid nodeId);
     Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, string? ipAddress, Dictionary<string, string>? settings);
+    Task UpdateNodeReportedAddressesAsync(Guid nodeId, string? internalIpv4, string? internalIpv6, string? externalIpv4, string? externalIpv6);
 }
