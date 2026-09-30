@@ -10,6 +10,9 @@ No auth required. Scraped metrics:
 |--------|------|--------|---------|
 | `obicon.tests.runs` | counter | `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name` | Completed test runs, one label set per test and node |
 | `obicon.tests.duration_ms` | histogram | `test_type`, `test_id`, `test_name`, `node_id`, `node_name` | Test execution duration |
+| `obicon.tests.queue_jobs` | gauge | `status` (Queued, Assigned, Running, Completed, Failed, Timeout, NoRun) | Current test job count per status, sampled every 5 seconds |
+| `obicon.tests.current_result` | gauge | `test_id`, `test_name`, `status` | Latest job status of every created test: 0=Queued 1=Assigned 2=Running 3=Completed 4=Failed 5=Timeout 6=NoRun, -1=never ran; sampled every 5 seconds |
+| `obicon.server.build_info` | gauge | `version` | Server build info; value is always 1, the label carries the version |
 | `obicon.server.actions` | counter | `action` | Server lifecycle actions (e.g. `created_pool`, `token_regenerated`) |
 | `obicon.server.noruns` | counter | `reason` (`never_acknowledged`, `never_started`, `node_offline`) | Jobs that never ran |
 
@@ -38,4 +41,4 @@ scrape_configs:
       - targets: ["node-1:9464", "node-2:9464"]
 ```
 
-A ready-made Grafana dashboard for these metrics lives in [`observability/obicon-dashboard.json`](../observability/obicon-dashboard.json).
+Ready-made Grafana dashboards for these metrics live in [`observability/`](../observability/): node health, tests, and the server.

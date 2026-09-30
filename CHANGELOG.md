@@ -23,6 +23,8 @@ separate version; its changes are listed under the server release.
 - Run-once (`POST /v1/tests/run-once`) accepts nodes and/or pools: explicit nodes always run, and each pool contributes its top 3 connected members, least busy first; validation errors precede connectivity checks
 - SQLite writes are serialized through a write queue in the data layer: mutating operations are enqueued as read-modify-write units and executed one by one by a single background consumer, while reads stay direct; failures still propagate to the API
 - Every API endpoint documents its response types and status codes in Swagger (`ProducesResponseType`), so the UI shows what to expect
+- New `obicon.tests.queue_jobs` gauge on `/metrics`: current test job count per status, so the queue state can be tracked in Prometheus over time
+- New `obicon.tests.current_result` gauge on `/metrics`: the latest job status of every created test (one series per test, `-1` when it never ran), and `obicon.server.build_info` exposes the server version as a label
 
 ### Frontend
 - Nodes page: version and IP columns

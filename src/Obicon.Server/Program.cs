@@ -67,6 +67,7 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddHostedService<TestQueueProcessor>();
 builder.Services.AddHostedService<TestScheduler>();
+builder.Services.AddHostedService<Obicon.Server.Metrics.MetricsSampler>();
 
 var app = builder.Build();
 

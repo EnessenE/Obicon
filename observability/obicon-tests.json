@@ -1,7 +1,7 @@
 {
-  "uid": "obicon",
-  "title": "Obicon",
-  "description": "Obicon server and node metrics: test results, durations, received node logs, server actions, and node heartbeats.",
+  "uid": "obicon-tests",
+  "title": "Obicon / Tests",
+  "description": "Test runs as recorded by the server: results by status and type, durations, queue depth, and NoRuns. Requires the server's /metrics to be scraped.",
   "tags": ["obicon", "observability"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -19,6 +19,39 @@
         "includeAll": false,
         "multi": false,
         "current": {}
+      },
+      {
+        "name": "test_type",
+        "label": "Test type",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(obicon_tests_runs_total, test_type)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      },
+      {
+        "name": "node_name",
+        "label": "Node",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(obicon_tests_runs_total{test_type=~\"$test_type\"}, node_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      },
+      {
+        "name": "test_name",
+        "label": "Test",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\"}, test_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
       }
     ]
   },
@@ -31,7 +64,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(increase(obicon_tests_runs_total[24h]))",
+          "expr": "sum(increase(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", test_name=~\"$test_name\"}[24h]))",
           "legendFormat": "runs",
           "refId": "A"
         }
@@ -39,12 +72,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "blue", "value": null }
-            ]
-          }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
         },
         "overrides": []
       }
@@ -53,12 +81,12 @@
       "id": 2,
       "type": "stat",
       "title": "Success rate (1h)",
+      "description": "Completed runs vs total runs. Empty when nothing ran in the window.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
-      "description": "Completed test runs vs total runs. Empty when no runs happened in the window.",
       "targets": [
         {
-          "expr": "sum(rate(obicon_tests_runs_total{status=\"Completed\"}[1h])) / clamp_min(sum(rate(obicon_tests_runs_total[1h])), 1e-9)",
+          "expr": "sum(rate(obicon_tests_runs_total{status=\"Completed\", test_type=~\"$test_type\", node_name=~\"$node_name\", test_name=~\"$test_name\"}[1h])) / clamp_min(sum(rate(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", test_name=~\"$test_name\"}[1h])), 1e-9)",
           "legendFormat": "success",
           "refId": "A"
         }
@@ -84,13 +112,42 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "NoRuns (1h)",
-      "description": "Jobs marked NoRun by the server (never acknowledged / never started).",
+      "title": "Jobs in flight",
+      "description": "Jobs currently queued, assigned, or running on the server.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "sum(increase(obicon_server_noruns_total[1h]))",
+          "expr": "sum(obicon_tests_queue_jobs{status=~\"Queued|Assigned|Running\"})",
+          "legendFormat": "in flight",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "NoRuns (24h)",
+      "description": "Jobs that never ran (never acknowledged, never started, node offline).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(obicon_server_noruns_total[24h]))",
           "legendFormat": "noruns",
           "refId": "A"
         }
@@ -110,34 +167,6 @@
       }
     },
     {
-      "id": 4,
-      "type": "stat",
-      "title": "Node logs received (5m rate)",
-      "description": "Log entries shipped from nodes to the server, by level.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
-      "targets": [
-        {
-          "expr": "sum(rate(obicon_server_nodelogs_total[5m]))",
-          "legendFormat": "logs",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "decimals": 1,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "blue", "value": null }
-            ]
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
       "id": 5,
       "type": "timeseries",
       "title": "Test runs by status",
@@ -145,7 +174,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "targets": [
         {
-          "expr": "sum by (status) (rate(obicon_tests_runs_total[$__rate_interval]))",
+          "expr": "sum by (status) (rate(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", test_name=~\"$test_name\"}[$__rate_interval]))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -169,22 +198,21 @@
       "id": 6,
       "type": "timeseries",
       "title": "Test duration p50 / p95 / p99",
-      "description": "Server-recorded test durations across all tests.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket{test_type=~\"$test_type\", node_name=~\"$node_name\", test_name=~\"$test_name\"}[$__rate_interval])))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket{test_type=~\"$test_type\", node_name=~\"$node_name\", test_name=~\"$test_name\"}[$__rate_interval])))",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket{test_type=~\"$test_type\", node_name=~\"$node_name\", test_name=~\"$test_name\"}[$__rate_interval])))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -192,12 +220,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never"
-          }
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" }
         },
         "overrides": []
       },
@@ -206,12 +229,12 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Test runs by test type",
+      "title": "Test runs by type",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [
         {
-          "expr": "sum by (test_type) (rate(obicon_tests_runs_total[$__rate_interval]))",
+          "expr": "sum by (test_type) (rate(obicon_tests_runs_total{node_name=~\"$node_name\", test_name=~\"$test_name\"}[$__rate_interval]))",
           "legendFormat": "{{test_type}}",
           "refId": "A"
         }
@@ -234,19 +257,20 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Node logs received by level",
+      "title": "Queue jobs by status",
+      "description": "Current job count per status, sampled by the server every 5 seconds.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
         {
-          "expr": "sum by (level) (rate(obicon_server_nodelogs_total[$__rate_interval]))",
-          "legendFormat": "{{level}}",
+          "expr": "max by (status) (obicon_tests_queue_jobs)",
+          "legendFormat": "{{status}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
@@ -261,75 +285,61 @@
     },
     {
       "id": 9,
-      "type": "timeseries",
-      "title": "Node activity: heartbeats and reconnects",
-      "description": "Per node instance (scraped from each node's own metrics endpoint).",
+      "type": "table",
+      "title": "Current result per test",
+      "description": "One series per created test; the value is the latest job status. Filter with the variables above.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
       "targets": [
         {
-          "expr": "sum by (instance) (rate(obicon_node_heartbeats_total[$__rate_interval]))",
-          "legendFormat": "heartbeats {{instance}}",
+          "expr": "max by (test_name, test_id, status) (obicon_tests_current_result{test_name=~\"$test_name\"})",
+          "format": "table",
+          "instant": true,
           "refId": "A"
-        },
+        }
+      ],
+      "transformations": [
         {
-          "expr": "sum by (instance) (rate(obicon_node_reconnects_total[$__rate_interval]))",
-          "legendFormat": "reconnects {{instance}}",
-          "refId": "B"
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "test_id": true },
+            "renameByName": { "Value": "Result", "status": "Status", "test_name": "Test" }
+          }
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never"
-          }
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": { "text": "Never ran", "color": "gray" },
+                "0": { "text": "Queued", "color": "blue" },
+                "1": { "text": "Assigned", "color": "blue" },
+                "2": { "text": "Running", "color": "blue" },
+                "3": { "text": "Completed", "color": "green" },
+                "4": { "text": "Failed", "color": "red" },
+                "5": { "text": "Timeout", "color": "orange" },
+                "6": { "text": "NoRun", "color": "orange" }
+              }
+            }
+          ],
+          "custom": { "align": "auto", "cellOptions": { "type": "colorBackground" } }
         },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+      "options": { "showHeader": true }
     },
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Node test durations p95 (per node)",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum by (instance, le) (rate(obicon_node_test_duration_ms_milliseconds_bucket[$__rate_interval])))",
-          "legendFormat": "{{instance}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
-    },
-    {
-      "id": 11,
-      "type": "timeseries",
-      "title": "Server actions",
+      "title": "NoRuns by reason",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
-      "description": "Server lifecycle actions, e.g. created_node, deleted_pool, token_regenerated.",
       "targets": [
         {
-          "expr": "sum by (action) (increase(obicon_server_actions_total[$__rate_interval]))",
-          "legendFormat": "{{action}}",
+          "expr": "sum by (reason) (increase(obicon_server_noruns_total[$__rate_interval]))",
+          "legendFormat": "{{reason}}",
           "refId": "A"
         }
       ],

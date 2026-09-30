@@ -1,14 +1,16 @@
 # Observability
 
-Grafana dashboards and related resources for Obicon.
+Grafana dashboards and related resources for Obicon. Import via Grafana: Dashboards -> New -> Import, then pick your Prometheus datasource. All dashboards have dropdown variables to filter by node, test type, test, or log level.
 
-## Grafana dashboard
+| Dashboard | File | Covers |
+|-----------|------|--------|
+| Node Health | `obicon-nodes.json` | Per-node heartbeats, reconnects, executions, and durations (from each node's own metrics endpoint) |
+| Tests | `obicon-tests.json` | Test runs by status and type, durations, queue depth over time, current result per test, NoRuns |
+| Server | `obicon-server.json` | Received node logs (by level and source), server actions, queue state, web server load |
 
-`obicon-dashboard.json` — import via Grafana: Dashboards -> New -> Import, then pick your Prometheus datasource.
+## Metrics
 
-It covers both sides:
-
-- **Server** (`/metrics`): test runs by status and type, duration p50/p95/p99, NoRuns, server actions, and node logs received (by level) — everything the server records about tests, nodes, and shipped logs.
-- **Nodes** (`Node:MetricsHost`/`Node:MetricsPort`): heartbeats and reconnects per node, and per-node test duration p95. These require scraping each node's own metrics endpoint (e.g. a Prometheus PodMonitor).
+- **Server** (`/metrics`): test runs and durations, `obicon.tests.queue_jobs` (queue state by status) and `obicon.tests.current_result` (the latest result of each created test), both gauges sampled every 5s, plus `obicon.server.build_info` (server version), NoRuns, server actions, and node logs received.
+- **Nodes** (`Node:MetricsHost`/`Node:MetricsPort`): heartbeats, reconnects, and test executions/durations per node. These require scraping each node's own endpoint (e.g. a Prometheus PodMonitor).
 
 Metric names come from the OpenTelemetry meters `Obicon.Tests`, `Obicon.Server` (server) and `Obicon.Node` (nodes); see `docs/metrics.md` if you add or change an instrument.
