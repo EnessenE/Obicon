@@ -1,0 +1,57 @@
+# Server
+
+The Obicon server is the central piece: it stores nodes, tests, and jobs; schedules test runs; dispatches them to connected nodes over WebSockets; and serves the REST API, health checks, and Prometheus metrics.
+
+## Running
+
+```bash
+dotnet run --project src/Obicon.Server
+```
+
+| What | Where |
+|------|-------|
+| REST API | http://localhost:5000 (all routes under `/v1`) |
+| Swagger | http://localhost:5000/swagger |
+| Health check | `GET /v1/health` |
+| Prometheus metrics | `GET /metrics` (no auth) |
+| WebSocket hub | `ws://localhost:5000/ws/nodes` (nodes connect here) |
+
+In Docker, the published image is `ghcr.io/<owner>/<repo>/server` (port 5000).
+
+## Storage
+
+All data lives in a SQLite file (`obicon.db`, in the working directory by default). The schema is created and migrated automatically on startup, including adding missing tables/columns and one-time data conversions — after an upgrade you keep your existing database. Only changing an existing column's type or name requires manual migration.
+
+## Authentication
+
+API requests must carry the auth header (default: `Authorization: uwu`). `/ws`, `/metrics`, and `/swagger` are exempt; the WebSocket endpoint instead authenticates nodes by their token, and `/v1/enroll` authenticates by enroll token.
+
+The header value and the WebSocket path are configurable (see below). The frontend's `js/api.js` already sends the header for every call.
+
+## Configuration
+
+Server configuration lives in `appsettings.json` (override with `ServerSettings__*` environment variables):
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `ConnectionStrings:Default` | `Data Source=obicon.db` | SQLite connection string |
+| `ServerSettings:AuthHeader` | `uwu` | Required API auth header value |
+| `ServerSettings:MaxTestTimeoutSeconds` | `60` | Upper bound for test timeouts |
+| `ServerSettings:NodeConnectionTimeoutSeconds` | `30` | Node WebSocket connection timeout |
+| `ServerSettings:WebSocketPath` | `/ws/nodes` | Path nodes connect to |
+
+## Server settings (runtime, editable)
+
+Separate from the static config above, the server has runtime settings editable from the UI's Settings page or `PUT /v1/settings/{key}`. They resolve in three layers:
+
+1. **Forced** — set via `ServerSettings__*` env vars or appsettings; read-only, the UI shows a "Forced by configuration" badge
+2. **Database override** — set via the API/UI, stored in the database
+3. **Default** — built-in defaults
+
+Useful settings include `FrequencyPresetsSeconds` (the intervals tests can choose, default `10,30,60,120,300,600,3600`), `NodeAutoEnrollmentEnabled` (lets nodes register themselves with enroll tokens), and `NoRunGraceFactor`. `SchedulerLoopIntervalSeconds` is read-only and derived from the lowest frequency preset.
+
+## Scheduling and the queue
+
+Active tests are enqueued by the scheduler each time their frequency elapses. After server downtime an overdue test runs once and resynchronizes — no missed-run catch-up. The queue processor dispatches each job to its node; jobs whose node never acknowledges, never starts, or never comes online are marked `NoRun` after a grace window.
+
+Details, including the full endpoint list and job status values, are in the [API specification](api-spec.md).

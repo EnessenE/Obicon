@@ -1,0 +1,61 @@
+using Microsoft.AspNetCore.Mvc;
+using Obicon.Server.Models.Responses;
+using Obicon.Server.Services;
+
+namespace Obicon.Server.Controllers.V1;
+
+[ApiController]
+[Route("v1/[controller]")]
+public class SettingsController : ControllerBase
+{
+    private readonly IServerSettingsService _settingsService;
+
+    public SettingsController(IServerSettingsService settingsService)
+    {
+        _settingsService = settingsService;
+    }
+
+    /// <summary>
+    /// Returns all server settings with their effective value, description, and whether
+    /// configuration forces them (forced settings are read-only).
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetAll()
+    {
+        var settings = await _settingsService.GetAllAsync();
+        return Ok(settings);
+    }
+
+    /// <summary>
+    /// Changes a server setting. Returns 409 when the setting is forced by appsettings
+    /// or an environment variable, and 400 for unknown settings or invalid values.
+    /// </summary>
+    [HttpPut("{key}")]
+    public async Task<IActionResult> Set(string key, [FromBody] UpdateSettingValueRequest request)
+    {
+        try
+        {
+            var setting = await _settingsService.SetAsync(key, request.Value);
+            return Ok(setting);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { Message = ex.Message });
+        }
+    }
+}
+
+/// <summary>
+/// New value for a server setting.
+/// </summary>
+public class UpdateSettingValueRequest
+{
+    /// <summary>
+    /// New value as string; converted to the setting's type. Required.
+    /// </summary>
+    public string Value { get; set; } = string.Empty;
+}

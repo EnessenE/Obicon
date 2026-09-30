@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obicon · Nodes</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="stylesheet" href="css/styles.css?v=2">
+</head>
+<body>
+    <div id="appNavbar"></div>
+
+    <main class="container">
+        <div class="page-title d-flex flex-wrap gap-3 align-items-center justify-content-between">
+            <div>
+                <h1 class="h3 mb-1">Nodes</h1>
+                <p class="text-muted mb-0">Monitoring nodes and their auth tokens</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <div class="input-group">
+                    <input id="newNodeName" class="form-control" placeholder="Node name">
+                    <button class="btn btn-primary" onclick="createNode()"><i class="bi bi-plus-lg me-1"></i>Add Node</button>
+                </div>
+                <button class="btn btn-outline-secondary" onclick="loadNodes()" id="refreshBtn">
+                    <span id="refreshSpinner" class="spinner-border spinner-border-sm" style="display:none;"></span>
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
+            </div>
+        </div>
+
+        <div id="successMessage" class="alert alert-success alert-dismissible mb-3" style="display:none;">
+            <button type="button" class="btn-close" onclick="successMessage.style.display='none'"></button>
+            <strong>Node created!</strong> Name: <span id="createdNodeName"></span><br>
+            Auth Token: <code id="createdNodeToken"></code>
+            <button id="copyTokenBtn" class="btn btn-sm btn-outline-primary ms-2" onclick="copyToken()"><i class="bi bi-clipboard me-1"></i>Copy</button>
+            <div class="small text-muted mt-1">Use this token on the node to authenticate its WebSocket connection.</div>
+        </div>
+        <div id="loadingMessage" class="text-center my-4" style="display:none;">
+            <div class="spinner-border"></div>
+        </div>
+        <div id="errorMessage" class="alert alert-danger" style="display:none;"></div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table id="nodesTable" class="table table-striped table-hover align-middle mb-0" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Labels</th>
+                            <th>Pools</th>
+                            <th>Enrollment</th>
+                            <th>Connected</th>
+                            <th>Active</th>
+                            <th>Created</th>
+                            <th>Last Seen</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="nodesTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="noNodesMessage" class="alert alert-info" style="display:none;">No nodes found.</div>
+    </main>
+
+    <!-- Edit node modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit node <span id="editNodeId" class="text-muted"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input id="editNodeName" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Labels <span class="text-muted">(comma-separated)</span></label>
+                        <input id="editNodeLabels" class="form-control" placeholder="edge, eu-west">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Pools <span class="text-muted">(manage on the Pools page)</span></label>
+                        <div id="editNodePools" class="text-muted">-</div>
+                    </div>
+                    <div class="form-check">
+                        <input id="editRegenerateToken" type="checkbox" class="form-check-input">
+                        <label class="form-check-label" for="editRegenerateToken">Regenerate auth token (the old one expires immediately and its connection is closed)</label>
+                    </div>
+                    <div id="editError" class="alert alert-danger mt-3 mb-0" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveNodeEdit()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="appFooter"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/layout.js?v=2"></script>
+    <script src="js/api.js?v=2"></script>
+    <script src="js/nodes.js?v=6"></script>
+</body>
+</html>

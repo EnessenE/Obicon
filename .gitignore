@@ -266,6 +266,14 @@ ServiceFabricBackup/
 *.ldf
 *.ndf
 
+# SQLite databases (Obicon server storage)
+*.db
+*.db-shm
+*.db-wal
+
+# Node enrollment identity (contains the node auth token)
+node-identity.json
+
 # Business Intelligence projects
 *.rdl.data
 *.bim.layout
@@ -396,3 +404,9 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# JetBrains IDEs (IntelliJ, Rider, PyCharm, ...)
+.idea/
+
+# Local agent project notes (kept out of the repo)
+Project/
