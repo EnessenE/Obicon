@@ -18,18 +18,24 @@ public class ServerSettingsService : IServerSettingsService
     private const string ConfigSection = "ServerSettings";
 
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly SqliteWriteQueue _writeQueue;
     private readonly IConfiguration _configuration;
+    private readonly NodePolicyBroadcaster _policyBroadcaster;
     private readonly ILogger<ServerSettingsService> _logger;
 
     private readonly ConcurrentDictionary<string, object> _cache = new();
 
     public ServerSettingsService(
         IDbContextFactory<ObiconDbContext> dbFactory,
+        SqliteWriteQueue writeQueue,
         IConfiguration configuration,
+        NodePolicyBroadcaster policyBroadcaster,
         ILogger<ServerSettingsService> logger)
     {
         _dbFactory = dbFactory;
+        _writeQueue = writeQueue;
         _configuration = configuration;
+        _policyBroadcaster = policyBroadcaster;
         _logger = logger;
     }
 
@@ -97,23 +103,33 @@ public class ServerSettingsService : IServerSettingsService
             throw new ArgumentException($"Setting {key} expects a {definition.ValueType.Name} value");
         }
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var stored = await db.ServerSettingValues.FindAsync(key);
-        if (stored == null)
+        await _writeQueue.EnqueueAsync(async db =>
         {
-            db.ServerSettingValues.Add(new ServerSettingValue { Key = key, Value = value, UpdatedAt = DateTime.UtcNow });
-        }
-        else
-        {
-            stored.Value = value;
-            stored.UpdatedAt = DateTime.UtcNow;
-        }
+            var stored = await db.ServerSettingValues.FindAsync(key);
+            if (stored == null)
+            {
+                db.ServerSettingValues.Add(new ServerSettingValue { Key = key, Value = value, UpdatedAt = DateTime.UtcNow });
+            }
+            else
+            {
+                stored.Value = value;
+                stored.UpdatedAt = DateTime.UtcNow;
+            }
 
-        await db.SaveChangesAsync();
+            await db.SaveChangesAsync();
+        });
 
         _cache.TryRemove(key, out _);
         _logger.LogInformation("Setting {Key} changed to {Value}", key, key == "AuthHeader" ? "***" : value);
         Metrics.ServerMetrics.Action("setting_changed");
+
+        // Node-facing settings propagate to connected nodes immediately
+        if (key is "NodeLogShippingEnabled" or "NodeLocalLoggingEnabled")
+        {
+            await _policyBroadcaster.BroadcastAsync(
+                await GetAsync<bool>("NodeLogShippingEnabled"),
+                await GetAsync<bool>("NodeLocalLoggingEnabled"));
+        }
 
         return new ServerSettingResponse
         {
