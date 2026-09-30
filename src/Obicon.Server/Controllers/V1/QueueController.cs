@@ -19,6 +19,7 @@ public class QueueController : ControllerBase
     /// Returns all test jobs in the queue, newest first.
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(List<TestJobResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllJobs()
     {
         var jobs = await _queueService.GetAllJobsAsync();
@@ -30,6 +31,8 @@ public class QueueController : ControllerBase
     /// Returns a single test job by its ID.
     /// </summary>
     [HttpGet("{id}")]
+    [ProducesResponseType(typeof(TestJobResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetJob(Guid id)
     {
         var job = await _queueService.GetJobAsync(id);

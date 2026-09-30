@@ -20,6 +20,7 @@ public class SettingsController : ControllerBase
     /// configuration forces them (forced settings are read-only).
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(List<ServerSettingResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll()
     {
         var settings = await _settingsService.GetAllAsync();
@@ -31,6 +32,9 @@ public class SettingsController : ControllerBase
     /// or an environment variable, and 400 for unknown settings or invalid values.
     /// </summary>
     [HttpPut("{key}")]
+    [ProducesResponseType(typeof(ServerSettingResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Set(string key, [FromBody] UpdateSettingValueRequest request)
     {
         try

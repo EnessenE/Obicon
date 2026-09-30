@@ -24,6 +24,10 @@ public class EnrollController : ControllerBase
     /// Registers or updates a node using an enroll token. Requires the NodeAutoEnrollmentEnabled setting.
     /// </summary>
     [HttpPost]
+    [ProducesResponseType(typeof(EnrollResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Enroll([FromBody] EnrollRequest request)
     {
         try
