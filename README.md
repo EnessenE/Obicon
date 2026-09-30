@@ -1,6 +1,6 @@
 # Obicon
 
-Self-hosted synthetic API testing. A central server schedules and queues tests; lightweight nodes deployed anywhere run them (ping, traceroute, HTTP, HTTPS, TCP, DNS) and report results back, with Prometheus metrics included.
+Self-hosted synthetic monitoring, built for observability. Lightweight nodes deployed anywhere run your tests (ping, traceroute, HTTP, HTTPS, TCP, DNS) and report back through a central server, and everything lands in your observability stack, no glue needed.
 
 ## Quick start
 
@@ -22,7 +22,3 @@ Open http://localhost:5003, create a test, and watch the queue fill up.
 - [Getting started](docs/getting-started.md)
 - [Server](docs/server.md) | [Node](docs/node.md) | [Metrics](docs/metrics.md)
 - [API specification](docs/api-spec.md)
-
-## Status
-
-Pre-1.0, under active development. Server and Node 1.0.0 are released; see the [changelog](CHANGELOG.md).
