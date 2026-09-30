@@ -181,6 +181,9 @@ public class WebSocketMiddleware
             case MessageType.NodeLog:
                 await HandleNodeLogAsync(nodeId, message);
                 return true;
+            case MessageType.NodeInfoUpdate:
+                await HandleNodeInfoUpdate(nodeId, message);
+                return true;
             default:
                 _logger.LogWarning("Unknown message type: {MessageType}", message.Type);
                 return true;
@@ -207,6 +210,18 @@ public class WebSocketMiddleware
             return;
         }
 
+        // Every received entry is counted in OpenTelemetry, whether or not it is
+        // also forwarded to the console
+        var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
+        var sourceContext = entry.Properties is { } props && props.TryGetValue("SourceContext", out var sc)
+            ? sc.ToString().Trim('"')
+            : "unknown";
+        Metrics.ServerMetrics.NodeLog(
+            string.IsNullOrWhiteSpace(entry.Level) ? "unknown" : entry.Level,
+            sourceContext,
+            nodeId,
+            node?.Name ?? "unknown");
+
         if (!await _settingsService.GetAsync<bool>("ShipNodeLogsToConsole"))
         {
             _logger.LogDebug("Received log entry from node {NodeId}; ShipNodeLogsToConsole is off, not forwarding", nodeId);
@@ -214,22 +229,42 @@ public class WebSocketMiddleware
         }
 
         var timestamp = entry.Timestamp == default ? DateTime.UtcNow : entry.Timestamp;
-        var text = $"[node {nodeId}] {entry.Message}{(string.IsNullOrWhiteSpace(entry.Exception) ? string.Empty : $" | {entry.Exception}")}";
+        var origin = string.IsNullOrWhiteSpace(entry.NodeName)
+            ? nodeId
+            : $"{entry.NodeName} ({nodeId})";
+        if (!string.IsNullOrWhiteSpace(entry.NodeVersion))
+        {
+            origin += $" v{entry.NodeVersion}";
+        }
+
+        // Compact rendering of the entry's structured properties, e.g. SourceContext and JobId
+        var properties = entry.Properties is { Count: > 0 }
+            ? " {" + string.Join(", ", entry.Properties.Select(kv => $"{kv.Key}={Truncate(kv.Value, 200)}")) + "}"
+            : string.Empty;
+
+        var text = $"[node {origin}] {entry.Message}{properties}" +
+                   (string.IsNullOrWhiteSpace(entry.Exception) ? string.Empty : $" | {entry.Exception}");
+
         switch (entry.Level)
         {
             case "Error":
-                _logger.LogError("[node log {Timestamp:O}] {Text}", timestamp, text);
+                _logger.LogError("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
                 break;
             case "Warning":
-                _logger.LogWarning("[node log {Timestamp:O}] {Text}", timestamp, text);
+                _logger.LogWarning("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
                 break;
             case "Debug":
-                _logger.LogDebug("[node log {Timestamp:O}] {Text}", timestamp, text);
+                _logger.LogDebug("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
                 break;
             default:
-                _logger.LogInformation("[node log {Timestamp:O}] {Text}", timestamp, text);
+                _logger.LogInformation("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
                 break;
         }
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        return string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength] + "…";
     }
 
     private async Task<bool> HandleNodeRegistration(string nodeId, string? remoteIp, WebSocketMessage message)
@@ -260,7 +295,26 @@ public class WebSocketMiddleware
         _connectionManager.UpdateLastSeen(nodeId);
         await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
         await _nodeService.UpdateNodeConnectionInfoAsync(Guid.Parse(nodeId), nodeVersion, remoteIp, CollectReportedSettings(registration));
+        await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
+            registration?.InternalIpv4, registration?.InternalIpv6, registration?.ExternalIpv4, registration?.ExternalIpv6);
         return true;
+    }
+
+    /// <summary>
+    /// Handles a node's address refresh: it re-resolves its internal and external IP every
+    /// so often and reports changes here, without waiting for a reconnect.
+    /// </summary>
+    private async Task HandleNodeInfoUpdate(string nodeId, WebSocketMessage message)
+    {
+        var update = (message.Data as JsonElement?)?.Deserialize<NodeInfoUpdateMessage>();
+        if (update == null)
+        {
+            _logger.LogWarning("Received unusable address update from node {NodeId}", nodeId);
+            return;
+        }
+
+        await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
+            update.InternalIpv4, update.InternalIpv6, update.ExternalIpv4, update.ExternalIpv6);
     }
 
     /// <summary>

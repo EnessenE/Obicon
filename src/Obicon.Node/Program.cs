@@ -10,11 +10,37 @@ using Serilog;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfiguration
-    .ReadFrom.Configuration(builder.Configuration)
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}"));
-
 builder.Services.Configure<NodeSettings>(builder.Configuration.GetSection("Node"));
+
+// Log capture + shipping: the sink queues every Serilog event, the shipper sends
+// them to the server while it allows it, and the state carries the console level
+// switch that the server's local-logging policy can silence
+builder.Services.AddSingleton<NodeLoggingState>();
+builder.Services.AddSingleton<NodeLogSink>();
+builder.Services.AddHostedService<NodeLogShipper>();
+builder.Services.AddSingleton<NodeAddressState>();
+builder.Services.AddHostedService<IpAddressMonitor>();
+
+builder.Services.AddSerilog((services, loggerConfiguration) =>
+{
+    var loggingState = services.GetRequiredService<NodeLoggingState>();
+    loggerConfiguration
+        .ReadFrom.Configuration(builder.Configuration)
+        // Debug as the pipeline minimum so the capture sink sees everything;
+        // the console sink keeps Information and drops test output while it is muted
+        .MinimumLevel.Debug()
+        // The console drops test-related output while the local logging policy has it muted;
+        // connection lifecycle and policy changes always appear
+        .WriteTo.Conditional(
+            e => !loggingState.ShouldMuteLocally(e),
+            sinkConfig =>
+            {
+                sinkConfig.Console(
+                    restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
+                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}");
+            })
+        .WriteTo.Sink(services.GetRequiredService<NodeLogSink>());
+});
 
 // The metrics listener address: Node:MetricsHost and Node:MetricsPort (defaults localhost:9464)
 var metricsHost = builder.Configuration["Node:MetricsHost"] ?? "localhost";

@@ -24,6 +24,8 @@ public class ServerConnection : BackgroundService, IServerConnection
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly NodeIdentityStore _identityStore;
     private readonly EnrollmentClient _enrollmentClient;
+    private readonly NodeLoggingState _loggingState;
+    private readonly NodeAddressState _addressState;
 
     private volatile ClientWebSocket? _socket;
 
@@ -32,12 +34,16 @@ public class ServerConnection : BackgroundService, IServerConnection
         ITestExecutor testExecutor,
         NodeIdentityStore identityStore,
         EnrollmentClient enrollmentClient,
+        NodeLoggingState loggingState,
+        NodeAddressState addressState,
         ILogger<ServerConnection> logger)
     {
         _settings = settings.Value;
         _testExecutor = testExecutor;
         _identityStore = identityStore;
         _enrollmentClient = enrollmentClient;
+        _loggingState = loggingState;
+        _addressState = addressState;
         _logger = logger;
     }
 
@@ -196,7 +202,11 @@ public class ServerConnection : BackgroundService, IServerConnection
                     HeartbeatIntervalSeconds = Math.Max(1, _settings.HeartbeatIntervalSeconds),
                     DefaultTestTimeoutSeconds = Math.Max(1, _settings.DefaultTestTimeoutSeconds),
                     MaxTestTimeoutSeconds = Math.Max(1, _settings.MaxTestTimeoutSeconds),
-                    ReconnectDelaySeconds = Math.Max(1, _settings.ReconnectDelaySeconds)
+                    ReconnectDelaySeconds = Math.Max(1, _settings.ReconnectDelaySeconds),
+                    InternalIpv4 = _addressState.InternalIpv4,
+                    InternalIpv6 = _addressState.InternalIpv6,
+                    ExternalIpv4 = _addressState.ExternalIpv4,
+                    ExternalIpv6 = _addressState.ExternalIpv6
                 }
             });
 
@@ -262,6 +272,11 @@ public class ServerConnection : BackgroundService, IServerConnection
         }
         _identityStore.SaveServerVersion(serverVersion);
 
+        // Observability policy from the server: log shipping gate and the
+        // local logging default, which this node may override in its own config
+        var policy = hello!;
+        ApplyObservabilityPolicy(policy.LogShippingEnabled, policy.NodeLocalLoggingEnabled);
+
         // Supported servers are within the same major.minor version as this node
         if (ObiconVersions.IsSupported(serverVersion, NodeInfo.Version))
         {
@@ -293,6 +308,40 @@ public class ServerConnection : BackgroundService, IServerConnection
         }
 
         _socket = null;
+    }
+
+    /// <summary>
+    /// Applies the server's observability policy, announced on connect and on every
+    /// runtime change. Every changed setting is logged before it takes effect, so the
+    /// notice is visible even when the change itself mutes output. The node's
+    /// LocalLoggingEnabled override wins over the server's default; a disabled local
+    /// logging policy mutes only test-related output, not lifecycle logs.
+    /// </summary>
+    private void ApplyObservabilityPolicy(bool logShippingEnabled, bool nodeLocalLoggingEnabled)
+    {
+        var shippingChanged = _loggingState.ServerAllowsLogShipping != logShippingEnabled;
+        if (shippingChanged)
+        {
+            _logger.LogInformation("Setting changed: server log shipping is now {New} (was {Old})",
+                logShippingEnabled ? "enabled" : "disabled",
+                _loggingState.ServerAllowsLogShipping ? "enabled" : "disabled");
+        }
+
+        _loggingState.ServerAllowsLogShipping = logShippingEnabled;
+        _loggingState.ServerLocalLoggingEnabled = nodeLocalLoggingEnabled;
+
+        var newLocalLogging = _settings.LocalLoggingEnabled ?? nodeLocalLoggingEnabled;
+        if (_loggingState.LastAppliedLocalLogging != newLocalLogging)
+        {
+            _logger.LogInformation("Setting changed: local test logging is now {New} (was {Old}){Override}",
+                newLocalLogging ? "enabled" : "disabled",
+                _loggingState.LastAppliedLocalLogging ? "enabled" : "disabled",
+                _settings.LocalLoggingEnabled == false
+                    ? "; disabled by this node's own configuration"
+                    : string.Empty);
+        }
+
+        _loggingState.ApplyLocalLoggingPolicy(_settings.LocalLoggingEnabled, nodeLocalLoggingEnabled);
     }
 
     private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
@@ -369,17 +418,36 @@ public class ServerConnection : BackgroundService, IServerConnection
                 await HandleServerHelloAsync(helloElement.Deserialize<ServerHelloMessage>());
                 break;
 
+            case MessageType.ServerPolicyUpdate when message.Data is JsonElement policyElement:
+                var update = policyElement.Deserialize<ServerPolicyUpdateMessage>();
+                if (update != null)
+                {
+                    ApplyObservabilityPolicy(update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
+                    _logger.LogInformation("Server updated its policy on the fly: logShipping={LogShipping} localLogging={LocalLogging}",
+                        update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
+                }
+                break;
+
             case MessageType.TestAssignment when message.Data is JsonElement element:
+            {
                 var assignment = element.Deserialize<TestAssignmentMessage>();
                 if (assignment == null)
                 {
                     _logger.LogWarning("Test assignment could not be parsed: {Json}", json);
                     return;
                 }
+                // Marked as test activity so the local logging policy can mute just these,
+                // without silencing this class's lifecycle logs; the scope flows into the
+                // event properties like the executor's JobId scope does
+                using var _ = _logger.BeginScope(new Dictionary<string, object>
+                {
+                    [NodeLoggingState.TestActivityProperty] = true
+                });
                 _logger.LogInformation("Assigned job {JobId}: {TestType} against {Target}",
                     assignment.JobId, assignment.TestType, assignment.Target);
                 await _testExecutor.ExecuteAssignmentAsync(assignment);
                 break;
+            }
 
             default:
                 _logger.LogDebug("Ignoring message type {MessageType}", message.Type);

@@ -13,6 +13,16 @@ public class NodeLogMessage
     public string NodeId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Human-readable name of the node at the time of logging. Default: empty string.
+    /// </summary>
+    public string NodeName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Version of the node software, e.g. "0.2.0". Default: empty string.
+    /// </summary>
+    public string NodeVersion { get; set; } = string.Empty;
+
+    /// <summary>
     /// UTC timestamp of the log entry.
     /// </summary>
     public DateTime Timestamp { get; set; }
@@ -23,7 +33,7 @@ public class NodeLogMessage
     public string Level { get; set; } = string.Empty;
 
     /// <summary>
-    /// The log message itself. Default: empty string.
+    /// The log message with its template placeholders filled in. Default: empty string.
     /// </summary>
     public string Message { get; set; } = string.Empty;
 
@@ -31,4 +41,10 @@ public class NodeLogMessage
     /// Exception details when the entry was caused by an exception. Null otherwise.
     /// </summary>
     public string? Exception { get; set; }
+
+    /// <summary>
+    /// Structured properties attached to the entry: source context, scope properties
+    /// (e.g. JobId, TestId), and any named values of the log call. Null when none.
+    /// </summary>
+    public Dictionary<string, string>? Properties { get; set; }
 }

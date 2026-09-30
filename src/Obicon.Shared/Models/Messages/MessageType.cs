@@ -45,5 +45,17 @@ public enum MessageType
     /// Sent by node to ship one of its log entries to the server.
     /// Only accepted when the server's NodeLogShippingEnabled setting is on.
     /// </summary>
-    NodeLog
+    NodeLog,
+
+    /// <summary>
+    /// Sent by server to connected nodes when a node-facing setting changes at runtime,
+    /// so nodes apply the new policy without reconnecting.
+    /// </summary>
+    ServerPolicyUpdate,
+
+    /// <summary>
+    /// Sent by node when it has refreshed its own address information (internal/external IP),
+    /// so the server can keep it current without a reconnect.
+    /// </summary>
+    NodeInfoUpdate
 }
