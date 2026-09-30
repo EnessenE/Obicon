@@ -21,10 +21,16 @@ public class RunTestOnceRequest
     public string Target { get; set; } = string.Empty;
 
     /// <summary>
-    /// ID of the node to execute the test on. Required.
+    /// IDs of the nodes to execute the test on. At least one node ID or pool ID is required.
+    /// Jobs only go to connected nodes among the selection.
     /// </summary>
-    [Required]
-    public Guid NodeId { get; set; }
+    public List<Guid> NodeIds { get; set; } = new();
+
+    /// <summary>
+    /// IDs of pools to run the test on: the top 3 connected pool members (least busy first)
+    /// are selected in addition to the explicit node IDs. Default: empty list.
+    /// </summary>
+    public List<Guid> PoolIds { get; set; } = new();
 
     /// <summary>
     /// Maximum execution time for this run in seconds, between 1 and 60. Default: 60.
@@ -54,4 +60,29 @@ public class RunTestOnceRequest
     /// </summary>
     [EnumDataType(typeof(IpVersion))]
     public IpVersion IpVersion { get; set; } = IpVersion.Any;
+
+    /// <summary>
+    /// HTTP/HTTPS: when set, the response body must match this regular expression
+    /// or the run fails. Null disables the check. Default: null.
+    /// </summary>
+    [MaxLength(2000)]
+    public string? ExpectedBodyPattern { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: custom headers sent with the request, e.g. authentication headers. Default: empty dictionary.
+    /// </summary>
+    public Dictionary<string, string>? Headers { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: absolute http:// or https:// URL of a proxy the request goes through.
+    /// Null connects directly. Default: null.
+    /// </summary>
+    [MaxLength(500)]
+    public string? ProxyUrl { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: when true, a unique query parameter is appended to the request URL
+    /// so caches serve a fresh response. Default: false.
+    /// </summary>
+    public bool CacheBust { get; set; }
 }

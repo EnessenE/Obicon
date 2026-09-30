@@ -51,6 +51,7 @@ builder.Services.AddSingleton<INodePoolService, NodePoolService>();
 builder.Services.AddSingleton<ITestService, TestService>();
 builder.Services.AddSingleton<ITestQueueService, TestQueueService>();
 builder.Services.AddSingleton<NodeConnectionManager>();
+builder.Services.AddSingleton<Obicon.Server.Data.SqliteWriteQueue>();
 builder.Services.AddSingleton<IConfigRepository, JsonConfigRepository>();
 builder.Services.AddDbContextFactory<ObiconDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
@@ -59,6 +60,7 @@ builder.Services.AddDbContextFactory<ObiconDbContext>(options =>
 // values present there (or as ServerSettings__* environment variables) are forced and read-only
 builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
 builder.Services.AddSingleton<IServerSettingsService, ServerSettingsService>();
+builder.Services.AddSingleton<NodePolicyBroadcaster>();
 builder.Services.AddSingleton<IEnrollTokenService, EnrollTokenService>();
 builder.Services.AddSingleton<INodeEnrollmentService, NodeEnrollmentService>();
 builder.Services.AddHealthChecks()
@@ -108,6 +110,8 @@ app.MapHealthChecks("/v1/health", new HealthCheckOptions
     }
 });
 app.MapPrometheusScrapingEndpoint();
+
+app.Logger.LogInformation("Obicon Server v{Version} starting", ServerInfo.Version);
 
 app.Run();
 

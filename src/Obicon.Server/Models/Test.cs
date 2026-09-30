@@ -67,6 +67,28 @@ public class Test
     public IpVersion IpVersion { get; set; } = IpVersion.Any;
 
     /// <summary>
+    /// HTTP/HTTPS: when set, the response body must match this regular expression
+    /// or the run fails. Null disables the check. Default: null.
+    /// </summary>
+    public string? ExpectedBodyPattern { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: custom headers sent with the request. Default: empty dictionary.
+    /// </summary>
+    public Dictionary<string, string> Headers { get; set; } = new();
+
+    /// <summary>
+    /// HTTP/HTTPS: URL of an HTTP proxy the request goes through. Null connects directly. Default: null.
+    /// </summary>
+    public string? ProxyUrl { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: when true, a unique query parameter is appended to the request URL
+    /// so caches serve a fresh response. Default: false.
+    /// </summary>
+    public bool CacheBust { get; set; }
+
+    /// <summary>
     /// Maximum execution time per run in seconds, between 1 and the server's MaxTestTimeoutSeconds. Default: 60.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 60;

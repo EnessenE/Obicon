@@ -27,6 +27,24 @@ public class ServerMetrics
     private static readonly Counter<long> NoRuns = ServerMeter.CreateCounter<long>(
         "obicon.server.noruns", description: "Jobs marked NoRun, by reason");
 
+    private static readonly Counter<long> NodeLogs = ServerMeter.CreateCounter<long>(
+        "obicon.server.nodelogs", description: "Log entries received from nodes, by level and source");
+
+    /// <summary>
+    /// Counts a log entry shipped by a node, labeled with its level, source context,
+    /// and the node's identity.
+    /// </summary>
+    public static void NodeLog(string level, string sourceContext, string nodeId, string nodeName)
+    {
+        NodeLogs.Add(1, new KeyValuePair<string, object?>[]
+        {
+            new("level", level),
+            new("source_context", sourceContext),
+            new("node_id", nodeId),
+            new("node_name", nodeName)
+        });
+    }
+
     /// <summary>
     /// Records a finished test run, labeled per test and per node.
     /// </summary>

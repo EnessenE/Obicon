@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
+using Obicon.Shared;
 using Obicon.Shared.Models.Messages;
 using Obicon.Shared.Models.Enums;
 
@@ -23,6 +25,8 @@ public class ServerConnection : BackgroundService, IServerConnection
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly NodeIdentityStore _identityStore;
     private readonly EnrollmentClient _enrollmentClient;
+    private readonly NodeLoggingState _loggingState;
+    private readonly NodeAddressState _addressState;
 
     private volatile ClientWebSocket? _socket;
 
@@ -31,12 +35,16 @@ public class ServerConnection : BackgroundService, IServerConnection
         ITestExecutor testExecutor,
         NodeIdentityStore identityStore,
         EnrollmentClient enrollmentClient,
+        NodeLoggingState loggingState,
+        NodeAddressState addressState,
         ILogger<ServerConnection> logger)
     {
         _settings = settings.Value;
         _testExecutor = testExecutor;
         _identityStore = identityStore;
         _enrollmentClient = enrollmentClient;
+        _loggingState = loggingState;
+        _addressState = addressState;
         _logger = logger;
     }
 
@@ -80,6 +88,16 @@ public class ServerConnection : BackgroundService, IServerConnection
             (serverUri.Scheme != "ws" && serverUri.Scheme != "wss"))
         {
             _logger.LogError("Invalid ServerUrl '{ServerUrl}'. It must be an absolute ws:// or wss:// URL", _settings.ServerUrl);
+            return;
+        }
+
+        // TLS is required by default: unencrypted ws:// is refused, except for
+        // loopback addresses (local development)
+        if (_settings.RequireTls && serverUri.Scheme == "ws" && !IsLoopbackHost(serverUri.Host))
+        {
+            _logger.LogError(
+                "ServerUrl '{ServerUrl}' is an unencrypted ws:// connection, but TLS is required by default. " +
+                "Use a wss:// URL, or set Node:RequireTls to false to override", _settings.ServerUrl);
             return;
         }
 
@@ -135,6 +153,20 @@ public class ServerConnection : BackgroundService, IServerConnection
         return ex.Message.Contains("401", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// True for loopback targets (localhost or a loopback IP), which are exempt from
+    /// the TLS requirement so local development keeps working over ws://.
+    /// </summary>
+    private static bool IsLoopbackHost(string host)
+    {
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address);
+    }
+
 
     /// <summary>
     /// Resolves the auth token to connect with: configured token, then the enrolled
@@ -186,7 +218,21 @@ public class ServerConnection : BackgroundService, IServerConnection
             await SendAsync(new WebSocketMessage
             {
                 Type = MessageType.NodeRegistration,
-                Data = new NodeRegistrationMessage { NodeId = string.Empty, NodeName = nodeName }
+                Data = new NodeRegistrationMessage
+                {
+                    NodeId = string.Empty,
+                    NodeName = nodeName,
+                    NodeVersion = NodeInfo.Version,
+                    MaxConcurrentTests = Math.Max(1, _settings.MaxConcurrentTests),
+                    HeartbeatIntervalSeconds = Math.Max(1, _settings.HeartbeatIntervalSeconds),
+                    DefaultTestTimeoutSeconds = Math.Max(1, _settings.DefaultTestTimeoutSeconds),
+                    MaxTestTimeoutSeconds = Math.Max(1, _settings.MaxTestTimeoutSeconds),
+                    ReconnectDelaySeconds = Math.Max(1, _settings.ReconnectDelaySeconds),
+                    InternalIpv4 = _addressState.InternalIpv4,
+                    InternalIpv6 = _addressState.InternalIpv6,
+                    ExternalIpv4 = _addressState.ExternalIpv4,
+                    ExternalIpv6 = _addressState.ExternalIpv6
+                }
             });
 
             using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -220,6 +266,102 @@ public class ServerConnection : BackgroundService, IServerConnection
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Handles the server's hello message: logs the server version (and a notice when it
+    /// changed since the last connection), then checks compatibility. An unsupported server
+    /// version closes the connection unless AllowUnsupportedServerVersion is enabled.
+    /// </summary>
+    private async Task HandleServerHelloAsync(ServerHelloMessage? hello)
+    {
+        var serverVersion = hello?.ServerVersion;
+        if (string.IsNullOrWhiteSpace(serverVersion))
+        {
+            _logger.LogWarning("Server hello did not include a version; skipping the compatibility check");
+            return;
+        }
+
+        // The server version is logged on every (re)connection, plus an explicit
+        // notice when it changed since the last connection
+        var previous = _identityStore.LastServerVersion;
+        if (previous != null && !string.Equals(previous, serverVersion, StringComparison.Ordinal))
+        {
+            _logger.LogInformation("Server version changed: v{PreviousVersion} is now v{ServerVersion}", previous, serverVersion);
+        }
+        _logger.LogInformation("Connected to Obicon server v{ServerVersion}", serverVersion);
+        _identityStore.SaveServerVersion(serverVersion);
+
+        // Observability policy from the server: log shipping gate and the
+        // local logging default, which this node may override in its own config
+        var policy = hello!;
+        ApplyObservabilityPolicy(policy.LogShippingEnabled, policy.NodeLocalLoggingEnabled);
+
+        // Supported servers are within the same major.minor version as this node
+        if (ObiconVersions.IsSupported(serverVersion, NodeInfo.Version))
+        {
+            return;
+        }
+
+        if (_settings.AllowUnsupportedServerVersion)
+        {
+            _logger.LogWarning("Server v{ServerVersion} is outside this node's supported range (same major.minor as v{NodeVersion}); AllowUnsupportedServerVersion is enabled, continuing anyway",
+                serverVersion, NodeInfo.Version);
+            return;
+        }
+
+        _logger.LogError("Server v{ServerVersion} is not supported by this node (v{NodeVersion}, same major.minor required). Disconnecting; upgrade the node or the server, or set Node:AllowUnsupportedServerVersion to continue anyway",
+            serverVersion, NodeInfo.Version);
+
+        var socket = _socket;
+        if (socket != null)
+        {
+            try
+            {
+                using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Server version not supported", closeCts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Close handshake after unsupported server version failed");
+            }
+        }
+
+        _socket = null;
+    }
+
+    /// <summary>
+    /// Applies the server's observability policy, announced on connect and on every
+    /// runtime change. Every changed setting is logged before it takes effect, so the
+    /// notice is visible even when the change itself mutes output. The node's
+    /// LocalLoggingEnabled override wins over the server's default; a disabled local
+    /// logging policy mutes only test-related output, not lifecycle logs.
+    /// </summary>
+    private void ApplyObservabilityPolicy(bool logShippingEnabled, bool nodeLocalLoggingEnabled)
+    {
+        var shippingChanged = _loggingState.ServerAllowsLogShipping != logShippingEnabled;
+        if (shippingChanged)
+        {
+            _logger.LogInformation("Setting changed: server log shipping is now {New} (was {Old})",
+                logShippingEnabled ? "enabled" : "disabled",
+                _loggingState.ServerAllowsLogShipping ? "enabled" : "disabled");
+        }
+
+        _loggingState.ServerAllowsLogShipping = logShippingEnabled;
+        _loggingState.ServerLocalLoggingEnabled = nodeLocalLoggingEnabled;
+
+        var newLocalLogging = _settings.LocalLoggingEnabled ?? nodeLocalLoggingEnabled;
+        if (_loggingState.LastAppliedLocalLogging != newLocalLogging)
+        {
+            _logger.LogInformation("Setting changed: local test logging is now {New} (was {Old}){Override}",
+                newLocalLogging ? "enabled" : "disabled",
+                _loggingState.LastAppliedLocalLogging ? "enabled" : "disabled",
+                _settings.LocalLoggingEnabled == false
+                    ? "; disabled by this node's own configuration"
+                    : string.Empty);
+        }
+
+        _loggingState.ApplyLocalLoggingPolicy(_settings.LocalLoggingEnabled, nodeLocalLoggingEnabled);
     }
 
     private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
@@ -292,17 +434,40 @@ public class ServerConnection : BackgroundService, IServerConnection
 
         switch (message.Type)
         {
+            case MessageType.ServerHello when message.Data is JsonElement helloElement:
+                await HandleServerHelloAsync(helloElement.Deserialize<ServerHelloMessage>());
+                break;
+
+            case MessageType.ServerPolicyUpdate when message.Data is JsonElement policyElement:
+                var update = policyElement.Deserialize<ServerPolicyUpdateMessage>();
+                if (update != null)
+                {
+                    ApplyObservabilityPolicy(update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
+                    _logger.LogInformation("Server updated its policy on the fly: logShipping={LogShipping} localLogging={LocalLogging}",
+                        update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
+                }
+                break;
+
             case MessageType.TestAssignment when message.Data is JsonElement element:
+            {
                 var assignment = element.Deserialize<TestAssignmentMessage>();
                 if (assignment == null)
                 {
                     _logger.LogWarning("Test assignment could not be parsed: {Json}", json);
                     return;
                 }
+                // Marked as test activity so the local logging policy can mute just these,
+                // without silencing this class's lifecycle logs; the scope flows into the
+                // event properties like the executor's JobId scope does
+                using var _ = _logger.BeginScope(new Dictionary<string, object>
+                {
+                    [NodeLoggingState.TestActivityProperty] = true
+                });
                 _logger.LogInformation("Assigned job {JobId}: {TestType} against {Target}",
                     assignment.JobId, assignment.TestType, assignment.Target);
                 await _testExecutor.ExecuteAssignmentAsync(assignment);
                 break;
+            }
 
             default:
                 _logger.LogDebug("Ignoring message type {MessageType}", message.Type);

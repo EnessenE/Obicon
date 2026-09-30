@@ -20,6 +20,7 @@ dotnet run --project src/Obicon.Node
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `ServerUrl` | `ws://localhost:5000/ws/nodes` | Server WebSocket URL |
+| `RequireTls` | `true` | Require `wss://`; plain `ws://` is refused unless the host is loopback. Set to `false` to override |
 | `Token` | *(empty)* | Node auth token (skip if enrolling) |
 | `NodeName` | *(empty)* | Name shown in the UI |
 | `HeartbeatIntervalSeconds` | `1` | Heartbeat cadence |
@@ -31,6 +32,23 @@ dotnet run --project src/Obicon.Node
 | `MetricsHost` / `MetricsPort` | `localhost` / `9464` | Prometheus metrics listener |
 | `EnrollToken` | *(empty)* | Enroll token for auto-enrollment |
 | `Labels` / `Pools` | *(empty)* | Self-managed labels and pool names (used at enrollment) |
+| `AllowUnsupportedServerVersion` | `false` | Stay connected to a server outside the supported version range |
+| `LogShippingEnabled` | `true` | Ship this node's log entries to the server while the server allows it |
+| `LocalLoggingEnabled` | *(null)* | Override the server's local-logging policy: null follows the server, `true` always logs locally, `false` never does |
+| `LogShippingMinLevel` | `Information` | Minimum level of entries shipped: `Debug`, `Information`, `Warning`, or `Error` |
+| `IpCheckIntervalMinutes` | `30` | How often the node re-resolves its internal and external IP and reports changes |
+| `ExternalIpCheckUrl` | `https://checkip.amazonaws.com` | Service that returns the node's public IPv4 address in plain text or JSON |
+| `ExternalIpCheckUrlIpv6` | `https://api6.ipify.org` | Service that returns the node's public IPv6 address; unreachable means IPv6 reports as unavailable |
+
+## Address reporting
+
+The node keeps track of four addresses of its own and reports them to the server: its **internal (LAN) IPv4 and IPv6 addresses** from its network interfaces, and its **external (public) IPv4 and IPv6 addresses** by asking the configured check services. All refresh on the `Node:IpCheckIntervalMinutes` interval; changes are logged and pushed to the server immediately as `NodeInfoUpdate` messages, and current values also travel with every registration. The external checks are best effort — a family the node cannot resolve (e.g. no IPv6 connectivity) is reported as unavailable, and offline nodes keep their last known addresses. All appear on the nodes page next to the connection-observed address.
+
+## Log shipping
+
+The node captures every log event flowing through its Serilog pipeline and ships the entries to the server as `NodeLog` WebSocket messages, including as much metadata as available: node name, version, UTC timestamp, level, rendered message, exception, and all structured properties (source context, scope properties like `JobId`, and named values).
+
+Shipping only happens while the server announced `LogShippingEnabled` in its hello; entries are dropped otherwise, and the node can opt out entirely with `Node:LogShippingEnabled`. The server's local-logging policy from the same hello mutes only **test-related output** on the node's own console (test assignments, test execution, monitoring stats) — connection lifecycle, policy changes, and errors always appear locally, and muted entries still ship. Every setting change is logged by the node before it takes effect; the node's `Node:LocalLoggingEnabled` override wins over the server's default.
 
 Endpoints the node exposes:
 
@@ -43,9 +61,13 @@ Endpoints the node exposes:
 
 **Auto-enrollment:** enable the `NodeAutoEnrollmentEnabled` setting on the server, create an enroll token on the settings page, then start the node with `Node__EnrollToken` instead of `Node__Token`. The node registers itself (creating or updating its identity in the local `node-identity.json`), manages its own name, labels, and pools, and receives its auth token automatically. Enroll tokens expire and can be revoked.
 
+## Version compatibility
+
+On every connection (and reconnection) the node logs the server's version, plus a notice whenever it changed since the last connection. A server is supported while it shares the node's major and minor version (node 0.2.x supports server 0.2.y). An unsupported server connection is closed; set `Node:AllowUnsupportedServerVersion` to continue anyway. The server mirrors this gate with its own `AllowUnsupportedNodeVersions` setting.
+
 ## Test execution
 
-The node runs one task per assigned test, capped at `MaxConcurrentTests`. Each run is hard-killed at its timeout plus 5 seconds. Supported types: ping, traceroute, HTTP, HTTPS, TCP, DNS — including expected status codes, TLS certificate expiry checks, and DNS result expectations (evaluated on the node).
+The node runs one task per assigned test, capped at `MaxConcurrentTests`. Each run is hard-killed at its timeout plus 5 seconds. Supported types: ping, traceroute, HTTP, HTTPS, TCP, DNS — including expected status codes, body regex checks, custom headers, proxies, and cache busting for HTTP(S), TLS certificate expiry checks, and DNS result expectations (evaluated on the node).
 
 On Linux, ping and traceroute need raw-socket privileges: grant `cap_net_raw` to the binary or run with `sudo`.
 

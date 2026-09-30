@@ -60,9 +60,13 @@ Creates a new node and returns its authentication token.
   "AuthToken": "the plain token - shown here because this is a creation response; only its SHA-256 hash is stored",
   "IsActive": true,
   "CreatedAt": "2024-01-01T00:00:00Z",
-  "LastSeenAt": null
+  "LastSeenAt": null,
+  "Version": null,
+  "IpAddress": null,
+  "Settings": {}
 }
 ```
+`Version`, `IpAddress`, and `Settings` are filled by the node when it connects: the node reports its software version and operating settings, and the server records the IP of its WebSocket connection. They are empty until the first connection.
 
 #### List Nodes
 ```
@@ -81,11 +85,24 @@ Returns all registered nodes.
     "CreatedAt": "2024-01-01T00:00:00Z",
     "LastSeenAt": "2024-01-01T00:00:01Z",
     "EnrollmentType": "manual",
-    "Labels": []
+    "Labels": [],
+    "Version": "0.2.0",
+    "IpAddress": "192.168.1.42",
+    "InternalIpv4": "192.168.1.42",
+    "InternalIpv6": null,
+    "ExternalIpv4": "77.166.248.192",
+    "ExternalIpv6": null,
+    "Settings": {
+      "MaxConcurrentTests": "4",
+      "HeartbeatIntervalSeconds": "1",
+      "DefaultTestTimeoutSeconds": "60",
+      "MaxTestTimeoutSeconds": "60",
+      "ReconnectDelaySeconds": "5"
+    }
   }
 ]
 ```
-`AuthToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored.
+`AuthToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored. `IpAddress` is the address the server observed on the WebSocket; the four reported addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
 
 #### Get Node
 ```
@@ -103,7 +120,16 @@ Returns details for a specific node.
   "CreatedAt": "2024-01-01T00:00:00Z",
   "LastSeenAt": "2024-01-01T00:00:01Z",
     "EnrollmentType": "manual",
-    "Labels": []
+    "Labels": [],
+    "Version": "0.2.0",
+    "IpAddress": "192.168.1.42",
+    "Settings": {
+      "MaxConcurrentTests": "4",
+      "HeartbeatIntervalSeconds": "1",
+      "DefaultTestTimeoutSeconds": "60",
+      "MaxTestTimeoutSeconds": "60",
+      "ReconnectDelaySeconds": "5"
+    }
 }
 ```
 
@@ -186,7 +212,8 @@ POST /v1/pools
 **Request Body:**
 ```json
 {
-  "Name": "EU edge"
+  "Name": "EU edge",
+  "Description": "Nodes close to EU customers"
 }
 ```
 
@@ -195,6 +222,7 @@ POST /v1/pools
 {
   "Id": "55555555-5555-5555-5555-555555555555",
   "Name": "EU edge",
+  "Description": "Nodes close to EU customers",
   "NodeIds": [],
   "CreatedAt": "2024-01-01T00:00:00Z"
 }
@@ -216,10 +244,13 @@ GET /v1/pools/{id}
 ```
 PUT /v1/pools/{id}
 ```
+Updates a pool's name and description.
+
 **Request Body:**
 ```json
 {
-  "Name": "EU edge renamed"
+  "Name": "EU edge renamed",
+  "Description": "New description, replacing the old one"
 }
 ```
 **Response:** 200 OK (same structure as Create Pool)
@@ -270,16 +301,24 @@ Creates a new test.
   "TimeoutSeconds": 30,  // max execution time per run, seconds
   "ExpectedStatusCodes": "200-399",
   "CheckCertificateExpiryDays": 14,
-  "ExpectedDnsResult": null
+  "ExpectedDnsResult": null,
+  "ExpectedBodyPattern": null,  // HTTP/HTTPS: body must match this regex; null = no check
+  "Headers": {},  // HTTP/HTTPS: custom request headers
+  "ProxyUrl": null,  // HTTP/HTTPS: http(s) proxy URL; null = direct
+  "CacheBust": false  // HTTP/HTTPS: append a unique query parameter to bypass caches
 }
 ```
 
-Validation (returns 400 with details on failure): `Name` and `Target` are required, at least one node ID or pool ID must be given, `Type` must be a valid enum value, `Frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `TimeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `ExpectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `CheckCertificateExpiryDays` must be 0-3650.
+Validation (returns 400 with details on failure): `Name` and `Target` are required, at least one node ID or pool ID must be given, `Type` must be a valid enum value, `Frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `TimeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `ExpectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `CheckCertificateExpiryDays` must be 0-3650, `ExpectedBodyPattern` must be a valid regular expression, `Headers` names must be non-empty without whitespace or colons, and `ProxyUrl` must be an absolute `http://` or `https://` URL.
 
 Targeting: the test runs on the union of `NodeIds` and all members of `PoolIds` (deduplicated).
 
 Expectations, evaluated by the node:
 - `ExpectedStatusCodes` (HTTP/HTTPS): the response status must match, otherwise the run fails
+- `ExpectedBodyPattern` (HTTP/HTTPS): the response body must match this regular expression (1-second match timeout), otherwise the run fails; the result is reported in the `body_matched` metric
+- `Headers` (HTTP/HTTPS): custom headers sent with the request, e.g. authentication
+- `ProxyUrl` (HTTP/HTTPS): the request goes through this HTTP proxy; per-phase DNS/TLS timings are omitted for proxied runs
+- `CacheBust` (HTTP/HTTPS): a unique `_cb` query parameter is appended to the request URL so caches serve a fresh response
 - `CheckCertificateExpiryDays` (HTTPS): the run fails if the TLS certificate expires within this many days; the expiry date is always reported in the output
 - `ExpectedDnsResult` (DNS): when set, the run fails unless this address is among the resolved addresses; null accepts any successful resolution
 
@@ -299,6 +338,10 @@ Expectations, evaluated by the node:
   "ExpectedStatusCodes": "200-399",
   "CheckCertificateExpiryDays": 14,
   "ExpectedDnsResult": null,
+  "ExpectedBodyPattern": null,
+  "Headers": {},
+  "ProxyUrl": null,
+  "CacheBust": false,
   "CreatedAt": "2024-01-01T00:00:00Z",
   "UpdatedAt": null
 }
@@ -394,25 +437,30 @@ Triggers immediate execution of a test. Enqueues one job per targeted node (dire
 ```
 POST /v1/tests/run-once
 ```
-Runs a single test immediately on the given node without creating a test first. The node must exist and be connected. Accepts the same expectation fields as a test (`ExpectedStatusCodes`, `CheckCertificateExpiryDays`, `ExpectedDnsResult`).
+Runs a single test immediately on a selection of nodes without creating a test first. Accepts explicit `NodeIds` and/or `PoolIds`: the explicit nodes always run, and each pool contributes its top 3 connected members — least busy first (fewest queued/assigned/running jobs). All referenced nodes and pools must exist; jobs only go to connected nodes among the selection.
 
 **Request Body:**
 ```json
 {
   "Type": 5,  // Dns
   "Target": "example.com",
-  "NodeId": "11111111-1111-1111-1111-111111111111",
+  "NodeIds": ["11111111-1111-1111-1111-111111111111"],
+  "PoolIds": ["55555555-5555-5555-5555-555555555555"],
   "TimeoutSeconds": 30,
   "ExpectedStatusCodes": "200-399",
   "CheckCertificateExpiryDays": null,
-  "ExpectedDnsResult": "93.184.216.34"
+  "ExpectedDnsResult": "93.184.216.34",
+  "ExpectedBodyPattern": null,
+  "Headers": null,
+  "ProxyUrl": null,
+  "CacheBust": false
 }
 ```
-`TimeoutSeconds` is optional (default 60, range 1-60).
+`TimeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`ExpectedStatusCodes`, `ExpectedBodyPattern`, `Headers`, `ProxyUrl`, `CacheBust`, `CheckCertificateExpiryDays`, `ExpectedDnsResult`). At least one node ID or pool ID is required.
 
-**Response:** 200 OK - the created job; poll `GET /v1/queue/{id}` until `Status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
+**Response:** 200 OK - one job per selected node, in the order of the request; poll each at `GET /v1/queue/{id}` until `Status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
 
-**Error:** 400 Bad Request if the node does not exist or is not connected.
+**Errors:** 400 Bad Request for invalid expectations, unknown node or pool IDs, an empty selection, or when none of the selected nodes are connected.
 
 ---
 
@@ -423,14 +471,14 @@ GET /metrics
 ```
 Prometheus scrape endpoint (no auth). Exposes:
 - `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) and `obicon.tests.duration_ms` (histogram, dims `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) from the `Obicon.Tests` meter. One label set per test and node combination
-- `obicon.server.actions` (counter, dim `action`) and `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`) from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
+- `obicon.server.actions` (counter, dim `action`), `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`), and `obicon.server.nodelogs` (counter, dims `level`, `source_context`, `node_id`, `node_name`) counting received node log entries, from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
 Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.node.test_duration_ms`, `obicon.node.heartbeats`, `obicon.node.reconnects`) on `http://localhost:9464/metrics` by default, configurable via `Node:MetricsHost` and `Node:MetricsPort` (e.g. `Node__MetricsPort=9500`; host `+` exposes metrics outside the machine).
 
 ### Settings
 
-Server settings resolve as: forced by appsettings/env (read-only) → database override → default. Read-only derived settings (e.g. `SchedulerLoopIntervalSeconds`) are computed from other settings: `PUT` returns 409 for them, and their `Source` is `Derived`.
+Server settings resolve as: forced by appsettings/env (read-only) → database override → default. Read-only derived settings (e.g. `SchedulerLoopIntervalSeconds`) are computed from other settings: `PUT` returns 409 for them, and their `Source` is `Derived`. Each setting carries a `Group` naming the section it is displayed under in the settings UI, e.g. `General` or `Observability`.
 
 #### List Settings
 ```
@@ -444,7 +492,8 @@ GET /v1/settings
     "Description": "If enabled, nodes can register themselves with a valid enroll token...",
     "Value": "false",
     "IsForced": false,
-    "Source": "Default"
+    "Source": "Default",
+    "Group": "General"
   }
 ]
 ```
@@ -466,15 +515,17 @@ PUT /v1/settings/{key}
 
 Enroll tokens let nodes register themselves (requires the `NodeAutoEnrollmentEnabled` setting). Only the SHA-256 hash is stored; the plain token is returned exactly once, on creation. Token names default to `enroll-token-dd-MM-yyyy-HH-mm-ss`.
 
+A token can be **scoped to a pool** (`PoolId`): nodes enrolling with it are always added to that pool, on top of the pools they request themselves. A token without `PoolId` is server-wide.
+
 #### Create Token
 ```
 POST /v1/enroll-tokens
 ```
 **Request Body:**
 ```json
-{ "Name": "raspberry-pis", "ExpiresAt": "2026-12-31T00:00:00Z" }
+{ "Name": "raspberry-pis", "ExpiresAt": "2026-12-31T00:00:00Z", "PoolId": null }
 ```
-Both fields optional. **Response:** 201 Created, includes the plain `Token` once.
+Both fields optional. **Response:** 201 Created, includes the plain `Token` once and the `PoolId`. **Errors:** 400 for an unknown pool ID.
 
 #### List Tokens
 ```
@@ -501,7 +552,7 @@ DELETE /v1/enroll-tokens/{id}
 ```
 POST /v1/enroll
 ```
-Authenticates with the enroll token in the body instead of the API Authorization header. Requires the `NodeAutoEnrollmentEnabled` setting (403 otherwise). Enrolled nodes manage their own name, labels, and pools; `PUT /v1/nodes/{id}` returns 409 for them.
+Authenticates with the enroll token in the body instead of the API Authorization header. Requires the `NodeAutoEnrollmentEnabled` setting (403 otherwise). Enrolled nodes manage their own name, labels, and pools; `PUT /v1/nodes/{id}` returns 409 for them. A token scoped to a pool (see Enroll Tokens) always adds the enrolled node to that pool, in addition to the pools requested in the body.
 
 **Request Body:**
 ```json
@@ -647,12 +698,27 @@ wss://localhost:5000/ws/nodes?token={authToken}
 ### Message Format
 ```json
 {
-  "type": "NodeRegistration|NodeHeartbeat|TestAssignment|TestResult|TestStatusUpdate|ErrorReport",
+  "type": "NodeRegistration|NodeHeartbeat|ServerHello|ServerPolicyUpdate|TestAssignment|TestResult|TestStatusUpdate|ErrorReport|NodeLog|NodeInfoUpdate",
   "data": { ... }
 }
 ```
 
 ### Message Types
+
+#### ServerHello
+Sent by server immediately after accepting a node's WebSocket connection. The node logs the server version and checks compatibility: a server outside the node's supported range (same major.minor) closes the connection, unless the node's `AllowUnsupportedServerVersion` setting is enabled. Mirrored on the server: a node reporting an unsupported version is disconnected unless the `AllowUnsupportedNodeVersions` server setting is enabled.
+
+The message also carries the server's observability policy: `LogShippingEnabled` mirrors the `NodeLogShippingEnabled` setting (nodes may ship log entries only while it is true) and `NodeLocalLoggingEnabled` mirrors the `NodeLocalLoggingEnabled` default for whether nodes log locally — a node's own configuration takes precedence.
+```json
+{
+  "type": "ServerHello",
+  "data": {
+    "ServerVersion": "0.2.0",
+    "LogShippingEnabled": false,
+    "NodeLocalLoggingEnabled": true
+  }
+}
+```
 
 #### NodeRegistration
 Sent by node on connection.
@@ -661,10 +727,21 @@ Sent by node on connection.
   "type": "NodeRegistration",
   "data": {
     "NodeId": "string",
-    "NodeName": "string"
+    "NodeName": "string",
+    "NodeVersion": "0.2.0",
+    "MaxConcurrentTests": 4,
+    "HeartbeatIntervalSeconds": 1,
+    "DefaultTestTimeoutSeconds": 60,
+    "MaxTestTimeoutSeconds": 60,
+    "ReconnectDelaySeconds": 5,
+    "InternalIpv4": "192.168.1.42",
+    "InternalIpv6": null,
+    "ExternalIpv4": null,
+    "ExternalIpv6": null
   }
 }
 ```
+The settings fields let the server show what the node is configured for; they are all optional (older nodes omit them) and surface through the nodes API in the `Settings` dictionary. The address fields are the node's own resolved internal (LAN) and external (public) addresses per family, refreshed on an interval and pushed as `NodeInfoUpdate` messages; a null family is reported as unavailable.
 
 #### NodeHeartbeat
 Sent by node periodically (default: every 1 second).
@@ -688,7 +765,11 @@ Sent by server to assign a test to a node.
     "TestId": "string",
     "TestType": 0-5,
     "Target": "string",
-    "Frequency": 60  // seconds
+    "Frequency": 60,  // seconds
+    "ExpectedBodyPattern": null,  // HTTP/HTTPS: body regex; null = no check
+    "Headers": null,  // HTTP/HTTPS: custom request headers
+    "ProxyUrl": null,  // HTTP/HTTPS: proxy URL; null = direct
+    "CacheBust": false  // HTTP/HTTPS: append a cache-busting query parameter
   }
 }
 ```
@@ -710,7 +791,7 @@ Sent by node to report test results.
 }
 ```
 
-The `Metrics` dictionary carries detailed measurements: HTTP/HTTPS runs report DNS resolution, TCP connect, TLS handshake (including protocol and cipher), time to first byte, and transfer timings plus certificate details; DNS runs report the nameservers queried, which one answered, its round-trip time, and the A/AAAA records; ping, TCP, and traceroute report the resolved address and phase timings.
+The `Metrics` dictionary carries detailed measurements: HTTP/HTTPS runs report DNS resolution, TCP connect, TLS handshake (including protocol and cipher), time to first byte, transfer timings plus certificate details, and `body_matched` when a body pattern is set (the proxy URL is reported for proxied runs); DNS runs report the nameservers queried, which one answered, its round-trip time, and the A/AAAA records; ping, TCP, and traceroute report the resolved address and phase timings.
 
 #### TestStatusUpdate
 Sent by node to update test status.
@@ -741,3 +822,53 @@ Sent by node to report errors.
   }
 }
 ```
+
+#### NodeLog
+Sent by node to ship one of its log entries to the server. Accepted only while the `NodeLogShippingEnabled` setting is true (announced in the server hello); while it is false, entries are dropped. When received and `ShipNodeLogsToConsole` is true, the server writes the entry to its own console and log, tagged with the node's identity. `Properties` carries the structured metadata of the entry: source context, scope properties (e.g. `JobId`), and any named values of the log call.
+```json
+{
+  "type": "NodeLog",
+  "data": {
+    "NodeId": "string",
+    "NodeName": "string",
+    "NodeVersion": "0.2.0",
+    "Timestamp": "ISO8601 datetime",
+    "Level": "Debug|Information|Warning|Error",
+    "Message": "string",
+    "Exception": null,
+    "Properties": {
+      "SourceContext": "Obicon.Node.Services.MonitoringService",
+      "JobId": "44444444-4444-4444-4444-444444444444"
+    }
+  }
+}
+```
+Node-side controls: `Node:LogShippingEnabled` (opt the node out), `Node:LogShippingMinLevel` (minimum shipped level, default `Information`), and `Node:LocalLoggingEnabled` (override of the server's local-logging policy).
+
+#### ServerPolicyUpdate
+Sent by server to every connected node when a node-facing setting changes at runtime (`NodeLogShippingEnabled` or `NodeLocalLoggingEnabled`), so nodes apply the new policy on the fly without reconnecting. A node's `Node:LocalLoggingEnabled` override still wins over the announced local logging default.
+```json
+{
+  "type": "ServerPolicyUpdate",
+  "data": {
+    "LogShippingEnabled": true,
+    "NodeLocalLoggingEnabled": true
+  }
+}
+```
+
+#### NodeInfoUpdate
+Sent by node when it has refreshed its own addresses: it re-resolves its internal (LAN) IPv4 and IPv6 addresses and asks the configured check services for its external (public) IPv4 and IPv6 addresses on an interval (`Node:IpCheckIntervalMinutes`, default 30 minutes), reporting changes immediately. The addresses also travel with every registration.
+```json
+{
+  "type": "NodeInfoUpdate",
+  "data": {
+    "NodeId": "string",
+    "InternalIpv4": "192.168.1.42",
+    "InternalIpv6": null,
+    "ExternalIpv4": "77.166.248.192",
+    "ExternalIpv6": null
+  }
+}
+```
+Null fields mean that address family is unavailable on the node.

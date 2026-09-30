@@ -9,11 +9,13 @@ namespace Obicon.Server.Services;
 public class NodeService : INodeService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly SqliteWriteQueue _writeQueue;
     private readonly ILogger<NodeService> _logger;
 
-    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, ILogger<NodeService> logger)
+    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<NodeService> logger)
     {
         _dbFactory = dbFactory;
+        _writeQueue = writeQueue;
         _logger = logger;
     }
 
@@ -33,14 +35,16 @@ public class NodeService : INodeService
             LastSeenAt = null
         };
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        db.Nodes.Add(node);
-        await db.SaveChangesAsync();
+        var response = await _writeQueue.EnqueueAsync(async db =>
+        {
+            db.Nodes.Add(node);
+            await db.SaveChangesAsync();
+            return ToResponse(node);
+        });
 
         _logger.LogInformation("Created node {NodeId} with name: {NodeName}", node.Id, node.Name);
         Metrics.ServerMetrics.Action("created_node");
 
-        var response = ToResponse(node);
         response.AuthToken = plainToken;
         return response;
     }
@@ -66,35 +70,43 @@ public class NodeService : INodeService
 
     public async Task<NodeResponse?> UpdateNodeAsync(Guid id, UpdateNodeRequest request)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var node = await db.Nodes.FindAsync(id);
-        if (node == null)
+        var (response, plainToken) = await _writeQueue.EnqueueAsync(async db =>
         {
-            _logger.LogWarning("Cannot update node {NodeId}: not found", id);
+            var node = await db.Nodes.FindAsync(id);
+            if (node == null)
+            {
+                _logger.LogWarning("Cannot update node {NodeId}: not found", id);
+                return ((NodeResponse?)null, (string?)null);
+            }
+
+            if (node.EnrollmentType == NodeEnrollmentType.AutoEnrollment)
+            {
+                throw new InvalidOperationException($"Node {id} auto-enrolled; its name, labels, and pools are managed by the node itself");
+            }
+
+            node.Name = request.Name;
+            node.Labels = request.Labels;
+
+            string? plainToken = null;
+            if (request.RegenerateToken)
+            {
+                plainToken = Guid.NewGuid().ToString();
+                node.AuthToken = TokenHasher.Hash(plainToken);
+                _logger.LogInformation("Regenerated auth token for node {NodeId}", id);
+                Metrics.ServerMetrics.Action("token_regenerated");
+            }
+
+            await db.SaveChangesAsync();
+            return (ToResponse(node), plainToken);
+        });
+
+        if (response == null)
+        {
             return null;
         }
 
-        if (node.EnrollmentType == NodeEnrollmentType.AutoEnrollment)
-        {
-            throw new InvalidOperationException($"Node {id} auto-enrolled; its name, labels, and pools are managed by the node itself");
-        }
-
-        node.Name = request.Name;
-        node.Labels = request.Labels;
-
-        string? plainToken = null;
-        if (request.RegenerateToken)
-        {
-            plainToken = Guid.NewGuid().ToString();
-            node.AuthToken = TokenHasher.Hash(plainToken);
-            _logger.LogInformation("Regenerated auth token for node {NodeId}", id);
-            Metrics.ServerMetrics.Action("token_regenerated");
-        }
-
-        await db.SaveChangesAsync();
         _logger.LogInformation("Updated node {NodeId} to name: {NewName}", id, request.Name);
 
-        var response = ToResponse(node);
         if (plainToken != null)
         {
             response.AuthToken = plainToken;
@@ -104,19 +116,26 @@ public class NodeService : INodeService
 
     public async Task<bool> DeleteNodeAsync(Guid id)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var node = await db.Nodes.FindAsync(id);
-        if (node == null)
+        var deleted = await _writeQueue.EnqueueAsync(async db =>
         {
-            _logger.LogWarning("Cannot delete node {NodeId}: not found", id);
-            return false;
-        }
+            var node = await db.Nodes.FindAsync(id);
+            if (node == null)
+            {
+                _logger.LogWarning("Cannot delete node {NodeId}: not found", id);
+                return false;
+            }
 
-        db.Nodes.Remove(node);
-        await db.SaveChangesAsync();
-        _logger.LogInformation("Deleted node {NodeId}", id);
-        Metrics.ServerMetrics.Action("deleted_node");
-        return true;
+            db.Nodes.Remove(node);
+            await db.SaveChangesAsync();
+            return true;
+        });
+
+        if (deleted)
+        {
+            _logger.LogInformation("Deleted node {NodeId}", id);
+            Metrics.ServerMetrics.Action("deleted_node");
+        }
+        return deleted;
     }
 
     public async Task<bool> ValidateNodeTokenAsync(string token)
@@ -133,15 +152,69 @@ public class NodeService : INodeService
         return await db.Nodes.FirstOrDefaultAsync(n => n.AuthToken == hash);
     }
 
-    public async Task UpdateNodeLastSeenAsync(Guid nodeId)
+    public Task UpdateNodeLastSeenAsync(Guid nodeId)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var node = await db.Nodes.FindAsync(nodeId);
-        if (node != null)
+        return _writeQueue.EnqueueAsync(async db =>
         {
-            node.LastSeenAt = DateTime.UtcNow;
+            var node = await db.Nodes.FindAsync(nodeId);
+            if (node != null)
+            {
+                node.LastSeenAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        });
+    }
+
+    public Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, string? ipAddress, Dictionary<string, string>? settings)
+    {
+        return _writeQueue.EnqueueAsync(async db =>
+        {
+            var node = await db.Nodes.FindAsync(nodeId);
+            if (node == null)
+            {
+                return;
+            }
+
+            var reportedSettings = settings ?? new Dictionary<string, string>();
+            var changed = node.Version != version ||
+                          node.IpAddress != ipAddress ||
+                          !node.Settings.OrderBy(kv => kv.Key).SequenceEqual(reportedSettings.OrderBy(kv => kv.Key));
+            if (!changed)
+            {
+                return;
+            }
+
+            node.Version = version;
+            node.IpAddress = ipAddress;
+            node.Settings = reportedSettings;
             await db.SaveChangesAsync();
-        }
+
+            _logger.LogInformation("Node {NodeId} connection info updated: version={Version} ip={IpAddress}", nodeId, version, ipAddress);
+        });
+    }
+
+    public Task UpdateNodeReportedAddressesAsync(Guid nodeId, string? internalIpv4, string? internalIpv6, string? externalIpv4, string? externalIpv6)
+    {
+        return _writeQueue.EnqueueAsync(async db =>
+        {
+            var node = await db.Nodes.FindAsync(nodeId);
+            if (node == null ||
+                (node.InternalIpv4 == internalIpv4 && node.InternalIpv6 == internalIpv6 &&
+                 node.ExternalIpv4 == externalIpv4 && node.ExternalIpv6 == externalIpv6))
+            {
+                return;
+            }
+
+            node.InternalIpv4 = internalIpv4;
+            node.InternalIpv6 = internalIpv6;
+            node.ExternalIpv4 = externalIpv4;
+            node.ExternalIpv6 = externalIpv6;
+            await db.SaveChangesAsync();
+
+            _logger.LogInformation("Node {NodeId} addresses updated: int4={InternalIpv4} int6={InternalIpv6} ext4={ExternalIpv4} ext6={ExternalIpv6}",
+                nodeId, internalIpv4 ?? "unavailable", internalIpv6 ?? "unavailable",
+                externalIpv4 ?? "unavailable", externalIpv6 ?? "unavailable");
+        });
     }
 
     private static NodeResponse ToResponse(Node node) => new()
@@ -154,6 +227,13 @@ public class NodeService : INodeService
         CreatedAt = node.CreatedAt,
         LastSeenAt = node.LastSeenAt,
         Labels = node.Labels,
-        EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual"
+        EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual",
+        Version = node.Version,
+        IpAddress = node.IpAddress,
+        InternalIpv4 = node.InternalIpv4,
+        InternalIpv6 = node.InternalIpv6,
+        ExternalIpv4 = node.ExternalIpv4,
+        ExternalIpv6 = node.ExternalIpv6,
+        Settings = node.Settings
     };
 }

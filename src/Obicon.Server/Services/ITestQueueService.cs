@@ -6,6 +6,12 @@ namespace Obicon.Server.Services;
 public interface ITestQueueService
 {
     Task<TestJob> EnqueueJobAsync(Models.TestJob job);
+
+    /// <summary>
+    /// Creates a job directly with the given context. Only for code already running
+    /// inside a queued write unit; everything else goes through EnqueueJobAsync.
+    /// </summary>
+    Task<TestJob> CreateJobAsync(Data.ObiconDbContext db, Models.TestJob job);
     Task<TestJob?> DequeueTestAsync(Guid nodeId);
     Task UpdateJobStatusAsync(Guid jobId, TestJobStatus status, TestResult? result = null, string? errorMessage = null);
     Task<TestJob?> GetJobAsync(Guid jobId);

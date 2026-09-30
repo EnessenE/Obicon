@@ -18,7 +18,10 @@ public static class SchemaMigrator
     private static readonly Dictionary<string, string> ColumnDefaults = new()
     {
         ["TimeoutSeconds"] = "60",
-        ["ExpectedStatusCodes"] = "'200-399'"
+        ["ExpectedStatusCodes"] = "'200-399'",
+        // Dictionary columns must default to a JSON object: a JSON array cannot deserialize into a dictionary
+        ["Headers"] = "'{}'",
+        ["Settings"] = "'{}'"
     };
 
     public static void Migrate(ObiconDbContext db)
@@ -47,7 +50,7 @@ public static class SchemaMigrator
 
                 var columnType = property.GetColumnType() ?? "TEXT";
                 var defaultClause = BuildDefaultClause(property, columnName);
-                db.Database.ExecuteSqlRaw($"ALTER TABLE \"{tableName}\" ADD COLUMN \"{columnName}\" {columnType} {defaultClause}");
+                ExecuteSql(db, $"ALTER TABLE \"{tableName}\" ADD COLUMN \"{columnName}\" {columnType} {defaultClause}");
             }
         }
 
@@ -55,17 +58,26 @@ public static class SchemaMigrator
     }
 
     /// <summary>
+    /// Executes raw SQL for the migrator. ExecuteSqlRaw treats its SQL as a composite
+    /// format string, so braces — e.g. the '{}' defaults of JSON columns — must be doubled
+    /// or the format parser throws before the statement ever reaches SQLite.
+    /// </summary>
+    private static void ExecuteSql(ObiconDbContext db, string sql)
+    {
+        db.Database.ExecuteSqlRaw(sql.Replace("{", "{{").Replace("}", "}}"));
+    }
+
+    /// <summary>
     /// One-time data conversions for values whose meaning changed between versions.
     /// Applied fixups are recorded in the SchemaMigrations table so they run exactly once.
     /// </summary>
-    private static void ApplyDataMigrations(ObiconDbContext db)
-    {
-        db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS \"SchemaMigrations\" (\"MigrationId\" TEXT NOT NULL CONSTRAINT \"PK_SchemaMigrations\" PRIMARY KEY)");
+    private static void ApplyDataMigrations(ObiconDbContext db)    {
+        ExecuteSql(db, "CREATE TABLE IF NOT EXISTS \"SchemaMigrations\" (\"MigrationId\" TEXT NOT NULL CONSTRAINT \"PK_SchemaMigrations\" PRIMARY KEY)");
 
         // Test.Frequency changed from the TestFrequency enum (0-6) to plain seconds
         if (!IsMigrationApplied(db, "frequency-enum-to-seconds"))
         {
-            db.Database.ExecuteSqlRaw("""
+            ExecuteSql(db, """
                 UPDATE "Tests" SET "Frequency" = CASE "Frequency"
                     WHEN 0 THEN 10
                     WHEN 1 THEN 30
@@ -77,7 +89,7 @@ public static class SchemaMigrator
                     ELSE "Frequency" END
                 WHERE "Frequency" BETWEEN 0 AND 6
                 """);
-            db.Database.ExecuteSqlRaw("INSERT INTO \"SchemaMigrations\" (\"MigrationId\") VALUES ('frequency-enum-to-seconds')");
+            ExecuteSql(db, "INSERT INTO \"SchemaMigrations\" (\"MigrationId\") VALUES ('frequency-enum-to-seconds')");
         }
     }
 
@@ -118,7 +130,7 @@ public static class SchemaMigrator
                 continue;
             }
 
-            db.Database.ExecuteSqlRaw(statement);
+            ExecuteSql(db, statement);
         }
     }
 

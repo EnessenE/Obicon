@@ -43,4 +43,42 @@ public class Node
     /// Auto-enrolled nodes manage their own name, labels, and pools. Default: Manual.
     /// </summary>
     public NodeEnrollmentType EnrollmentType { get; set; } = NodeEnrollmentType.Manual;
+
+    /// <summary>
+    /// Version of the node software, reported by the node when it connects. Null if it never connected.
+    /// </summary>
+    public string? Version { get; set; }
+
+    /// <summary>
+    /// IP address the server observed on the node's WebSocket connection. Null if it never connected.
+    /// </summary>
+    public string? IpAddress { get; set; }
+
+    /// <summary>
+    /// Internal (LAN) IPv4 address the node reported about itself. Null when unavailable.
+    /// </summary>
+    public string? InternalIpv4 { get; set; }
+
+    /// <summary>
+    /// Internal (LAN) IPv6 address the node reported about itself. Null when unavailable.
+    /// </summary>
+    public string? InternalIpv6 { get; set; }
+
+    /// <summary>
+    /// External (public internet) IPv4 address the node reported about itself.
+    /// Null when its check has not succeeded yet.
+    /// </summary>
+    public string? ExternalIpv4 { get; set; }
+
+    /// <summary>
+    /// External (public internet) IPv6 address the node reported about itself.
+    /// Null when unavailable.
+    /// </summary>
+    public string? ExternalIpv6 { get; set; }
+
+    /// <summary>
+    /// Operating settings the node reported on its last connection, e.g. MaxConcurrentTests.
+    /// Keys match the NodeRegistrationMessage field names. Default: empty dictionary.
+    /// </summary>
+    public Dictionary<string, string> Settings { get; set; } = new();
 }

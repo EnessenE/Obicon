@@ -2,8 +2,7 @@
 let nodes = [];
 
 // DOM elements
-const nodesTable = document.getElementById('nodesTable');
-const nodesTableBody = document.getElementById('nodesTableBody');
+const nodesList = document.getElementById('nodesList');
 const noNodesMessage = document.getElementById('noNodesMessage');
 const loadingMessage = document.getElementById('loadingMessage');
 const errorMessage = document.getElementById('errorMessage');
@@ -51,40 +50,105 @@ async function loadNodes() {
 function renderNodes(connectedById = {}) {
     if (nodes.length === 0) {
         noNodesMessage.style.display = 'block';
-        nodesTable.style.display = 'none';
+        nodesList.style.display = 'none';
         return;
     }
 
     noNodesMessage.style.display = 'none';
-    nodesTable.style.display = 'table';
+    nodesList.style.display = 'block';
 
-    nodesTableBody.innerHTML = nodes.map(node => `
-        <tr>
-            <td title="${node.id}">${node.id.substring(0, 8)}</td>
-            <td>${escapeHtml(node.name)}</td>
-            <td>${renderLabels(node.labels)}</td>
-            <td>${renderPools(node.id)}</td>
-            <td>${node.enrollmentType === 'auto-enrollment' ? '<span class="badge bg-info text-dark" title="Enrolled itself with an enroll token; manages its own name, labels, and pools">Auto-enrolled</span>' : '<span class="badge bg-light text-dark border" title="Created by a user">Manual</span>'}</td>
-            <td>${node.id in connectedById
-                ? (connectedById[node.id] ? '<span class="badge bg-success">Connected</span>' : '<span class="badge bg-secondary">Offline</span>')
-                : '-'}</td>
-            <td>${node.isActive ? 'Yes' : 'No'}</td>
-            <td>${new Date(node.createdAt).toLocaleString()}</td>
-            <td>${node.lastSeenAt ? new Date(node.lastSeenAt).toLocaleString() : 'Never'}</td>
-            <td>
+    nodesList.innerHTML = nodes.map(node => `
+        <div class="row g-2 g-lg-3 list-row px-3">
+            <div class="col-12 col-lg-3">
+                <div class="fw-semibold">${escapeHtml(node.name)}</div>
+                <div class="text-muted small" title="Created ${new Date(node.createdAt).toLocaleString()}">${node.id}</div>
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Version</div>
+                ${node.version ? `<code>v${escapeHtml(node.version)}</code>` : '-'}
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">IP</div>
+                ${renderIps(node)}
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Capacity</div>
+                ${renderCapacity(node.settings)}
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">State</div>
+                ${node.id in connectedById
+                    ? (connectedById[node.id] ? '<span class="badge bg-success">Connected</span>' : '<span class="badge bg-secondary">Offline</span>')
+                    : '-'}
+                <div class="small text-muted" title="Last seen">${node.lastSeenAt ? new Date(node.lastSeenAt).toLocaleString() : 'Never'}</div>
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Enrollment</div>
+                ${node.enrollmentType === 'auto-enrollment'
+                    ? '<span class="badge bg-info text-dark" title="Enrolled itself with an enroll token; manages its own name, labels, and pools">Auto-enrolled</span>'
+                    : '<span class="badge bg-light text-dark border" title="Created by a user">Manual</span>'}
+            </div>
+            <div class="col-6 col-lg-1">
+                <div class="field-label">Active</div>
+                ${node.isActive ? 'Yes' : 'No'}
+            </div>
+            <div class="col-12 col-lg-1">
+                <div class="field-label">Labels</div>
+                ${renderLabels(node.labels)}
+            </div>
+            <div class="col-12 col-lg-1">
+                <div class="field-label">Pools</div>
+                ${renderPools(node.id)}
+            </div>
+            <div class="col-12 col-lg-2 d-flex align-items-end justify-content-lg-end">
                 <button class="btn btn-sm btn-primary me-1" onclick="openEditModal('${node.id}')">Edit</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteNode('${node.id}')">Delete</button>
-            </td>
-        </tr>
+            </div>
+        </div>
     `).join('');
 
-    // Fetch pool names per node after rendering, so the table appears fast
+    // Fetch pool names per node after rendering, so the list appears fast
     nodes.forEach(fillNodePools);
 }
 
 function renderLabels(labels) {
     if (!labels || labels.length === 0) return '-';
     return labels.map(l => `<span class="badge bg-secondary me-1">${escapeHtml(l)}</span>`).join('');
+}
+
+// IP column: the node-reported internal and external addresses per family, "unavailable"
+// when a family is missing; the connection-observed address is the fallback before the
+// node has reported anything
+function renderIps(node) {
+    const hasReported = node.internalIpv4 != null || node.internalIpv6 != null
+        || node.externalIpv4 != null || node.externalIpv6 != null;
+    if (!hasReported && !node.ipAddress) {
+        return '-';
+    }
+
+    const rows = [
+        ['int4', node.internalIpv4],
+        ['int6', node.internalIpv6],
+        ['ext4', node.externalIpv4],
+        ['ext6', node.externalIpv6]
+    ];
+
+    if (!hasReported) {
+        return `<code>${escapeHtml(node.ipAddress)}</code>`;
+    }
+
+    return rows.map(([label, value]) =>
+        value
+            ? `<code>${escapeHtml(value)}</code> <span class="text-muted small">${label}</span>`
+            : `<span class="text-muted small" title="This address family is unavailable on the node">${label} unavailable</span>`
+    ).join('<br>');
+}
+
+// Capacity column: how many tests the node runs in parallel
+function renderCapacity(settings) {
+    const maxConcurrent = settings && settings.MaxConcurrentTests;
+    if (!maxConcurrent) return '-';
+    return `<span class="badge bg-secondary" title="Maximum concurrent test executions">${escapeHtml(maxConcurrent)}x parallel</span>`;
 }
 
 function renderPools(nodeId) {
@@ -146,6 +210,27 @@ async function openEditModal(nodeId) {
     } catch (error) {
         poolsDiv.textContent = error.message;
     }
+
+    // Read-only settings the node reported on its last connection
+    const settingsDiv = document.getElementById('editNodeSettings');
+    const settings = editingNode.settings || {};
+    const prettyNames = {
+        MaxConcurrentTests: 'Max concurrent tests',
+        HeartbeatIntervalSeconds: 'Heartbeat interval (s)',
+        DefaultTestTimeoutSeconds: 'Default test timeout (s)',
+        MaxTestTimeoutSeconds: 'Max test timeout (s)',
+        ReconnectDelaySeconds: 'Reconnect delay (s)'
+    };
+    settingsDiv.innerHTML = Object.keys(settings).length === 0
+        ? '<span class="text-muted">Not reported yet - the node reports its settings when it connects</span>'
+        : Object.entries(settings).map(([key, value], index, entries) => {
+            const last = index === entries.length - 1;
+            return `
+                <div class="d-flex justify-content-between gap-3 py-1${last ? '' : ' border-bottom'}">
+                    <span class="text-muted" title="${escapeHtml(key)}">${escapeHtml(prettyNames[key] || key)}</span>
+                    <span>${escapeHtml(value)}</span>
+                </div>`;
+        }).join('');
 
     if (!editModal) {
         editModal = new bootstrap.Modal(document.getElementById('editModal'));
@@ -216,7 +301,7 @@ async function copyText(value, btn) {
 
 function showLoading() {
     loadingMessage.style.display = 'block';
-    nodesTable.style.display = 'none';
+    nodesList.style.display = 'none';
     noNodesMessage.style.display = 'none';
     errorMessage.style.display = 'none';
 }

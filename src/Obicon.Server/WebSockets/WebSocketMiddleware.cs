@@ -1,9 +1,11 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Obicon.Server.Configuration;
 using Obicon.Server.Models;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
+using Obicon.Shared;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
@@ -16,6 +18,7 @@ public class WebSocketMiddleware
     private readonly INodeService _nodeService;
     private readonly ITestService _testService;
     private readonly ITestQueueService _queueService;
+    private readonly IServerSettingsService _settingsService;
     private readonly ILogger<WebSocketMiddleware> _logger;
 
     public WebSocketMiddleware(
@@ -24,6 +27,7 @@ public class WebSocketMiddleware
         INodeService nodeService,
         ITestService testService,
         ITestQueueService queueService,
+        IServerSettingsService settingsService,
         ILogger<WebSocketMiddleware> logger)
     {
         _next = next;
@@ -31,6 +35,7 @@ public class WebSocketMiddleware
         _nodeService = nodeService;
         _testService = testService;
         _queueService = queueService;
+        _settingsService = settingsService;
         _logger = logger;
     }
 
@@ -58,6 +63,7 @@ public class WebSocketMiddleware
 
             var webSocket = await context.WebSockets.AcceptWebSocketAsync();
             var connectionId = Guid.NewGuid().ToString();
+            var remoteIp = context.Connection.RemoteIpAddress?.ToString();
 
             var added = _connectionManager.TryAddConnection(node.Id.ToString(), node.Name, webSocket);
             if (!added)
@@ -66,11 +72,13 @@ public class WebSocketMiddleware
                 return;
             }
 
-            _logger.LogInformation("Node {NodeId} connected via WebSocket", node.Id);
+            _logger.LogInformation("Node {NodeId} connected via WebSocket from {RemoteIp}", node.Id, remoteIp ?? "unknown");
 
             try
             {
-                await HandleWebSocketConnection(node.Id.ToString(), webSocket);
+                // Announce the server version first so the node can log it and check compatibility
+                await SendServerHelloAsync(webSocket);
+                await HandleWebSocketConnection(node.Id.ToString(), remoteIp, webSocket);
             }
             finally
             {
@@ -85,7 +93,27 @@ public class WebSocketMiddleware
         await _next(context);
     }
 
-    private async Task HandleWebSocketConnection(string nodeId, WebSocket webSocket)
+    /// <summary>
+    /// Sends the server hello: version plus the observability policy, so nodes know
+    /// whether they may ship logs and the server's default for local node logging.
+    /// </summary>
+    private async Task SendServerHelloAsync(WebSocket webSocket)
+    {
+        var hello = new WebSocketMessage
+        {
+            Type = MessageType.ServerHello,
+            Data = new ServerHelloMessage
+            {
+                ServerVersion = ServerInfo.Version,
+                LogShippingEnabled = await _settingsService.GetAsync<bool>("NodeLogShippingEnabled"),
+                NodeLocalLoggingEnabled = await _settingsService.GetAsync<bool>("NodeLocalLoggingEnabled")
+            }
+        };
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(hello));
+        await webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+    }
+
+    private async Task HandleWebSocketConnection(string nodeId, string? remoteIp, WebSocket webSocket)
     {
         var buffer = new byte[1024 * 4];
         var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
@@ -100,7 +128,11 @@ public class WebSocketMiddleware
                 var wsMessage = JsonSerializer.Deserialize<WebSocketMessage>(message);
                 if (wsMessage != null)
                 {
-                    await ProcessMessage(nodeId, webSocket, wsMessage);
+                    var keepConnection = await ProcessMessage(nodeId, remoteIp, webSocket, wsMessage);
+                    if (!keepConnection)
+                    {
+                        return;
+                    }
                 }
             }
             catch (Exception ex)
@@ -122,38 +154,233 @@ public class WebSocketMiddleware
         }
     }
 
-    private async Task ProcessMessage(string nodeId, WebSocket webSocket, WebSocketMessage message)
+    /// <summary>
+    /// Processes one message from a node. Returns false when the connection must be closed,
+    /// e.g. because the node version is unsupported.
+    /// </summary>
+    private async Task<bool> ProcessMessage(string nodeId, string? remoteIp, WebSocket webSocket, WebSocketMessage message)
     {
         _logger.LogDebug("Processing message type: {MessageType} from {NodeId}", message.Type, nodeId);
 
         switch (message.Type)
         {
             case MessageType.NodeRegistration:
-                await HandleNodeRegistration(nodeId);
-                break;
+                return await HandleNodeRegistration(nodeId, remoteIp, message);
             case MessageType.NodeHeartbeat:
                 await HandleNodeHeartbeat(nodeId);
-                break;
+                return true;
             case MessageType.TestResult:
                 await HandleTestResult(nodeId, message);
-                break;
+                return true;
             case MessageType.TestStatusUpdate:
                 await HandleTestStatusUpdate(nodeId, message);
-                break;
+                return true;
             case MessageType.ErrorReport:
                 HandleErrorReport(nodeId, message);
-                break;
+                return true;
+            case MessageType.NodeLog:
+                await HandleNodeLogAsync(nodeId, message);
+                return true;
+            case MessageType.NodeInfoUpdate:
+                await HandleNodeInfoUpdate(nodeId, message);
+                return true;
             default:
                 _logger.LogWarning("Unknown message type: {MessageType}", message.Type);
+                return true;
+        }
+    }
+
+    /// <summary>
+    /// Handles a log entry shipped by a node. Entries are dropped while
+    /// NodeLogShippingEnabled is off; while ShipNodeLogsToConsole is on they are
+    /// written to the server's own console and log, tagged with the node's identity.
+    /// </summary>
+    private async Task HandleNodeLogAsync(string nodeId, WebSocketMessage message)
+    {
+        if (!await _settingsService.GetAsync<bool>("NodeLogShippingEnabled"))
+        {
+            _logger.LogDebug("Dropped log entry from node {NodeId}: log shipping is disabled", nodeId);
+            return;
+        }
+
+        var entry = (message.Data as JsonElement?)?.Deserialize<NodeLogMessage>();
+        if (entry == null || string.IsNullOrWhiteSpace(entry.Message))
+        {
+            _logger.LogWarning("Received unusable log entry from node {NodeId}", nodeId);
+            return;
+        }
+
+        // Every received entry is counted in OpenTelemetry, whether or not it is
+        // also forwarded to the console
+        var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
+        var sourceContext = entry.Properties is { } props && props.TryGetValue("SourceContext", out var sc)
+            ? sc.ToString().Trim('"')
+            : "unknown";
+        Metrics.ServerMetrics.NodeLog(
+            string.IsNullOrWhiteSpace(entry.Level) ? "unknown" : entry.Level,
+            sourceContext,
+            nodeId,
+            node?.Name ?? "unknown");
+
+        if (!await _settingsService.GetAsync<bool>("ShipNodeLogsToConsole"))
+        {
+            _logger.LogDebug("Received log entry from node {NodeId}; ShipNodeLogsToConsole is off, not forwarding", nodeId);
+            return;
+        }
+
+        var timestamp = entry.Timestamp == default ? DateTime.UtcNow : entry.Timestamp;
+        var origin = string.IsNullOrWhiteSpace(entry.NodeName)
+            ? nodeId
+            : $"{entry.NodeName} ({nodeId})";
+        if (!string.IsNullOrWhiteSpace(entry.NodeVersion))
+        {
+            origin += $" v{entry.NodeVersion}";
+        }
+
+        // Compact rendering of the entry's structured properties, e.g. SourceContext and JobId
+        var properties = entry.Properties is { Count: > 0 }
+            ? " {" + string.Join(", ", entry.Properties.Select(kv => $"{kv.Key}={Truncate(kv.Value, 200)}")) + "}"
+            : string.Empty;
+
+        var text = $"[node {origin}] {entry.Message}{properties}" +
+                   (string.IsNullOrWhiteSpace(entry.Exception) ? string.Empty : $" | {entry.Exception}");
+
+        switch (entry.Level)
+        {
+            case "Error":
+                _logger.LogError("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
+                break;
+            case "Warning":
+                _logger.LogWarning("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
+                break;
+            case "Debug":
+                _logger.LogDebug("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
+                break;
+            default:
+                _logger.LogInformation("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
                 break;
         }
     }
 
-    private async Task HandleNodeRegistration(string nodeId)
+    private static string Truncate(string value, int maxLength)
     {
-        _logger.LogInformation("Node {NodeId} registered", nodeId);
+        return string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength] + "…";
+    }
+
+    private async Task<bool> HandleNodeRegistration(string nodeId, string? remoteIp, WebSocketMessage message)
+    {
+        var registration = (message.Data as JsonElement?)?.Deserialize<NodeRegistrationMessage>();
+        var nodeVersion = string.IsNullOrWhiteSpace(registration?.NodeVersion) ? null : registration!.NodeVersion;
+
+        // Version gate: nodes outside the server's supported range (same major.minor)
+        // are disconnected, unless the AllowUnsupportedNodeVersions setting is enabled
+        if (nodeVersion != null && !ObiconVersions.IsSupported(ServerInfo.Version, nodeVersion))
+        {
+            if (await _settingsService.GetAsync<bool>("AllowUnsupportedNodeVersions"))
+            {
+                _logger.LogWarning("Node {NodeId} runs version {NodeVersion}, which is outside the supported range (server {ServerVersion}); AllowUnsupportedNodeVersions is enabled, accepting anyway",
+                    nodeId, nodeVersion, ServerInfo.Version);
+            }
+            else
+            {
+                _logger.LogWarning("Disconnecting node {NodeId}: version {NodeVersion} is outside the supported range (server {ServerVersion}, same major.minor required)",
+                    nodeId, nodeVersion, ServerInfo.Version);
+                Metrics.ServerMetrics.Action("node_rejected_version");
+                await CloseUnsupportedNodeAsync(nodeId);
+                return false;
+            }
+        }
+
+        _logger.LogInformation("Node {NodeId} registered (version {NodeVersion})", nodeId, nodeVersion ?? "unknown");
         _connectionManager.UpdateLastSeen(nodeId);
         await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
+        await _nodeService.UpdateNodeConnectionInfoAsync(Guid.Parse(nodeId), nodeVersion, remoteIp, CollectReportedSettings(registration));
+        await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
+            registration?.InternalIpv4, registration?.InternalIpv6, registration?.ExternalIpv4, registration?.ExternalIpv6);
+        return true;
+    }
+
+    /// <summary>
+    /// Handles a node's address refresh: it re-resolves its internal and external IP every
+    /// so often and reports changes here, without waiting for a reconnect.
+    /// </summary>
+    private async Task HandleNodeInfoUpdate(string nodeId, WebSocketMessage message)
+    {
+        var update = (message.Data as JsonElement?)?.Deserialize<NodeInfoUpdateMessage>();
+        if (update == null)
+        {
+            _logger.LogWarning("Received unusable address update from node {NodeId}", nodeId);
+            return;
+        }
+
+        await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
+            update.InternalIpv4, update.InternalIpv6, update.ExternalIpv4, update.ExternalIpv6);
+    }
+
+    /// <summary>
+    /// Flattens the settings a node reported in its registration into a dictionary.
+    /// Older nodes may not report any, yielding an empty dictionary.
+    /// </summary>
+    private static Dictionary<string, string> CollectReportedSettings(NodeRegistrationMessage? registration)
+    {
+        var settings = new Dictionary<string, string>();
+        if (registration == null)
+        {
+            return settings;
+        }
+
+        if (registration.MaxConcurrentTests is { } maxConcurrentTests)
+        {
+            settings["MaxConcurrentTests"] = maxConcurrentTests.ToString();
+        }
+        if (registration.HeartbeatIntervalSeconds is { } heartbeatInterval)
+        {
+            settings["HeartbeatIntervalSeconds"] = heartbeatInterval.ToString();
+        }
+        if (registration.DefaultTestTimeoutSeconds is { } defaultTimeout)
+        {
+            settings["DefaultTestTimeoutSeconds"] = defaultTimeout.ToString();
+        }
+        if (registration.MaxTestTimeoutSeconds is { } maxTimeout)
+        {
+            settings["MaxTestTimeoutSeconds"] = maxTimeout.ToString();
+        }
+        if (registration.ReconnectDelaySeconds is { } reconnectDelay)
+        {
+            settings["ReconnectDelaySeconds"] = reconnectDelay.ToString();
+        }
+        return settings;
+    }
+
+    /// <summary>
+    /// Closes the WebSocket of a node whose version is not supported, so it reconnects
+    /// only after an upgrade or after the compatibility flag is enabled.
+    /// </summary>
+    private async Task CloseUnsupportedNodeAsync(string nodeId)
+    {
+        var connection = _connectionManager.GetConnection(nodeId);
+        if (connection == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await connection.Socket.CloseAsync(
+                WebSocketCloseStatus.PolicyViolation,
+                $"Node version not supported by server {ServerInfo.Version}",
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Close handshake with unsupported node {NodeId} aborted", nodeId);
+        }
+    }
+
+    private static Task CloseConnectionAsync(WebSocket? webSocket, string nodeId)
+    {
+        // Reserved for callers that need a close without a live connection manager entry
+        return Task.CompletedTask;
     }
 
     private async Task HandleNodeHeartbeat(string nodeId)

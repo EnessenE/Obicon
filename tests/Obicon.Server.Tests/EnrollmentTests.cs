@@ -157,4 +157,54 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>
 
         Assert.Matches("^enroll-token-\\d{2}-\\d{2}-\\d{4}-\\d{2}-\\d{2}-\\d{2}$", token.GetProperty("name").GetString()!);
     }
+
+    [Fact]
+    public async Task Enroll_PoolScopedToken_PutsEnrolledNodeIntoItsPool()
+    {
+        var client = await GetEnabledClientAsync();
+
+        // A pool to scope the token to
+        var pool = await client.PostAsJsonAsync("/v1/pools", new { Name = "raspberry-pis" });
+        pool.EnsureSuccessStatusCode();
+        var poolId = (await pool.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var token = await CreateEnrollTokenAsync(client, new { Name = "pi-fleet", PoolId = poolId });
+
+        // The node asks for a pool of its own; the token's pool is added on top
+        var response = await client.PostAsJsonAsync("/v1/enroll", new
+        {
+            EnrollToken = token,
+            NodeName = "pi-1",
+            Pools = new[] { "home-lab" }
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var enrollResult = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var nodeId = enrollResult.GetProperty("id").GetGuid();
+        Assert.Contains(poolId, enrollResult.GetProperty("poolIds").EnumerateArray().Select(p => p.GetGuid()));
+
+        // The scoped pool really contains the node
+        var poolNow = await client.GetFromJsonAsync<JsonElement>($"/v1/pools/{poolId}");
+        Assert.Contains(nodeId, poolNow.GetProperty("nodeIds").EnumerateArray().Select(n => n.GetGuid()));
+
+        // A server-wide token is not scoped to any pool
+        var serverWide = await client.PostAsJsonAsync("/v1/enroll-tokens", new { Name = "any-pool" });
+        serverWide.EnsureSuccessStatusCode();
+        var serverWideJson = await serverWide.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, serverWideJson.GetProperty("poolId").ValueKind);
+    }
+
+    [Fact]
+    public async Task EnrollToken_RejectsUnknownPool_With400()
+    {
+        var client = await GetEnabledClientAsync();
+
+        var response = await client.PostAsJsonAsync("/v1/enroll-tokens", new
+        {
+            Name = "ghost-pool",
+            PoolId = Guid.NewGuid()
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

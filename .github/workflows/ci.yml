@@ -29,3 +29,6 @@ jobs:
 
       - name: Test
         run: dotnet test tests/Obicon.Server.Tests --configuration Release --no-build
+
+      - name: Test node
+        run: dotnet test tests/Obicon.Node.Tests --configuration Release --no-build

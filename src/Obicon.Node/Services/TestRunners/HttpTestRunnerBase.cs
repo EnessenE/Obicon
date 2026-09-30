@@ -4,6 +4,8 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
@@ -41,64 +43,88 @@ public abstract class HttpTestRunnerBase : ITestRunner
             ? target
             : $"{Scheme}{target}";
 
+        // Cache busting appends a unique query parameter so caches serve a fresh response
+        if (assignment.CacheBust)
+        {
+            var separator = url.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+            url = $"{url}{separator}_cb={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        }
+
         var metrics = new Dictionary<string, object> { ["url"] = url };
         var host = new Uri(url).Host;
 
         X509Certificate2? serverCertificate = null;
         double dnsMs = -1, connectMs = -1, tlsMs = -1;
 
-        using var handler = new SocketsHttpHandler
+        SocketsHttpHandler handler;
+        if (!string.IsNullOrWhiteSpace(assignment.ProxyUrl))
         {
-            AllowAutoRedirect = true,
-            ConnectCallback = async (context, ct) =>
+            // Through a proxy the per-phase timings cannot be attributed cleanly, so the
+            // timing ConnectCallback is skipped; the total duration still covers the whole run
+            handler = new SocketsHttpHandler
             {
-                var dnsStopwatch = Stopwatch.StartNew();
-                var resolvedAddress = await HostResolver.ResolveAsync(context.DnsEndPoint.Host, assignment.IpVersion, ct)
-                    ?? throw new SocketException((int)SocketError.HostNotFound);
-                dnsStopwatch.Stop();
-                dnsMs = dnsStopwatch.Elapsed.TotalMilliseconds;
-                _logger.LogInformation("DNS resolved {Host} to {Address} in {DnsMs:F1} ms", context.DnsEndPoint.Host, resolvedAddress, dnsMs);
-                metrics["dns_resolved"] = resolvedAddress.ToString();
-                metrics["dns_ms"] = Math.Round(dnsMs, 2);
-
-                var socket = new Socket(resolvedAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                var connectStopwatch = Stopwatch.StartNew();
-                await socket.ConnectAsync(new IPEndPoint(resolvedAddress, context.DnsEndPoint.Port), ct);
-                connectStopwatch.Stop();
-                connectMs = connectStopwatch.Elapsed.TotalMilliseconds;
-                _logger.LogInformation("TCP connected to {Host}:{Port} in {ConnectMs:F1} ms", context.DnsEndPoint.Host, context.DnsEndPoint.Port, connectMs);
-                metrics["connect_ms"] = Math.Round(connectMs, 2);
-
-                var networkStream = new NetworkStream(socket, ownsSocket: true);
-
-                if (!context.InitialRequestMessage.RequestUri!.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+                AllowAutoRedirect = true,
+                Proxy = new WebProxy(assignment.ProxyUrl),
+                UseProxy = true
+            };
+            metrics["proxy"] = assignment.ProxyUrl;
+        }
+        else
+        {
+            handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = true,
+                ConnectCallback = async (context, ct) =>
                 {
-                    return networkStream;
-                }
+                    var dnsStopwatch = Stopwatch.StartNew();
+                    var resolvedAddress = await HostResolver.ResolveAsync(context.DnsEndPoint.Host, assignment.IpVersion, ct)
+                        ?? throw new SocketException((int)SocketError.HostNotFound);
+                    dnsStopwatch.Stop();
+                    dnsMs = dnsStopwatch.Elapsed.TotalMilliseconds;
+                    _logger.LogInformation("DNS resolved {Host} to {Address} in {DnsMs:F1} ms", context.DnsEndPoint.Host, resolvedAddress, dnsMs);
+                    metrics["dns_resolved"] = resolvedAddress.ToString();
+                    metrics["dns_ms"] = Math.Round(dnsMs, 2);
 
-                var sslStream = new SslStream(networkStream, leaveInnerStreamOpen: false);
+                    var socket = new Socket(resolvedAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    var connectStopwatch = Stopwatch.StartNew();
+                    await socket.ConnectAsync(new IPEndPoint(resolvedAddress, context.DnsEndPoint.Port), ct);
+                    connectStopwatch.Stop();
+                    connectMs = connectStopwatch.Elapsed.TotalMilliseconds;
+                    _logger.LogInformation("TCP connected to {Host}:{Port} in {ConnectMs:F1} ms", context.DnsEndPoint.Host, context.DnsEndPoint.Port, connectMs);
+                    metrics["connect_ms"] = Math.Round(connectMs, 2);
 
-                var tlsStopwatch = Stopwatch.StartNew();
-                await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
-                {
-                    TargetHost = context.DnsEndPoint.Host,
-                    RemoteCertificateValidationCallback = (_, cert, _, _) =>
+                    var networkStream = new NetworkStream(socket, ownsSocket: true);
+
+                    if (!context.InitialRequestMessage.RequestUri!.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
                     {
-                        serverCertificate = (X509Certificate2?)cert;
-                        return true;
+                        return networkStream;
                     }
-                }, ct);
-                tlsStopwatch.Stop();
-                tlsMs = tlsStopwatch.Elapsed.TotalMilliseconds;
-                _logger.LogInformation("TLS handshake with {Host} finished in {TlsMs:F1} ms ({Protocol}, {Cipher})",
-                    context.DnsEndPoint.Host, tlsMs, sslStream.SslProtocol, sslStream.CipherAlgorithm);
-                metrics["tls_ms"] = Math.Round(tlsMs, 2);
-                metrics["tls_protocol"] = sslStream.SslProtocol.ToString();
-                metrics["tls_cipher"] = sslStream.CipherAlgorithm.ToString();
 
-                return sslStream;
-            }
-        };
+                    var sslStream = new SslStream(networkStream, leaveInnerStreamOpen: false);
+
+                    var tlsStopwatch = Stopwatch.StartNew();
+                    await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+                    {
+                        TargetHost = context.DnsEndPoint.Host,
+                        RemoteCertificateValidationCallback = (_, cert, _, _) =>
+                        {
+                            serverCertificate = (X509Certificate2?)cert;
+                            return true;
+                        }
+                    }, ct);
+                    tlsStopwatch.Stop();
+                    tlsMs = tlsStopwatch.Elapsed.TotalMilliseconds;
+                    _logger.LogInformation("TLS handshake with {Host} finished in {TlsMs:F1} ms ({Protocol}, {Cipher})",
+                        context.DnsEndPoint.Host, tlsMs, sslStream.SslProtocol, sslStream.CipherAlgorithm);
+                    metrics["tls_ms"] = Math.Round(tlsMs, 2);
+                    metrics["tls_protocol"] = sslStream.SslProtocol.ToString();
+                    metrics["tls_cipher"] = sslStream.CipherAlgorithm.ToString();
+
+                    return sslStream;
+                }
+            };
+        }
+        // HttpClient disposes the handler it is constructed with
         using var client = new HttpClient(handler)
         {
             // Timeout is enforced per test via the cancellation token
@@ -111,7 +137,21 @@ public abstract class HttpTestRunnerBase : ITestRunner
         var totalStopwatch = Stopwatch.StartNew();
         try
         {
-            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+            // Custom headers from the test configuration, e.g. authentication headers
+            if (assignment.Headers is { Count: > 0 } headers)
+            {
+                foreach (var header in headers)
+                {
+                    if (!request.Headers.TryAddWithoutValidation(header.Key, header.Value))
+                    {
+                        _logger.LogWarning("Could not set header {HeaderName} on the request", header.Key);
+                    }
+                }
+            }
+
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
             var statusCode = (int)response.StatusCode;
             var ttfbMs = totalStopwatch.Elapsed.TotalMilliseconds;
             metrics["ttfb_ms"] = Math.Round(ttfbMs, 2);
@@ -120,23 +160,23 @@ public abstract class HttpTestRunnerBase : ITestRunner
             _logger.LogInformation("Received HTTP {StatusCode} from {Host} after {TtfbMs:F1} ms (time to first byte)",
                 statusCode, response.RequestMessage?.RequestUri?.Host ?? host, ttfbMs);
 
-            // Read the body (capped) to measure the transfer phase
-            var bytes = 0L;
-            var buffer = new byte[8192];
+            // Read the body (capped) to measure the transfer phase and check it against the pattern
             var transferStopwatch = Stopwatch.StartNew();
-            await using (var stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token))
+            var body = new MemoryStream();
             {
+                var buffer = new byte[8192];
+                await using var stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
                 int read;
-                while (bytes < MaxBodyBytes && (read = await stream.ReadAsync(buffer, timeoutCts.Token)) > 0)
+                while (body.Length < MaxBodyBytes && (read = await stream.ReadAsync(buffer, timeoutCts.Token)) > 0)
                 {
-                    bytes += read;
+                    await body.WriteAsync(buffer.AsMemory(0, read), timeoutCts.Token);
                 }
             }
             transferStopwatch.Stop();
             metrics["transfer_ms"] = Math.Round(transferStopwatch.Elapsed.TotalMilliseconds, 2);
-            metrics["bytes_read"] = bytes;
-            metrics["bytes_truncated"] = bytes >= MaxBodyBytes;
-            _logger.LogInformation("Transferred {Bytes} bytes in {TransferMs:F1} ms", bytes, transferStopwatch.Elapsed.TotalMilliseconds);
+            metrics["bytes_read"] = body.Length;
+            metrics["bytes_truncated"] = body.Length >= MaxBodyBytes;
+            _logger.LogInformation("Transferred {Bytes} bytes in {TransferMs:F1} ms", body.Length, transferStopwatch.Elapsed.TotalMilliseconds);
 
             var details = new List<string> { $"HTTP {statusCode} {response.ReasonPhrase} from {response.RequestMessage?.RequestUri?.Host ?? url}" };
 
@@ -144,6 +184,27 @@ public abstract class HttpTestRunnerBase : ITestRunner
             if (!statusOk)
             {
                 details.Add($"expected status codes: {assignment.ExpectedStatusCodes}");
+            }
+
+            // Body pattern check: the run fails when the body does not match the regex
+            var bodyOk = true;
+            if (!string.IsNullOrWhiteSpace(assignment.ExpectedBodyPattern))
+            {
+                var bodyText = Encoding.UTF8.GetString(body.ToArray());
+                try
+                {
+                    bodyOk = Regex.IsMatch(bodyText, assignment.ExpectedBodyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+                    if (!bodyOk)
+                    {
+                        details.Add($"body did not match pattern: {assignment.ExpectedBodyPattern}");
+                    }
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    bodyOk = false;
+                    details.Add($"body pattern check timed out: {assignment.ExpectedBodyPattern}");
+                }
+                metrics["body_matched"] = bodyOk;
             }
 
             var certificateOk = true;
@@ -164,7 +225,7 @@ public abstract class HttpTestRunnerBase : ITestRunner
 
             return new TestOutcome
             {
-                Success = statusOk && certificateOk,
+                Success = statusOk && certificateOk && bodyOk,
                 Output = string.Join("; ", details),
                 Metrics = metrics
             };

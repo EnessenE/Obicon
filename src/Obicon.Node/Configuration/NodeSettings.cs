@@ -12,6 +12,13 @@ public class NodeSettings
     public string ServerUrl { get; set; } = "ws://localhost:5000/ws/nodes";
 
     /// <summary>
+    /// If enabled, the server URL must use wss:// (TLS): a plain ws:// URL is refused
+    /// with an error. Override to false to allow unencrypted connections, e.g. in
+    /// development. Default: true.
+    /// </summary>
+    public bool RequireTls { get; set; } = true;
+
+    /// <summary>
     /// Authentication token of this node, created on the primary server. Default: empty string.
     /// </summary>
     public string Token { get; set; } = string.Empty;
@@ -82,4 +89,48 @@ public class NodeSettings
     /// Names of pools this node puts itself into when enrolling. Default: empty list.
     /// </summary>
     public List<string> Pools { get; set; } = new();
+
+    /// <summary>
+    /// If enabled, this node stays connected even when the server reports a version outside
+    /// the supported range (same major.minor as the node). Default: false.
+    /// </summary>
+    public bool AllowUnsupportedServerVersion { get; set; }
+
+    /// <summary>
+    /// If enabled, this node ships its log entries to the server while the server allows it
+    /// (NodeLogShippingEnabled on the server). The node-side switch to opt out. Default: true.
+    /// </summary>
+    public bool LogShippingEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Local override for whether this node logs to its own console: null follows the server's
+    /// NodeLocalLoggingEnabled policy announced on connect, true always logs locally,
+    /// false never logs locally. Default: null.
+    /// </summary>
+    public bool? LocalLoggingEnabled { get; set; }
+
+    /// <summary>
+    /// Minimum level of entries shipped to the server: Debug, Information, Warning, or Error.
+    /// Default: "Information".
+    /// </summary>
+    public string LogShippingMinLevel { get; set; } = "Information";
+
+    /// <summary>
+    /// How often the node refreshes its internal and external IP addresses, in minutes.
+    /// Changes are reported to the server immediately. Default: 30.
+    /// </summary>
+    public int IpCheckIntervalMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// URL of the service the node asks for its external (public) IPv4 address; it must
+    /// respond with the address in plain text or JSON. Default: "https://checkip.amazonaws.com".
+    /// </summary>
+    public string ExternalIpCheckUrl { get; set; } = "https://checkip.amazonaws.com";
+
+    /// <summary>
+    /// URL of the service the node asks for its external (public) IPv6 address; it must
+    /// respond with the address in plain text or JSON. Null or unreachable means IPv6
+    /// is reported as unavailable. Default: "https://api6.ipify.org".
+    /// </summary>
+    public string ExternalIpCheckUrlIpv6 { get; set; } = "https://api6.ipify.org";
 }

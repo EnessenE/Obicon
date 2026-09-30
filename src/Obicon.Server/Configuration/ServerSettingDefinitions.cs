@@ -27,6 +27,12 @@ public class ServerSettingDefinition
     public bool IsReadOnly { get; init; }
 
     /// <summary>
+    /// Section the setting is displayed under in the settings UI, e.g. "General" or "Observability".
+    /// Default: "General".
+    /// </summary>
+    public string Group { get; init; } = "General";
+
+    /// <summary>
     /// Default value as string, used when nothing is configured or stored. Default: empty string.
     /// </summary>
     public string Default { get; init; } = string.Empty;
@@ -94,11 +100,42 @@ public static class ServerSettingDefinitions
         },
         new ServerSettingDefinition
         {
+            Key = "AllowUnsupportedNodeVersions",
+            Description = "If enabled, nodes reporting a version outside the supported range (same major.minor as the server) are accepted with a warning instead of being disconnected.",
+            ValueType = typeof(bool),
+            Default = "false"
+        },
+        new ServerSettingDefinition
+        {
             Key = "SchedulerLoopIntervalSeconds",
             Description = "Read-only, derived from the lowest FrequencyPresetsSeconds preset. The test scheduler wakes this often to scan for due tests. Each wake is one SQLite query plus an in-memory scan, after which the loop sleeps (Task.Delay), so the CPU cost is one short database burst per wake - a lower interval means proportionally more wakes per hour (e.g. 10 seconds = 360 scans/hour). Adjust FrequencyPresetsSeconds to change it.",
             ValueType = typeof(int),
             Default = "10",
             IsReadOnly = true
+        },
+        new ServerSettingDefinition
+        {
+            Key = "NodeLogShippingEnabled",
+            Description = "If enabled, nodes may ship their log entries to the server over their WebSocket connection. When disabled, log entries arriving from nodes are dropped. Announced to every node in the server hello.",
+            ValueType = typeof(bool),
+            Default = "false",
+            Group = "Observability"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "NodeLocalLoggingEnabled",
+            Description = "The server's default policy for whether nodes write logs locally (console). A node's own configuration takes precedence over this default. Announced to every node in the server hello.",
+            ValueType = typeof(bool),
+            Default = "true",
+            Group = "Observability"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "ShipNodeLogsToConsole",
+            Description = "If enabled, log entries received from nodes are written to the server's own console and log, tagged with the node's identity. Requires NodeLogShippingEnabled; otherwise nothing is received.",
+            ValueType = typeof(bool),
+            Default = "false",
+            Group = "Observability"
         }
     };
 }

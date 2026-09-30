@@ -35,4 +35,10 @@ public class EnrollToken
     /// Timestamp when the token was revoked. Null while the token is active.
     /// </summary>
     public DateTime? RevokedAt { get; set; }
+
+    /// <summary>
+    /// Pool this token is scoped to: enrolled nodes are always added to this pool.
+    /// Null for a server-wide token that lets nodes choose their own pools. Default: null.
+    /// </summary>
+    public Guid? PoolId { get; set; }
 }

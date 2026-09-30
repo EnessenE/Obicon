@@ -17,6 +17,11 @@ public class NodePool
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
+    /// Free-form description of the pool, shown in the UI. Default: empty string.
+    /// </summary>
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>
     /// IDs of the nodes in this pool. Default: empty list.
     /// </summary>
     public List<Guid> NodeIds { get; set; } = new();

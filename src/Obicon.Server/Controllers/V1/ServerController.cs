@@ -31,6 +31,7 @@ public class ServerController : ControllerBase
     /// Returns aggregated statistics about tests, nodes, and the job queue.
     /// </summary>
     [HttpGet("stats")]
+    [ProducesResponseType(typeof(ServerStatsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetStats()
     {
         var nodes = await _nodeService.GetAllNodesAsync();

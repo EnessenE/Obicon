@@ -2,9 +2,14 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <Version>0.2.0</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Obicon.Server.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Obicon.Shared\Obicon.Shared.csproj" />

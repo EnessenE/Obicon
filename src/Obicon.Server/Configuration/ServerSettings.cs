@@ -32,4 +32,25 @@ public class ServerSettings
     /// creating or editing a test. Default: "10,30,60,120,300,600,3600".
     /// </summary>
     public string FrequencyPresetsSeconds { get; set; } = "10,30,60,120,300,600,3600";
+
+    /// <summary>
+    /// If enabled, the server accepts nodes whose version is outside the supported range
+    /// (same major.minor) instead of closing their connection. Default: false.
+    /// </summary>
+    public bool AllowUnsupportedNodeVersions { get; set; }
+
+    /// <summary>
+    /// If enabled, nodes may ship their log entries to the server. Default: false.
+    /// </summary>
+    public bool NodeLogShippingEnabled { get; set; }
+
+    /// <summary>
+    /// Default policy for whether nodes write logs locally; nodes can override it. Default: true.
+    /// </summary>
+    public bool NodeLocalLoggingEnabled { get; set; } = true;
+
+    /// <summary>
+    /// If enabled, log entries received from nodes are written to the server's own console. Default: false.
+    /// </summary>
+    public bool ShipNodeLogsToConsole { get; set; }
 }

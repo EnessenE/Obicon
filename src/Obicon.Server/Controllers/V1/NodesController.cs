@@ -25,6 +25,8 @@ public class NodesController : ControllerBase
     }
 
     [HttpPost]
+    [ProducesResponseType(typeof(NodeResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateNode([FromBody] CreateNodeRequest request)
     {
         var node = await _nodeService.CreateNodeAsync(request);
@@ -32,6 +34,7 @@ public class NodesController : ControllerBase
     }
 
     [HttpGet]
+    [ProducesResponseType(typeof(List<NodeResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllNodes()
     {
         var nodes = await _nodeService.GetAllNodesAsync();
@@ -42,6 +45,7 @@ public class NodesController : ControllerBase
     /// Returns the live status of every node: active flag and current WebSocket connectivity.
     /// </summary>
     [HttpGet("status")]
+    [ProducesResponseType(typeof(List<NodeStatusResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetNodeStatuses()
     {
         var nodes = await _nodeService.GetAllNodesAsync();
@@ -54,6 +58,8 @@ public class NodesController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [ProducesResponseType(typeof(NodeResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetNode(Guid id)
     {
         var node = await _nodeService.GetNodeAsync(id);
@@ -69,6 +75,10 @@ public class NodesController : ControllerBase
     /// A regenerated token expires immediately and closes any live connection using the old token.
     /// </summary>
     [HttpPut("{id}")]
+    [ProducesResponseType(typeof(NodeResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> UpdateNode(Guid id, [FromBody] UpdateNodeRequest request)
     {
         try
@@ -96,6 +106,8 @@ public class NodesController : ControllerBase
     /// Returns all pools this node belongs to.
     /// </summary>
     [HttpGet("{id}/pools")]
+    [ProducesResponseType(typeof(List<PoolResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPoolsForNode(Guid id)
     {
         if (await _nodeService.GetNodeAsync(id) == null)
@@ -108,6 +120,8 @@ public class NodesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteNode(Guid id)
     {
         var deleted = await _nodeService.DeleteNodeAsync(id);

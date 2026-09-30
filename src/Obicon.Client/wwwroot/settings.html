@@ -7,7 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
-    <link rel="stylesheet" href="css/styles.css?v=2">
+    <link rel="stylesheet" href="css/styles.css?v=5">
 </head>
 <body>
     <div id="appNavbar"></div>
@@ -44,13 +44,18 @@
                     the server stores only its hash.
                 </p>
                 <div class="row g-2 mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <input id="tokenName" class="form-control" placeholder="Name (optional)">
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <input id="tokenExpiry" type="datetime-local" class="form-control" title="Expiry (optional)">
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
+                        <select id="tokenPool" class="form-select" title="Limit the token to a pool (optional)">
+                            <option value="">Entire server (any pool)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
                         <button class="btn btn-primary w-100" onclick="createToken()"><i class="bi bi-plus-lg me-1"></i>Create token</button>
                     </div>
                 </div>
@@ -61,20 +66,7 @@
                     <button id="copyTokenBtn" class="btn btn-sm btn-outline-primary ms-2" onclick="copyNewToken()"><i class="bi bi-clipboard me-1"></i>Copy</button>
                     <div class="small text-muted mt-1">This is the only time the plain token is shown. Give it to the node via Node:EnrollToken.</div>
                 </div>
-                <div class="table-responsive">
-                    <table id="tokensTable" class="table table-striped table-hover align-middle mb-0" style="display:none;">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Created</th>
-                                <th>Expires</th>
-                                <th>State</th>
-                                <th class="text-end">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tokensTableBody"></tbody>
-                    </table>
-                </div>
+                <div id="tokensList"></div>
                 <div id="noTokensMessage" class="alert alert-info" style="display:none;">No enroll tokens yet.</div>
             </div>
         </div>
@@ -85,6 +77,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=2"></script>
-    <script src="js/settings.js?v=3"></script>
+    <script src="js/settings.js?v=7"></script>
 </body>
 </html>

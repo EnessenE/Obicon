@@ -18,17 +18,20 @@ public interface INodeEnrollmentService
 public class NodeEnrollmentService : INodeEnrollmentService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly SqliteWriteQueue _writeQueue;
     private readonly IEnrollTokenService _enrollTokenService;
     private readonly IServerSettingsService _settingsService;
     private readonly ILogger<NodeEnrollmentService> _logger;
 
     public NodeEnrollmentService(
         IDbContextFactory<ObiconDbContext> dbFactory,
+        SqliteWriteQueue writeQueue,
         IEnrollTokenService enrollTokenService,
         IServerSettingsService settingsService,
         ILogger<NodeEnrollmentService> logger)
     {
         _dbFactory = dbFactory;
+        _writeQueue = writeQueue;
         _enrollTokenService = enrollTokenService;
         _settingsService = settingsService;
         _logger = logger;
@@ -44,10 +47,19 @@ public class NodeEnrollmentService : INodeEnrollmentService
         var enrollToken = await _enrollTokenService.FindValidAsync(request.EnrollToken)
             ?? throw new UnauthorizedAccessException("Invalid, revoked, or expired enroll token");
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
+        // The whole enrollment runs as one queued write unit: node creation/update and
+        // pool membership must be written together, one by one like every other write
+        var (node, plainToken, poolIds) = await _writeQueue.EnqueueAsync(async db =>
+        {
+            var labels = request.Labels.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
+            var poolIds = await ResolveOrCreatePoolsAsync(db, request.Pools);
 
-        var labels = request.Labels.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
-        var poolIds = await ResolveOrCreatePoolsAsync(db, request.Pools);
+        // A pool-scoped token always puts the enrolled node into its pool,
+        // on top of the pools the node asked for itself
+        if (enrollToken.PoolId is { } tokenPoolId && !poolIds.Contains(tokenPoolId))
+        {
+            poolIds.Add(tokenPoolId);
+        }
 
         Node? node;
         string? plainToken = null;
@@ -91,7 +103,9 @@ public class NodeEnrollmentService : INodeEnrollmentService
             }
         }
 
-        await db.SaveChangesAsync();
+            await db.SaveChangesAsync();
+            return (node, plainToken, poolIds);
+        });
 
         _logger.LogInformation("Node {NodeId} ({NodeName}) enrolled via token {TokenName} ({PoolCount} pool(s))",
             node.Id, node.Name, enrollToken.Name, poolIds.Count);

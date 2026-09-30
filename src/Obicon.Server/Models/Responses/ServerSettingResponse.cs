@@ -35,4 +35,10 @@ public class ServerSettingResponse
     /// Where the effective value comes from: "Configuration (forced)", "Database", or "Default".
     /// </summary>
     public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Section the setting is displayed under in the settings UI, e.g. "General" or "Observability".
+    /// Default: "General".
+    /// </summary>
+    public string Group { get; set; } = "General";
 }

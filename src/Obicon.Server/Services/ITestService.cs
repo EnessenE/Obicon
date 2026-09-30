@@ -15,6 +15,10 @@ public interface ITestService
     Task<bool> DeleteTestAsync(Guid id);
     Task<bool> TriggerTestRunAsync(Guid testId);
     Task<int> ScheduleDueTestsAsync();
-    Task<Models.TestJob?> RunOnceAsync(Models.Requests.RunTestOnceRequest request);
+    /// <summary>
+    /// Runs a test once on each of the requested connected nodes without creating a test.
+    /// Throws ArgumentException for unknown nodes or when none of them are connected.
+    /// </summary>
+    Task<List<Models.TestJob>> RunOnceAsync(Models.Requests.RunTestOnceRequest request);
     Task<IEnumerable<Test>> GetTestsForNodeAsync(Guid nodeId);
 }

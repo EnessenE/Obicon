@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Obicon.Server.Models;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
 using Obicon.Server.Services;
@@ -16,7 +17,12 @@ public class TestsController : ControllerBase
         _testService = testService;
     }
 
+    /// <summary>
+    /// Creates a new test. Validation errors are answered with 400.
+    /// </summary>
     [HttpPost]
+    [ProducesResponseType(typeof(TestResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateTest([FromBody] CreateTestRequest request)
     {
         try
@@ -30,14 +36,23 @@ public class TestsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Returns all tests.
+    /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(List<TestResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllTests()
     {
         var tests = await _testService.GetAllTestsAsync();
         return Ok(tests);
     }
 
+    /// <summary>
+    /// Returns one test by ID.
+    /// </summary>
     [HttpGet("{id}")]
+    [ProducesResponseType(typeof(TestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetTest(Guid id)
     {
         var test = await _testService.GetTestAsync(id);
@@ -48,7 +63,13 @@ public class TestsController : ControllerBase
         return Ok(test);
     }
 
+    /// <summary>
+    /// Updates a test. Validation errors are answered with 400.
+    /// </summary>
     [HttpPut("{id}")]
+    [ProducesResponseType(typeof(TestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateTest(
         Guid id,
         [FromBody] UpdateTestRequest request)
@@ -72,6 +93,8 @@ public class TestsController : ControllerBase
     /// Flips a test between active and inactive without deleting it.
     /// </summary>
     [HttpPost("{id}/toggle")]
+    [ProducesResponseType(typeof(TestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ToggleTest(Guid id)
     {
         var test = await _testService.ToggleTestAsync(id);
@@ -82,7 +105,12 @@ public class TestsController : ControllerBase
         return Ok(test);
     }
 
+    /// <summary>
+    /// Deletes a test.
+    /// </summary>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteTest(Guid id)
     {
         var deleted = await _testService.DeleteTestAsync(id);
@@ -93,7 +121,12 @@ public class TestsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Triggers immediate execution of a test on all its targeted nodes.
+    /// </summary>
     [HttpPost("{id}/run")]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> TriggerTestRun(Guid id)
     {
         var triggered = await _testService.TriggerTestRunAsync(id);
@@ -101,25 +134,34 @@ public class TestsController : ControllerBase
         {
             return NotFound();
         }
-        return Ok(new { Message = "Test run triggered" });
+        return Ok(new MessageResponse { Message = "Test run triggered" });
     }
 
     /// <summary>
-    /// Runs a single test immediately on the given node without creating a test.
-    /// The returned job can be polled at GET /v1/queue/{jobId}.
+    /// Runs a single test immediately on each selected connected node without creating a test.
+    /// Returns one job per node; poll each at GET /v1/queue/{jobId} until it reaches a final status.
     /// </summary>
     [HttpPost("run-once")]
+    [ProducesResponseType(typeof(List<TestJobResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RunTestOnce([FromBody] RunTestOnceRequest request)
     {
-        var job = await _testService.RunOnceAsync(request);
-        if (job == null)
+        try
         {
-            return BadRequest(new { Message = "Node not found or not connected" });
+            var jobs = await _testService.RunOnceAsync(request);
+            return Ok(jobs.Select(TestJobResponse.From));
         }
-        return Ok(TestJobResponse.From(job));
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
     }
 
+    /// <summary>
+    /// Returns the active tests that directly target the given node, ordered by creation time.
+    /// </summary>
     [HttpGet("node/{nodeId}")]
+    [ProducesResponseType(typeof(List<Test>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTestsForNode(Guid nodeId)
     {
         var tests = await _testService.GetTestsForNodeAsync(nodeId);

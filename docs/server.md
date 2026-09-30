@@ -48,7 +48,21 @@ Separate from the static config above, the server has runtime settings editable 
 2. **Database override** — set via the API/UI, stored in the database
 3. **Default** — built-in defaults
 
-Useful settings include `FrequencyPresetsSeconds` (the intervals tests can choose, default `10,30,60,120,300,600,3600`), `NodeAutoEnrollmentEnabled` (lets nodes register themselves with enroll tokens), and `NoRunGraceFactor`. `SchedulerLoopIntervalSeconds` is read-only and derived from the lowest frequency preset.
+Useful settings include `FrequencyPresetsSeconds` (the intervals tests can choose, default `10,30,60,120,300,600,3600`), `NodeAutoEnrollmentEnabled` (lets nodes register themselves with enroll tokens), `NoRunGraceFactor`, and `AllowUnsupportedNodeVersions` (accept nodes outside the supported version range instead of disconnecting them). `SchedulerLoopIntervalSeconds` is read-only and derived from the lowest frequency preset.
+
+The settings UI groups settings into sections; the **Observability** section controls node log handling:
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `NodeLogShippingEnabled` | `false` | Nodes may ship their log entries to the server; while off, shipped entries are dropped |
+| `NodeLocalLoggingEnabled` | `true` | The server's default policy for the node's **test-related** console output (assignments, execution, monitoring); a node's own configuration takes precedence |
+| `ShipNodeLogsToConsole` | `false` | Log entries received from nodes are written to the server's own console, tagged with the node's identity |
+
+The policy is announced to every node in the server hello message. Changing `NodeLogShippingEnabled` or `NodeLocalLoggingEnabled` through the API or UI pushes a `ServerPolicyUpdate` to all connected nodes immediately — they apply it on the fly, without reconnecting. A node's `Node:LocalLoggingEnabled` override always wins over the server's local logging default.
+
+## Version compatibility
+
+The server announces its version to every node when it connects, and nodes report theirs. A node is supported when its version shares the server's major and minor version (e.g. node 0.2.x with server 0.2.y). Unsupported nodes are disconnected with a policy-violation close — enable the `AllowUnsupportedNodeVersions` setting to accept them with a warning instead. The node has its own flag for the same purpose: `Node:AllowUnsupportedServerVersion`.
 
 ## Scheduling and the queue
 
