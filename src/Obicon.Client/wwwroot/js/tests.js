@@ -431,29 +431,36 @@ async function createTest() {
     }
 }
 
-// Runs the current form values once on a random node, before the test is created
+// Runs the current form values once on the selected nodes, before the test is created;
+// falls back to a single random node when nothing is selected
 async function runOnRandomNode() {
     const values = validateForm({ requireName: false, requireTargets: false });
     if (!values) return;
 
-    if (nodes.length === 0) {
-        showFormError('No nodes available to run the test on.');
-        return;
+    const selectedIds = getSelectedNodeIds();
+    const selectedPoolIds = getSelectedPoolIds();
+    let nodesToRun = nodes.filter(n => selectedIds.includes(n.id));
+    if (nodesToRun.length === 0 && selectedPoolIds.length === 0) {
+        if (nodes.length === 0) {
+            showFormError('No nodes available to run the test on.');
+            return;
+        }
+        nodesToRun = [nodes[Math.floor(Math.random() * nodes.length)]];
     }
-
-    const node = nodes[Math.floor(Math.random() * nodes.length)];
 
     dryRunBtn.disabled = true;
     dryRunBtn.textContent = 'Running...';
     dryRunResult.style.display = 'none';
     dryRunResult.className = 'alert mt-3 mb-0 alert-info';
-    dryRunResult.innerHTML = `<strong>Running ${testTypeMap[values.type]}</strong> against <code>${escapeHtml(values.target)}</code> on <strong>${escapeHtml(node.name)}</strong>...`;
+    const poolNote = selectedPoolIds.length > 0 ? ` (plus the top ${3} least-busy nodes from ${selectedPoolIds.length} selected pool${selectedPoolIds.length === 1 ? '' : 's'})` : '';
+    dryRunResult.innerHTML = `<strong>Running ${testTypeMap[values.type]}</strong> against <code>${escapeHtml(values.target)}</code> on ${nodesToRun.map(n => `<strong>${escapeHtml(n.name)}</strong>`).join(', ') || 'pool nodes'}${poolNote}...`;
 
     try {
-        const job = await apiCall('POST', '/v1/tests/run-once', {
+        const jobs = await apiCall('POST', '/v1/tests/run-once', {
             type: values.type,
             target: values.target,
-            nodeId: node.id,
+            nodeIds: nodesToRun.map(n => n.id),
+            poolIds: selectedPoolIds,
             expectedStatusCodes: values.expectedStatusCodes,
             checkCertificateExpiryDays: values.checkCertExpiryDays,
             expectedDnsResult: values.expectedDnsResult,
@@ -465,26 +472,35 @@ async function runOnRandomNode() {
             cacheBust: values.cacheBust
         });
 
-        const finished = await pollJob(job.id, 75);
-        showDryRunResult(finished, node);
+        // One job per selected node (direct picks plus the top pool members); poll all
+        // and pair each with its node for display
+        const finished = await Promise.all(jobs.map(job => pollJob(job.id, 75)));
+        const nodeById = Object.fromEntries(nodes.map(n => [n.id, n]));
+        showDryRunResult(finished.map(job => ({
+            job,
+            node: nodeById[job.nodeId] || { name: job.nodeId.substring(0, 8) }
+        })));
     } catch (error) {
         dryRunResult.className = 'alert mt-3 mb-0 alert-danger';
         dryRunResult.textContent = error.message;
         dryRunResult.style.display = 'block';
     } finally {
         dryRunBtn.disabled = false;
-        dryRunBtn.textContent = 'Run once on a random node';
+        dryRunBtn.textContent = 'Dry run on selected nodes';
     }
 }
 
-function showDryRunResult(job, node) {
+function showDryRunResult(results) {
+    const allSuccess = results.every(r => r.job.success);
     dryRunResult.style.display = 'block';
-    dryRunResult.className = `alert mt-3 mb-0 ${job.success ? 'alert-success' : 'alert-danger'}`;
-    dryRunResult.innerHTML = `
-        <strong>${job.success ? 'Success' : (jobStatusMap[job.status] || 'Failed')}</strong>
-        on ${escapeHtml(node.name)} in ${job.durationMs != null ? job.durationMs + ' ms' : '-'}<br>
-        <code class="text-break">${escapeHtml(job.output || job.errorMessage || '')}</code>
-    `;
+    dryRunResult.className = `alert mt-3 mb-0 ${allSuccess ? 'alert-success' : 'alert-danger'}`;
+    dryRunResult.innerHTML = results.map(({ job, node }) => `
+        <div>
+            <strong>${job.success ? 'Success' : (jobStatusMap[job.status] || 'Failed')}</strong>
+            on ${escapeHtml(node.name)} in ${job.durationMs != null ? job.durationMs + ' ms' : '-'}<br>
+            <code class="text-break">${escapeHtml(job.output || job.errorMessage || '')}</code>
+        </div>
+    `).join('<hr class="my-2">');
 }
 
 // Polls a job until it reaches a final state (Completed, Failed, Timeout)

@@ -69,7 +69,7 @@ function renderNodes(connectedById = {}) {
             </div>
             <div class="col-6 col-lg-1">
                 <div class="field-label">IP</div>
-                ${node.ipAddress ? `<code>${escapeHtml(node.ipAddress)}</code>` : '-'}
+                ${renderIps(node)}
             </div>
             <div class="col-6 col-lg-1">
                 <div class="field-label">Capacity</div>
@@ -114,6 +114,34 @@ function renderNodes(connectedById = {}) {
 function renderLabels(labels) {
     if (!labels || labels.length === 0) return '-';
     return labels.map(l => `<span class="badge bg-secondary me-1">${escapeHtml(l)}</span>`).join('');
+}
+
+// IP column: the node-reported internal and external addresses per family, "unavailable"
+// when a family is missing; the connection-observed address is the fallback before the
+// node has reported anything
+function renderIps(node) {
+    const hasReported = node.internalIpv4 != null || node.internalIpv6 != null
+        || node.externalIpv4 != null || node.externalIpv6 != null;
+    if (!hasReported && !node.ipAddress) {
+        return '-';
+    }
+
+    const rows = [
+        ['int4', node.internalIpv4],
+        ['int6', node.internalIpv6],
+        ['ext4', node.externalIpv4],
+        ['ext6', node.externalIpv6]
+    ];
+
+    if (!hasReported) {
+        return `<code>${escapeHtml(node.ipAddress)}</code>`;
+    }
+
+    return rows.map(([label, value]) =>
+        value
+            ? `<code>${escapeHtml(value)}</code> <span class="text-muted small">${label}</span>`
+            : `<span class="text-muted small" title="This address family is unavailable on the node">${label} unavailable</span>`
+    ).join('<br>');
 }
 
 // Capacity column: how many tests the node runs in parallel
@@ -195,8 +223,14 @@ async function openEditModal(nodeId) {
     };
     settingsDiv.innerHTML = Object.keys(settings).length === 0
         ? '<span class="text-muted">Not reported yet - the node reports its settings when it connects</span>'
-        : Object.entries(settings).map(([key, value]) =>
-            `<span class="badge bg-light text-dark border me-1 mb-1" title="${escapeHtml(key)}">${escapeHtml(prettyNames[key] || key)}: ${escapeHtml(value)}</span>`).join('');
+        : Object.entries(settings).map(([key, value], index, entries) => {
+            const last = index === entries.length - 1;
+            return `
+                <div class="d-flex justify-content-between gap-3 py-1${last ? '' : ' border-bottom'}">
+                    <span class="text-muted" title="${escapeHtml(key)}">${escapeHtml(prettyNames[key] || key)}</span>
+                    <span>${escapeHtml(value)}</span>
+                </div>`;
+        }).join('');
 
     if (!editModal) {
         editModal = new bootstrap.Modal(document.getElementById('editModal'));
