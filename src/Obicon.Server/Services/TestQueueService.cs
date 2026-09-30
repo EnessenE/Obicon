@@ -10,69 +10,88 @@ namespace Obicon.Server.Services;
 public class TestQueueService : ITestQueueService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly SqliteWriteQueue _writeQueue;
     private readonly IServerSettingsService _settingsService;
 
-    public TestQueueService(IDbContextFactory<ObiconDbContext> dbFactory, IServerSettingsService settingsService)
+    public TestQueueService(
+        IDbContextFactory<ObiconDbContext> dbFactory,
+        SqliteWriteQueue writeQueue,
+        IServerSettingsService settingsService)
     {
         _dbFactory = dbFactory;
+        _writeQueue = writeQueue;
         _settingsService = settingsService;
     }
 
     public async Task<TestJob> EnqueueJobAsync(TestJob job)
     {
+        return await _writeQueue.EnqueueAsync(db => CreateJobAsync(db, job));
+    }
+
+    /// <summary>
+    /// Creates the job directly with the given context, clamping its timeout to the
+    /// server's MaxTestTimeoutSeconds. Used by code that already runs inside a queued
+    /// write unit: going through the queue again would deadlock, and the single
+    /// consumer is already the only writer.
+    /// </summary>
+    public async Task<TestJob> CreateJobAsync(ObiconDbContext db, TestJob job)
+    {
+        job.TimeoutSeconds = Math.Clamp(job.TimeoutSeconds, 1, Math.Max(1, await _settingsService.GetAsync<int>("MaxTestTimeoutSeconds")));
         job.Id = job.Id == Guid.Empty ? Guid.NewGuid() : job.Id;
         job.CreatedAt = job.CreatedAt == default ? DateTime.UtcNow : job.CreatedAt;
         job.Status = TestJobStatus.Queued;
-        job.TimeoutSeconds = Math.Clamp(job.TimeoutSeconds, 1, Math.Max(1, await _settingsService.GetAsync<int>("MaxTestTimeoutSeconds")));
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
         db.TestJobs.Add(job);
         await db.SaveChangesAsync();
 
         return job;
     }
 
-    public async Task<TestJob?> DequeueTestAsync(Guid nodeId)
+    public Task<TestJob?> DequeueTestAsync(Guid nodeId)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var job = await db.TestJobs
-            .Where(j => j.NodeId == nodeId && j.Status == TestJobStatus.Queued)
-            .OrderBy(j => j.CreatedAt)
-            .FirstOrDefaultAsync();
-
-        if (job != null)
+        return _writeQueue.EnqueueAsync(async db =>
         {
-            job.Status = TestJobStatus.Assigned;
-            await db.SaveChangesAsync();
-        }
+            var job = await db.TestJobs
+                .Where(j => j.NodeId == nodeId && j.Status == TestJobStatus.Queued)
+                .OrderBy(j => j.CreatedAt)
+                .FirstOrDefaultAsync();
 
-        return job;
+            if (job != null)
+            {
+                job.Status = TestJobStatus.Assigned;
+                await db.SaveChangesAsync();
+            }
+
+            return job;
+        });
     }
 
-    public async Task UpdateJobStatusAsync(Guid jobId, TestJobStatus status, TestResult? result = null, string? errorMessage = null)
+    public Task UpdateJobStatusAsync(Guid jobId, TestJobStatus status, TestResult? result = null, string? errorMessage = null)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var job = await db.TestJobs.FindAsync(jobId);
-        if (job == null)
+        return _writeQueue.EnqueueAsync(async db =>
         {
-            return;
-        }
+            var job = await db.TestJobs.FindAsync(jobId);
+            if (job == null)
+            {
+                return;
+            }
 
-        job.Status = status;
-        job.Result = result;
-        job.ErrorMessage = errorMessage;
+            job.Status = status;
+            job.Result = result;
+            job.ErrorMessage = errorMessage;
 
-        if (status == TestJobStatus.Running)
-        {
-            job.StartedAt = DateTime.UtcNow;
-        }
+            if (status == TestJobStatus.Running)
+            {
+                job.StartedAt = DateTime.UtcNow;
+            }
 
-        if (status is TestJobStatus.Completed or TestJobStatus.Failed or TestJobStatus.Timeout)
-        {
-            job.CompletedAt = DateTime.UtcNow;
-        }
+            if (status is TestJobStatus.Completed or TestJobStatus.Failed or TestJobStatus.Timeout)
+            {
+                job.CompletedAt = DateTime.UtcNow;
+            }
 
-        await db.SaveChangesAsync();
+            await db.SaveChangesAsync();
+        });
     }
 
     public async Task<TestJob?> GetJobAsync(Guid jobId)
@@ -121,37 +140,43 @@ public class TestQueueService : ITestQueueService
         return await db.TestJobs.CountAsync(j => j.Status == TestJobStatus.Queued);
     }
 
-    public async Task MarkJobAcknowledgedAsync(Guid jobId)
+    public Task MarkJobAcknowledgedAsync(Guid jobId)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var job = await db.TestJobs.FindAsync(jobId);
-        if (job != null && job.AcknowledgedAt == null)
+        return _writeQueue.EnqueueAsync(async db =>
         {
-            job.AcknowledgedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-        }
+            var job = await db.TestJobs.FindAsync(jobId);
+            if (job != null && job.AcknowledgedAt == null)
+            {
+                job.AcknowledgedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        });
     }
 
-    public async Task MarkJobStartedAsync(Guid jobId)
+    public Task MarkJobStartedAsync(Guid jobId)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var job = await db.TestJobs.FindAsync(jobId);
-        if (job != null)
+        return _writeQueue.EnqueueAsync(async db =>
         {
-            job.Status = TestJobStatus.Running;
-            job.StartedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-        }
+            var job = await db.TestJobs.FindAsync(jobId);
+            if (job != null)
+            {
+                job.Status = TestJobStatus.Running;
+                job.StartedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        });
     }
 
-    public async Task MarkJobAssignedAsync(Guid jobId)
+    public Task MarkJobAssignedAsync(Guid jobId)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var job = await db.TestJobs.FindAsync(jobId);
-        if (job != null)
+        return _writeQueue.EnqueueAsync(async db =>
         {
-            job.Status = TestJobStatus.Assigned;
-            await db.SaveChangesAsync();
-        }
+            var job = await db.TestJobs.FindAsync(jobId);
+            if (job != null)
+            {
+                job.Status = TestJobStatus.Assigned;
+                await db.SaveChangesAsync();
+            }
+        });
     }
 }

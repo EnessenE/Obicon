@@ -14,6 +14,7 @@ namespace Obicon.Server.Services;
 public class TestService : ITestService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly SqliteWriteQueue _writeQueue;
     private readonly INodeService _nodeService;
     private readonly INodePoolService _poolService;
     private readonly ITestQueueService _queueService;
@@ -23,6 +24,7 @@ public class TestService : ITestService
 
     public TestService(
         IDbContextFactory<ObiconDbContext> dbFactory,
+        SqliteWriteQueue writeQueue,
         INodeService nodeService,
         INodePoolService poolService,
         ITestQueueService queueService,
@@ -32,6 +34,7 @@ public class TestService : ITestService
     {
         _logger = logger;
         _dbFactory = dbFactory;
+        _writeQueue = writeQueue;
         _nodeService = nodeService;
         _poolService = poolService;
         _queueService = queueService;
@@ -68,9 +71,11 @@ public class TestService : ITestService
             UpdatedAt = null
         };
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        db.Tests.Add(test);
-        await db.SaveChangesAsync();
+        await _writeQueue.EnqueueAsync(async db =>
+        {
+            db.Tests.Add(test);
+            await db.SaveChangesAsync();
+        });
 
         _logger.LogInformation("Created test {TestId} ({TestName}, type {TestType}, target {Target})", test.Id, test.Name, test.Type, test.Target);
         Metrics.ServerMetrics.Action("created_test");
@@ -97,80 +102,93 @@ public class TestService : ITestService
         await ValidateFrequencyAsync(request.Frequency);
         ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var test = await db.Tests.FindAsync(id);
-        if (test == null)
+        var updated = await _writeQueue.EnqueueAsync(async db =>
         {
-            return null;
-        }
+            var test = await db.Tests.FindAsync(id);
+            if (test == null)
+            {
+                return (Test?)null;
+            }
 
-        test.Type = request.Type;
-        test.Target = request.Target;
-        test.NodeIds = request.NodeIds;
-        test.PoolIds = request.PoolIds;
-        test.Frequency = request.Frequency;
-        test.IsActive = request.IsActive;
-        test.ExpectedStatusCodes = request.ExpectedStatusCodes;
-        test.CheckCertificateExpiryDays = request.CheckCertificateExpiryDays;
-        test.ExpectedDnsResult = request.ExpectedDnsResult;
-        test.IpVersion = request.IpVersion;
-        test.TimeoutSeconds = request.TimeoutSeconds;
-        test.ExpectedBodyPattern = request.ExpectedBodyPattern;
-        test.Headers = request.Headers ?? new Dictionary<string, string>();
-        test.ProxyUrl = request.ProxyUrl;
-        test.CacheBust = request.CacheBust;
-        test.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+            test.Type = request.Type;
+            test.Target = request.Target;
+            test.NodeIds = request.NodeIds;
+            test.PoolIds = request.PoolIds;
+            test.Frequency = request.Frequency;
+            test.IsActive = request.IsActive;
+            test.ExpectedStatusCodes = request.ExpectedStatusCodes;
+            test.CheckCertificateExpiryDays = request.CheckCertificateExpiryDays;
+            test.ExpectedDnsResult = request.ExpectedDnsResult;
+            test.IpVersion = request.IpVersion;
+            test.TimeoutSeconds = request.TimeoutSeconds;
+            test.ExpectedBodyPattern = request.ExpectedBodyPattern;
+            test.Headers = request.Headers ?? new Dictionary<string, string>();
+            test.ProxyUrl = request.ProxyUrl;
+            test.CacheBust = request.CacheBust;
+            test.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
 
-        return ToResponse(test);
+            return test;
+        });
+
+        return updated == null ? null : ToResponse(updated);
     }
 
     public async Task<TestResponse?> ToggleTestAsync(Guid id)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var test = await db.Tests.FindAsync(id);
-        if (test == null)
+        var toggled = await _writeQueue.EnqueueAsync(async db =>
         {
-            return null;
-        }
+            var test = await db.Tests.FindAsync(id);
+            if (test == null)
+            {
+                return (Test?)null;
+            }
 
-        test.IsActive = !test.IsActive;
-        test.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+            test.IsActive = !test.IsActive;
+            test.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
 
-        _logger.LogInformation("Test {TestId} ({TestName}) is now {State}", test.Id, test.Name, test.IsActive ? "active" : "inactive");
-        return ToResponse(test);
+            _logger.LogInformation("Test {TestId} ({TestName}) is now {State}", test.Id, test.Name, test.IsActive ? "active" : "inactive");
+            return test;
+        });
+
+        return toggled == null ? null : ToResponse(toggled);
     }
 
     public async Task<bool> DeleteTestAsync(Guid id)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var test = await db.Tests.FindAsync(id);
-        if (test == null)
+        var deleted = await _writeQueue.EnqueueAsync(async db =>
         {
-            return false;
-        }
+            var test = await db.Tests.FindAsync(id);
+            if (test == null)
+            {
+                return false;
+            }
 
-        db.Tests.Remove(test);
-        await db.SaveChangesAsync();
+            db.Tests.Remove(test);
+            await db.SaveChangesAsync();
 
-        _logger.LogInformation("Deleted test {TestId} ({TestName})", test.Id, test.Name);
-        Metrics.ServerMetrics.Action("deleted_test");
-        return true;
+            _logger.LogInformation("Deleted test {TestId} ({TestName})", test.Id, test.Name);
+            Metrics.ServerMetrics.Action("deleted_test");
+            return true;
+        });
+        return deleted;
     }
 
     public async Task<bool> TriggerTestRunAsync(Guid testId)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var test = await db.Tests.FirstOrDefaultAsync(t => t.Id == testId && t.IsActive);
-        if (test == null)
+        return await _writeQueue.EnqueueAsync(async db =>
         {
-            return false;
-        }
+            var test = await db.Tests.FirstOrDefaultAsync(t => t.Id == testId && t.IsActive);
+            if (test == null)
+            {
+                return false;
+            }
 
-        await EnqueueJobsForTestAsync(test);
-        _logger.LogInformation("Manual run triggered for test {TestId} ({TestName})", test.Id, test.Name);
-        return true;
+            await EnqueueJobsForTestAsync(db, test);
+            _logger.LogInformation("Manual run triggered for test {TestId} ({TestName})", test.Id, test.Name);
+            return true;
+        });
     }
 
     /// <summary>
@@ -184,36 +202,43 @@ public class TestService : ITestService
         var activeTests = await db.Tests.Where(t => t.IsActive).ToListAsync();
 
         var scheduled = 0;
-        foreach (var test in activeTests)
+        foreach (var due in activeTests)
         {
-            var interval = TimeSpan.FromSeconds(Math.Max(1, test.Frequency));
-            var anchor = test.LastScheduledAt ?? test.CreatedAt;
-
+            var interval = TimeSpan.FromSeconds(Math.Max(1, due.Frequency));
+            var anchor = due.LastScheduledAt ?? due.CreatedAt;
             if (now - anchor < interval)
             {
                 continue;
             }
 
-            // Persist LastScheduledAt before enqueuing: if this row cannot be
-            // updated (e.g. externally imported data), the jobs must not be
-            // created either or the test would re-enqueue on every tick
-            var previous = test.LastScheduledAt;
-            test.LastScheduledAt = now;
-            try
+            // One queued unit per due test: re-check and persist LastScheduledAt before
+            // enqueuing, so a row that cannot be updated does not create jobs either
+            var enqueued = await _writeQueue.EnqueueAsync(async db =>
             {
+                var test = await db.Tests.FindAsync(due.Id);
+                if (test == null || !test.IsActive)
+                {
+                    return false;
+                }
+
+                var currentAnchor = test.LastScheduledAt ?? test.CreatedAt;
+                if (DateTime.UtcNow - currentAnchor < TimeSpan.FromSeconds(Math.Max(1, test.Frequency)))
+                {
+                    return false; // another run happened while this unit waited
+                }
+
+                test.LastScheduledAt = DateTime.UtcNow;
                 await db.SaveChangesAsync();
-            }
-            catch (DbUpdateException ex)
+
+                await EnqueueJobsForTestAsync(db, test);
+                _logger.LogInformation("Scheduler enqueued test {TestId} ({TestName})", test.Id, test.Name);
+                return true;
+            });
+
+            if (enqueued)
             {
-                test.LastScheduledAt = previous;
-                _logger.LogWarning(ex, "Scheduler could not persist LastScheduledAt for test {TestId} ({TestName}); skipping this cycle", test.Id, test.Name);
-                continue;
+                scheduled++;
             }
-
-            await EnqueueJobsForTestAsync(test);
-            scheduled++;
-
-            _logger.LogInformation("Scheduler enqueued test {TestId} ({TestName})", test.Id, test.Name);
         }
 
         return scheduled;
@@ -293,12 +318,17 @@ public class TestService : ITestService
         }
     }
 
-    private async Task EnqueueJobsForTestAsync(Test test)
+    /// <summary>
+    /// Creates the test's jobs with the given context. Only called from inside queued
+    /// write units: the job creation must not re-enter the queue (deadlock), and the
+    /// single consumer is already the only writer.
+    /// </summary>
+    private async Task EnqueueJobsForTestAsync(ObiconDbContext db, Test test)
     {
         // One job per targeted node: direct node IDs plus all pool members, deduplicated
         foreach (var nodeId in await ResolveTargetNodesAsync(test))
         {
-            await _queueService.EnqueueJobAsync(new TestJob
+            await _queueService.CreateJobAsync(db, new TestJob
             {
                 TestId = test.Id,
                 NodeId = nodeId,
@@ -317,40 +347,117 @@ public class TestService : ITestService
         }
     }
 
-    public async Task<Models.TestJob?> RunOnceAsync(Models.Requests.RunTestOnceRequest request)
+    /// <summary>
+    /// Runs a test once on each selected connected node without creating a test first.
+    /// Explicit node IDs run directly; pools contribute their top 3 connected members,
+    /// least busy first. Validation errors throw ArgumentException for a 400 response.
+    /// </summary>
+    public async Task<List<Models.TestJob>> RunOnceAsync(Models.Requests.RunTestOnceRequest request)
     {
-        var node = await _nodeService.GetNodeAsync(request.NodeId);
-        if (node == null)
-        {
-            return null;
-        }
-
-        if (_connectionManager.GetConnection(request.NodeId.ToString()) == null)
-        {
-            return null;
-        }
-
         ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
-        var job = await _queueService.EnqueueJobAsync(new TestJob
+        if (request.NodeIds.Count == 0 && request.PoolIds.Count == 0)
         {
-            TestId = Guid.Empty,
-            NodeId = request.NodeId,
-            TestType = request.Type,
-            Target = request.Target,
-            TimeoutSeconds = request.TimeoutSeconds ?? 60,
-            ExpectedStatusCodes = request.ExpectedStatusCodes,
-            CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
-            ExpectedDnsResult = request.ExpectedDnsResult,
-            IpVersion = request.IpVersion,
-            ExpectedBodyPattern = request.ExpectedBodyPattern,
-            Headers = request.Headers ?? new Dictionary<string, string>(),
-            ProxyUrl = request.ProxyUrl,
-            CacheBust = request.CacheBust
+            throw new ArgumentException("At least one node ID or pool ID is required for a run-once");
+        }
+
+        // One queued write unit: node and pool existence, selection, and job creation
+        // happen together, so the selection sees a consistent database state and the
+        // created jobs are written by the single consumer
+        var jobs = await _writeQueue.EnqueueAsync(async db =>
+        {
+            // Directly selected nodes must all exist
+            var nodes = await db.Nodes
+                .Where(n => request.NodeIds.Distinct().Contains(n.Id))
+                .ToListAsync();
+            var missing = request.NodeIds.Distinct().Except(nodes.Select(n => n.Id)).ToList();
+            if (missing.Count > 0)
+            {
+                throw new ArgumentException($"Unknown node ID: {missing[0]}");
+            }
+            var selectedNodeIds = nodes.Select(n => n.Id).ToList();
+
+            // Pools contribute their members; the top 3 connected ones are picked later.
+            // Ordered list, so ties in busyness keep a stable selection order
+            var poolCandidates = new List<Guid>();
+            foreach (var poolId in request.PoolIds.Distinct())
+            {
+                var pool = await db.NodePools.FindAsync(poolId)
+                    ?? throw new ArgumentException($"Unknown pool ID: {poolId}");
+                foreach (var memberId in pool.NodeIds.Where(id => !selectedNodeIds.Contains(id) && !poolCandidates.Contains(id)))
+                {
+                    poolCandidates.Add(memberId);
+                }
+            }
+
+            var connectedIds = _connectionManager.GetAllConnections()
+                .Select(c => Guid.TryParse(c.NodeId, out var id) ? id : (Guid?)null)
+                .Where(id => id != null)
+                .Select(id => id!.Value)
+                .ToHashSet();
+
+            var activeJobsPerNode = (await db.TestJobs.ToListAsync())
+                .Where(j => j.Status is TestJobStatus.Queued or TestJobStatus.Assigned or TestJobStatus.Running)
+                .GroupBy(j => j.NodeId)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            selectedNodeIds.AddRange(SelectTopNodes(poolCandidates, connectedIds, activeJobsPerNode, PoolSelectionLimit));
+
+            // Jobs only go to connected nodes; at least one must be connected
+            selectedNodeIds = selectedNodeIds.Where(id => connectedIds.Contains(id)).Distinct().ToList();
+            if (selectedNodeIds.Count == 0)
+            {
+                throw new ArgumentException("None of the selected nodes are connected");
+            }
+
+            var created = new List<Models.TestJob>();
+            foreach (var nodeId in selectedNodeIds)
+            {
+                created.Add(await _queueService.CreateJobAsync(db, new TestJob
+                {
+                    TestId = Guid.Empty,
+                    NodeId = nodeId,
+                    TestType = request.Type,
+                    Target = request.Target,
+                    TimeoutSeconds = request.TimeoutSeconds ?? 60,
+                    ExpectedStatusCodes = request.ExpectedStatusCodes,
+                    CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
+                    ExpectedDnsResult = request.ExpectedDnsResult,
+                    IpVersion = request.IpVersion,
+                    ExpectedBodyPattern = request.ExpectedBodyPattern,
+                    Headers = request.Headers ?? new Dictionary<string, string>(),
+                    ProxyUrl = request.ProxyUrl,
+                    CacheBust = request.CacheBust
+                }));
+            }
+            return created;
         });
 
-        _logger.LogInformation("Run-once job {JobId} enqueued on node {NodeId} ({TestType} {Target})", job.Id, request.NodeId, request.Type, request.Target);
-        return job;
+        _logger.LogInformation("Run-once enqueued {Count} job(s) on selected nodes ({TestType} {Target})",
+            jobs.Count, request.Type, request.Target);
+        return jobs;
+    }
+
+    /// <summary>
+    /// How many connected pool members a run-once selects, ordered by least busy first.
+    /// </summary>
+    public const int PoolSelectionLimit = 3;
+
+    /// <summary>
+    /// Selects the top connected pool candidates for a run-once: connected nodes only,
+    /// ordered by fewest active jobs (ties keep the input order), limited to the limit.
+    /// </summary>
+    internal static List<Guid> SelectTopNodes(
+        IEnumerable<Guid> candidates,
+        HashSet<Guid> connectedNodeIds,
+        Dictionary<Guid, int> activeJobsPerNode,
+        int limit)
+    {
+        return candidates
+            .Where(id => connectedNodeIds.Contains(id))
+            .OrderBy(id => activeJobsPerNode.TryGetValue(id, out var count) ? count : 0)
+            .Take(limit)
+            .ToList();
     }
 
     public async Task<IEnumerable<Test>> GetTestsForNodeAsync(Guid nodeId)
