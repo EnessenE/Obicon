@@ -10,12 +10,7 @@ The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
 
-## [Unreleased]
-
-### Node
-- Configurable Prometheus metrics endpoint: `Node:MetricsHost` (default `localhost`, `+` exposes outside the machine) and `Node:MetricsPort` (default `9464`). Replaces `Node:MetricsUrlPrefix`; setting a custom port now actually frees the default one instead of binding both
-
-## [Server 1.0.0] - 2026-09-29
+## [Server 0.1.0] - 2026-09-29
 
 Initial release.
 
@@ -36,10 +31,10 @@ Initial release.
 ### Frontend
 - Static Bootstrap 5 UI: dashboard, nodes, pools, tests (create/edit with live check estimates and dry runs), queue, server stats, settings
 
-## [Node 1.0.0] - 2026-09-29
+## [Node 0.1.0] - 2026-09-29
 
 Initial release.
 
 - Console node connecting over WebSocket; runs all test types with verbose per-run results (DNS resolver details, HTTP/TLS timing breakdowns)
-- Performance metrics on `/metrics` (default port 9464) and a health endpoint
+- Configurable Prometheus metrics endpoint via `Node:MetricsHost` (default `localhost`, `+` exposes outside the machine) and `Node:MetricsPort` (default 9464), plus a health endpoint
 - Configuration through appsettings or `Node__*` environment variables
