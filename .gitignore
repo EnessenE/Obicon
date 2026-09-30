@@ -407,3 +407,6 @@ FodyWeavers.xsd
 
 # JetBrains IDEs (IntelliJ, Rider, PyCharm, ...)
 .idea/
+
+# Local agent project notes (kept out of the repo)
+Project/

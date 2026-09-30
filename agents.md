@@ -4,6 +4,8 @@
 
 - **Goal & architecture:** See `/Project/Obicon.md` for what the app is and how the parts fit together
 - **Todo list:** See `/Project/todo.md` for current task tracking — keep it up to date as work lands
+
+Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it won't exist — recreate it with a `todo.md` if you need task tracking.
 - **API spec:** See `/docs/api-spec.md` — update it whenever an endpoint, DTO, or message changes
 
 ## User Documentation
