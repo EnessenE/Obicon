@@ -20,7 +20,7 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 ## Build and Run
 
 - **Build everything:** `dotnet build Obicon.slnx`
-- **Tests:** `dotnet test tests/Obicon.Server.Tests` — xUnit with `WebApplicationFactory<Program>` integration tests (each factory instance gets an isolated temp SQLite database) plus unit tests. Add a test for every security-relevant behavior (e.g. enrollment disabled, forced settings, token expiry)
+- **Tests:** `dotnet test tests/Obicon.Server.Tests` (xUnit with `WebApplicationFactory<Program>` integration tests, each factory instance gets an isolated temp SQLite database, plus unit tests) and `dotnet test tests/Obicon.Node.Tests` (unit tests for the node: log capture sink, logging policy, identity store). Add a test for every security-relevant behavior (e.g. enrollment disabled, forced settings, token expiry)
 - **Server:** `dotnet run --project src/Obicon.Server` → http://localhost:5000, Swagger at `/swagger`
   - API auth: header `Authorization: uwu`. `/ws`, `/metrics`, and `/swagger` are exempt (WebSocket authenticates with the node token instead)
   - Data: SQLite file `obicon.db` in the project directory, schema created on startup. `Data/SchemaMigrator.cs` then adds any missing tables/columns with sensible defaults and applies one-time data conversions (recorded in its `SchemaMigrations` table, e.g. enum frequencies to seconds), so upgrades keep the existing `obicon.db` — no need to delete it. Only *changing* an existing column (type, rename) still requires manual migration
@@ -74,6 +74,10 @@ Rules:
 
 ## Conventions
 
+- **SQLite writes are serialized** (`Data/SqliteWriteQueue`): every mutating database operation is enqueued as a read-modify-write unit and executed one by one by a single background consumer; reads go directly to the database. Rules:
+  - New write paths go through `_writeQueue.EnqueueAsync(async db => ...)` and must do their whole read-modify-write inside the unit — entities never cross the queue boundary
+  - Code that already runs *inside* a queued unit must not enqueue again (it would deadlock): call direct helpers that take the unit's `db` instead (e.g. `TestQueueService.CreateJobAsync(db, job)`)
+  - Failures propagate to the caller, so controllers keep their 400/404 behavior
 - **JSON casing differs by channel, on purpose:** HTTP API responses are camelCase (ASP.NET default); WebSocket payloads are PascalCase (`System.Text.Json` defaults + explicit `[JsonPropertyName]`). Keep both as they are — the node and frontend depend on them
 - **Validation:** all request DTOs use DataAnnotations → automatic 400 ProblemDetails naming the field. Add attributes for every new required/range-checked field
 - **Responses:** never return EF entities directly; map through DTOs in `Models/Responses/` (`TestJobResponse.From(job)` pattern)

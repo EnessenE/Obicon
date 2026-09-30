@@ -88,6 +88,10 @@ Returns all registered nodes.
     "Labels": [],
     "Version": "0.2.0",
     "IpAddress": "192.168.1.42",
+    "InternalIpv4": "192.168.1.42",
+    "InternalIpv6": null,
+    "ExternalIpv4": "77.166.248.192",
+    "ExternalIpv6": null,
     "Settings": {
       "MaxConcurrentTests": "4",
       "HeartbeatIntervalSeconds": "1",
@@ -98,7 +102,7 @@ Returns all registered nodes.
   }
 ]
 ```
-`AuthToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored.
+`AuthToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored. `IpAddress` is the address the server observed on the WebSocket; the four reported addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
 
 #### Get Node
 ```
@@ -433,14 +437,15 @@ Triggers immediate execution of a test. Enqueues one job per targeted node (dire
 ```
 POST /v1/tests/run-once
 ```
-Runs a single test immediately on the given node without creating a test first. The node must exist and be connected. Accepts the same expectation fields as a test (`ExpectedStatusCodes`, `CheckCertificateExpiryDays`, `ExpectedDnsResult`).
+Runs a single test immediately on a selection of nodes without creating a test first. Accepts explicit `NodeIds` and/or `PoolIds`: the explicit nodes always run, and each pool contributes its top 3 connected members — least busy first (fewest queued/assigned/running jobs). All referenced nodes and pools must exist; jobs only go to connected nodes among the selection.
 
 **Request Body:**
 ```json
 {
   "Type": 5,  // Dns
   "Target": "example.com",
-  "NodeId": "11111111-1111-1111-1111-111111111111",
+  "NodeIds": ["11111111-1111-1111-1111-111111111111"],
+  "PoolIds": ["55555555-5555-5555-5555-555555555555"],
   "TimeoutSeconds": 30,
   "ExpectedStatusCodes": "200-399",
   "CheckCertificateExpiryDays": null,
@@ -451,11 +456,11 @@ Runs a single test immediately on the given node without creating a test first. 
   "CacheBust": false
 }
 ```
-`TimeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`ExpectedStatusCodes`, `ExpectedBodyPattern`, `Headers`, `ProxyUrl`, `CacheBust`, `CheckCertificateExpiryDays`, `ExpectedDnsResult`).
+`TimeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`ExpectedStatusCodes`, `ExpectedBodyPattern`, `Headers`, `ProxyUrl`, `CacheBust`, `CheckCertificateExpiryDays`, `ExpectedDnsResult`). At least one node ID or pool ID is required.
 
-**Response:** 200 OK - the created job; poll `GET /v1/queue/{id}` until `Status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
+**Response:** 200 OK - one job per selected node, in the order of the request; poll each at `GET /v1/queue/{id}` until `Status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
 
-**Error:** 400 Bad Request if the node does not exist or is not connected.
+**Errors:** 400 Bad Request for invalid expectations, unknown node or pool IDs, an empty selection, or when none of the selected nodes are connected.
 
 ---
 
@@ -466,7 +471,7 @@ GET /metrics
 ```
 Prometheus scrape endpoint (no auth). Exposes:
 - `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) and `obicon.tests.duration_ms` (histogram, dims `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) from the `Obicon.Tests` meter. One label set per test and node combination
-- `obicon.server.actions` (counter, dim `action`) and `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`) from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
+- `obicon.server.actions` (counter, dim `action`), `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`), and `obicon.server.nodelogs` (counter, dims `level`, `source_context`, `node_id`, `node_name`) counting received node log entries, from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
 Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.node.test_duration_ms`, `obicon.node.heartbeats`, `obicon.node.reconnects`) on `http://localhost:9464/metrics` by default, configurable via `Node:MetricsHost` and `Node:MetricsPort` (e.g. `Node__MetricsPort=9500`; host `+` exposes metrics outside the machine).
@@ -693,7 +698,7 @@ wss://localhost:5000/ws/nodes?token={authToken}
 ### Message Format
 ```json
 {
-  "type": "NodeRegistration|NodeHeartbeat|ServerHello|TestAssignment|TestResult|TestStatusUpdate|ErrorReport|NodeLog",
+  "type": "NodeRegistration|NodeHeartbeat|ServerHello|ServerPolicyUpdate|TestAssignment|TestResult|TestStatusUpdate|ErrorReport|NodeLog|NodeInfoUpdate",
   "data": { ... }
 }
 ```
@@ -728,11 +733,15 @@ Sent by node on connection.
     "HeartbeatIntervalSeconds": 1,
     "DefaultTestTimeoutSeconds": 60,
     "MaxTestTimeoutSeconds": 60,
-    "ReconnectDelaySeconds": 5
+    "ReconnectDelaySeconds": 5,
+    "InternalIpv4": "192.168.1.42",
+    "InternalIpv6": null,
+    "ExternalIpv4": null,
+    "ExternalIpv6": null
   }
 }
 ```
-The settings fields let the server show what the node is configured for; they are all optional (older nodes omit them) and surface through the nodes API in the `Settings` dictionary.
+The settings fields let the server show what the node is configured for; they are all optional (older nodes omit them) and surface through the nodes API in the `Settings` dictionary. The address fields are the node's own resolved internal (LAN) and external (public) addresses per family, refreshed on an interval and pushed as `NodeInfoUpdate` messages; a null family is reported as unavailable.
 
 #### NodeHeartbeat
 Sent by node periodically (default: every 1 second).
@@ -815,16 +824,51 @@ Sent by node to report errors.
 ```
 
 #### NodeLog
-Sent by node to ship one of its log entries to the server. Accepted only while the `NodeLogShippingEnabled` setting is true (announced in the server hello); while it is false, entries are dropped. When received and `ShipNodeLogsToConsole` is true, the server writes the entry to its own console and log, tagged with the node's identity. Node-side shipping is not implemented yet — the server already receives and handles these messages.
+Sent by node to ship one of its log entries to the server. Accepted only while the `NodeLogShippingEnabled` setting is true (announced in the server hello); while it is false, entries are dropped. When received and `ShipNodeLogsToConsole` is true, the server writes the entry to its own console and log, tagged with the node's identity. `Properties` carries the structured metadata of the entry: source context, scope properties (e.g. `JobId`), and any named values of the log call.
 ```json
 {
   "type": "NodeLog",
   "data": {
     "NodeId": "string",
+    "NodeName": "string",
+    "NodeVersion": "0.2.0",
     "Timestamp": "ISO8601 datetime",
     "Level": "Debug|Information|Warning|Error",
     "Message": "string",
-    "Exception": null
+    "Exception": null,
+    "Properties": {
+      "SourceContext": "Obicon.Node.Services.MonitoringService",
+      "JobId": "44444444-4444-4444-4444-444444444444"
+    }
   }
 }
 ```
+Node-side controls: `Node:LogShippingEnabled` (opt the node out), `Node:LogShippingMinLevel` (minimum shipped level, default `Information`), and `Node:LocalLoggingEnabled` (override of the server's local-logging policy).
+
+#### ServerPolicyUpdate
+Sent by server to every connected node when a node-facing setting changes at runtime (`NodeLogShippingEnabled` or `NodeLocalLoggingEnabled`), so nodes apply the new policy on the fly without reconnecting. A node's `Node:LocalLoggingEnabled` override still wins over the announced local logging default.
+```json
+{
+  "type": "ServerPolicyUpdate",
+  "data": {
+    "LogShippingEnabled": true,
+    "NodeLocalLoggingEnabled": true
+  }
+}
+```
+
+#### NodeInfoUpdate
+Sent by node when it has refreshed its own addresses: it re-resolves its internal (LAN) IPv4 and IPv6 addresses and asks the configured check services for its external (public) IPv4 and IPv6 addresses on an interval (`Node:IpCheckIntervalMinutes`, default 30 minutes), reporting changes immediately. The addresses also travel with every registration.
+```json
+{
+  "type": "NodeInfoUpdate",
+  "data": {
+    "NodeId": "string",
+    "InternalIpv4": "192.168.1.42",
+    "InternalIpv6": null,
+    "ExternalIpv4": "77.166.248.192",
+    "ExternalIpv6": null
+  }
+}
+```
+Null fields mean that address family is unavailable on the node.

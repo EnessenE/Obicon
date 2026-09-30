@@ -55,10 +55,10 @@ The settings UI groups settings into sections; the **Observability** section con
 | Setting | Default | Meaning |
 |---------|---------|---------|
 | `NodeLogShippingEnabled` | `false` | Nodes may ship their log entries to the server; while off, shipped entries are dropped |
-| `NodeLocalLoggingEnabled` | `true` | The server's default policy for whether nodes log locally; a node's own configuration takes precedence |
+| `NodeLocalLoggingEnabled` | `true` | The server's default policy for the node's **test-related** console output (assignments, execution, monitoring); a node's own configuration takes precedence |
 | `ShipNodeLogsToConsole` | `false` | Log entries received from nodes are written to the server's own console, tagged with the node's identity |
 
-The policy is announced to every node in the server hello message. Node-side log shipping is not implemented yet; the server already receives and handles shipped entries.
+The policy is announced to every node in the server hello message. Changing `NodeLogShippingEnabled` or `NodeLocalLoggingEnabled` through the API or UI pushes a `ServerPolicyUpdate` to all connected nodes immediately — they apply it on the fly, without reconnecting. A node's `Node:LocalLoggingEnabled` override always wins over the server's local logging default.
 
 ## Version compatibility
 

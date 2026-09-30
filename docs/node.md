@@ -32,6 +32,22 @@ dotnet run --project src/Obicon.Node
 | `EnrollToken` | *(empty)* | Enroll token for auto-enrollment |
 | `Labels` / `Pools` | *(empty)* | Self-managed labels and pool names (used at enrollment) |
 | `AllowUnsupportedServerVersion` | `false` | Stay connected to a server outside the supported version range |
+| `LogShippingEnabled` | `true` | Ship this node's log entries to the server while the server allows it |
+| `LocalLoggingEnabled` | *(null)* | Override the server's local-logging policy: null follows the server, `true` always logs locally, `false` never does |
+| `LogShippingMinLevel` | `Information` | Minimum level of entries shipped: `Debug`, `Information`, `Warning`, or `Error` |
+| `IpCheckIntervalMinutes` | `30` | How often the node re-resolves its internal and external IP and reports changes |
+| `ExternalIpCheckUrl` | `https://checkip.amazonaws.com` | Service that returns the node's public IPv4 address in plain text or JSON |
+| `ExternalIpCheckUrlIpv6` | `https://api6.ipify.org` | Service that returns the node's public IPv6 address; unreachable means IPv6 reports as unavailable |
+
+## Address reporting
+
+The node keeps track of four addresses of its own and reports them to the server: its **internal (LAN) IPv4 and IPv6 addresses** from its network interfaces, and its **external (public) IPv4 and IPv6 addresses** by asking the configured check services. All refresh on the `Node:IpCheckIntervalMinutes` interval; changes are logged and pushed to the server immediately as `NodeInfoUpdate` messages, and current values also travel with every registration. The external checks are best effort — a family the node cannot resolve (e.g. no IPv6 connectivity) is reported as unavailable, and offline nodes keep their last known addresses. All appear on the nodes page next to the connection-observed address.
+
+## Log shipping
+
+The node captures every log event flowing through its Serilog pipeline and ships the entries to the server as `NodeLog` WebSocket messages, including as much metadata as available: node name, version, UTC timestamp, level, rendered message, exception, and all structured properties (source context, scope properties like `JobId`, and named values).
+
+Shipping only happens while the server announced `LogShippingEnabled` in its hello; entries are dropped otherwise, and the node can opt out entirely with `Node:LogShippingEnabled`. The server's local-logging policy from the same hello mutes only **test-related output** on the node's own console (test assignments, test execution, monitoring stats) — connection lifecycle, policy changes, and errors always appear locally, and muted entries still ship. Every setting change is logged by the node before it takes effect; the node's `Node:LocalLoggingEnabled` override wins over the server's default.
 
 Endpoints the node exposes:
 
