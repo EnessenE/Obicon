@@ -91,10 +91,12 @@ public class NodeConnectionManager
     }
 
     /// <summary>
-    /// Closes a node's live WebSocket connection, e.g. after its token was regenerated.
+    /// Closes a node's live WebSocket connection, e.g. after its token was regenerated
+    /// or after the node was deleted.
     /// </summary>
     /// <param name="nodeId">Unique identifier of the node.</param>
-    public async Task DisconnectNodeAsync(string nodeId)
+    /// <param name="reason">Close description sent to the node.</param>
+    public async Task DisconnectNodeAsync(string nodeId, string reason = "Authentication token was regenerated")
     {
         NodeConnection? connection;
         lock (_lock)
@@ -108,7 +110,7 @@ public class NodeConnectionManager
         try
         {
             using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await connection.Socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Authentication token was regenerated", closeCts.Token);
+            await connection.Socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, reason, closeCts.Token);
         }
         catch (Exception)
         {

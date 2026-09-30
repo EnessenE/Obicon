@@ -3,6 +3,7 @@ using Obicon.Server.Data;
 using Obicon.Server.Models;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
+using Obicon.Server.WebSockets;
 
 namespace Obicon.Server.Services;
 
@@ -10,12 +11,14 @@ public class NodeService : INodeService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly SqliteWriteQueue _writeQueue;
+    private readonly NodeConnectionManager _connectionManager;
     private readonly ILogger<NodeService> _logger;
 
-    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<NodeService> logger)
+    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, NodeConnectionManager connectionManager, ILogger<NodeService> logger)
     {
         _dbFactory = dbFactory;
         _writeQueue = writeQueue;
+        _connectionManager = connectionManager;
         _logger = logger;
     }
 
@@ -132,6 +135,9 @@ public class NodeService : INodeService
 
         if (deleted)
         {
+            // The node record is gone: close its live connection too, otherwise a
+            // deleted node keeps heartbeating as a ghost that no longer shows in the list
+            await _connectionManager.DisconnectNodeAsync(id.ToString(), "Node was deleted");
             _logger.LogInformation("Deleted node {NodeId}", id);
             Metrics.ServerMetrics.Action("deleted_node");
         }

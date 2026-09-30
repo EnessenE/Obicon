@@ -10,6 +10,14 @@ The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
 
+## [Server 0.3.0] - Unreleased
+
+### Server
+- New `obicon.tests.queue_jobs` gauge on `/metrics`: current test job count per status, so the queue state can be tracked in Prometheus over time
+- New `obicon.tests.current_result` gauge on `/metrics`: the latest job status of every created test (one series per test, `-1` when it never ran), and `obicon.server.build_info` exposes the server version as a label
+- Deleting a node now closes its live WebSocket connection: a deleted node no longer keeps heartbeating as a connected ghost that is absent from the node list; a background connection watcher also sweeps every 30 seconds for connections whose node record no longer exists
+- Grafana dashboards ship in `observability/`: one for node health, one for tests, and one for the server, each with filter variables (node, test type, test, log level)
+
 ## [Server 0.2.0] - 2026-09-30
 
 ### Server
@@ -23,8 +31,6 @@ separate version; its changes are listed under the server release.
 - Run-once (`POST /v1/tests/run-once`) accepts nodes and/or pools: explicit nodes always run, and each pool contributes its top 3 connected members, least busy first; validation errors precede connectivity checks
 - SQLite writes are serialized through a write queue in the data layer: mutating operations are enqueued as read-modify-write units and executed one by one by a single background consumer, while reads stay direct; failures still propagate to the API
 - Every API endpoint documents its response types and status codes in Swagger (`ProducesResponseType`), so the UI shows what to expect
-- New `obicon.tests.queue_jobs` gauge on `/metrics`: current test job count per status, so the queue state can be tracked in Prometheus over time
-- New `obicon.tests.current_result` gauge on `/metrics`: the latest job status of every created test (one series per test, `-1` when it never ran), and `obicon.server.build_info` exposes the server version as a label
 
 ### Frontend
 - Nodes page: version and IP columns

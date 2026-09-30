@@ -68,6 +68,7 @@ builder.Services.AddHealthChecks()
 builder.Services.AddHostedService<TestQueueProcessor>();
 builder.Services.AddHostedService<TestScheduler>();
 builder.Services.AddHostedService<Obicon.Server.Metrics.MetricsSampler>();
+builder.Services.AddHostedService<Obicon.Server.WebSockets.ConnectionWatcher>();
 
 var app = builder.Build();
 
