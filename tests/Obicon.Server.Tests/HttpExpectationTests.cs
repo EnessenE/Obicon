@@ -132,15 +132,125 @@ public class HttpExpectationTests : IClassFixture<ObiconServerFactory>
     {
         var nodeId = await CreateNodeAsync();
 
+        // The regex validation runs before connectivity, so this 400 is about the pattern
         var run = await _client.PostAsJsonAsync("/v1/tests/run-once", new
         {
             Type = 2,
             Target = "http://example.com",
-            NodeId = nodeId,
+            NodeIds = new[] { nodeId },
             ExpectedBodyPattern = "(unclosed"
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
+        var error = await run.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("regular expression", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task RunOnce_RejectsUnknownNode_With400()
+    {
+        var run = await _client.PostAsJsonAsync("/v1/tests/run-once", new
+        {
+            Type = 2,
+            Target = "http://example.com",
+            NodeIds = new[] { Guid.NewGuid() }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
+        var error = await run.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("Unknown node ID", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task RunOnce_RejectsEmptyNodeList_With400()
+    {
+        var run = await _client.PostAsJsonAsync("/v1/tests/run-once", new
+        {
+            Type = 2,
+            Target = "http://example.com",
+            NodeIds = Array.Empty<Guid>()
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
+    }
+
+    [Fact]
+    public async Task RunOnce_RejectsWhenNoNodeIsConnected_With400()
+    {
+        var first = await CreateNodeAsync();
+        var second = await CreateNodeAsync();
+
+        var run = await _client.PostAsJsonAsync("/v1/tests/run-once", new
+        {
+            Type = 2,
+            Target = "http://example.com",
+            NodeIds = new[] { first, second }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
+        var error = await run.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("None of the selected nodes are connected", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task RunOnce_RejectsEmptyRequest_With400()
+    {
+        var run = await _client.PostAsJsonAsync("/v1/tests/run-once", new
+        {
+            Type = 2,
+            Target = "http://example.com",
+            NodeIds = Array.Empty<Guid>(),
+            PoolIds = Array.Empty<Guid>()
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
+        var error = await run.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("At least one node ID or pool ID", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task RunOnce_RejectsUnknownPool_With400()
+    {
+        var run = await _client.PostAsJsonAsync("/v1/tests/run-once", new
+        {
+            Type = 2,
+            Target = "http://example.com",
+            PoolIds = new[] { Guid.NewGuid() }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
+        var error = await run.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("Unknown pool ID", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task RunOnce_ResolvesPoolMembers_ButRejectsWhenNoneIsConnected()
+    {
+        // A pool with two members; without connections the pool path must resolve
+        // the members and then fail with the connected message
+        var first = await CreateNodeAsync();
+        var second = await CreateNodeAsync();
+
+        var pool = await _client.PostAsJsonAsync("/v1/pools", new { Name = "run-once-pool" });
+        pool.EnsureSuccessStatusCode();
+        var poolId = (await pool.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var members = await _client.PutAsJsonAsync($"/v1/pools/{poolId}/nodes", new
+        {
+            NodeIds = new[] { first, second }
+        });
+        members.EnsureSuccessStatusCode();
+
+        var run = await _client.PostAsJsonAsync("/v1/tests/run-once", new
+        {
+            Type = 2,
+            Target = "http://example.com",
+            PoolIds = new[] { poolId }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
+        var error = await run.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("None of the selected nodes are connected", error.GetProperty("message").GetString());
     }
 
     [Fact]
