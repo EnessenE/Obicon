@@ -20,6 +20,8 @@ public class EnrollTokensController : ControllerBase
     /// Creates an enroll token. The plain token is returned exactly once; only its hash is stored.
     /// </summary>
     [HttpPost]
+    [ProducesResponseType(typeof(EnrollTokenResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateEnrollTokenRequest request)
     {
         try
@@ -37,6 +39,7 @@ public class EnrollTokensController : ControllerBase
     /// Returns all enroll tokens with their state. Plain tokens are never included.
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(List<EnrollTokenResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll()
     {
         var tokens = await _enrollTokenService.GetAllAsync();
@@ -47,6 +50,8 @@ public class EnrollTokensController : ControllerBase
     /// Revokes an enroll token; it can no longer be used for enrollment.
     /// </summary>
     [HttpPost("{id}/revoke")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Revoke(Guid id)
     {
         var revoked = await _enrollTokenService.RevokeAsync(id);
@@ -57,6 +62,8 @@ public class EnrollTokensController : ControllerBase
     /// Deletes an enroll token.
     /// </summary>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var deleted = await _enrollTokenService.DeleteAsync(id);

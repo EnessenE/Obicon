@@ -9,11 +9,13 @@ namespace Obicon.Server.Services;
 public class NodePoolService : INodePoolService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly SqliteWriteQueue _writeQueue;
     private readonly ILogger<NodePoolService> _logger;
 
-    public NodePoolService(IDbContextFactory<ObiconDbContext> dbFactory, ILogger<NodePoolService> logger)
+    public NodePoolService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<NodePoolService> logger)
     {
         _dbFactory = dbFactory;
+        _writeQueue = writeQueue;
         _logger = logger;
     }
 
@@ -28,9 +30,11 @@ public class NodePoolService : INodePoolService
             CreatedAt = DateTime.UtcNow
         };
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        db.NodePools.Add(pool);
-        await db.SaveChangesAsync();
+        await _writeQueue.EnqueueAsync(async db =>
+        {
+            db.NodePools.Add(pool);
+            await db.SaveChangesAsync();
+        });
 
         _logger.LogInformation("Created pool {PoolId} with name {PoolName}", pool.Id, pool.Name);
         Metrics.ServerMetrics.Action("created_pool");
@@ -53,63 +57,76 @@ public class NodePoolService : INodePoolService
 
     public async Task<PoolResponse?> UpdatePoolAsync(Guid id, UpdatePoolRequest request)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var pool = await db.NodePools.FindAsync(id);
-        if (pool == null)
+        var updated = await _writeQueue.EnqueueAsync(async db =>
         {
-            return null;
-        }
+            var pool = await db.NodePools.FindAsync(id);
+            if (pool == null)
+            {
+                return (NodePool?)null;
+            }
 
-        pool.Name = request.Name;
-        pool.Description = request.Description ?? string.Empty;
-        await db.SaveChangesAsync();
+            pool.Name = request.Name;
+            pool.Description = request.Description ?? string.Empty;
+            await db.SaveChangesAsync();
 
-        _logger.LogInformation("Updated pool {PoolId}: name {PoolName}", id, pool.Name);
-        return PoolResponse.From(pool);
+            _logger.LogInformation("Updated pool {PoolId}: name {PoolName}", id, pool.Name);
+            return pool;
+        });
+
+        return updated == null ? null : PoolResponse.From(updated);
     }
 
     public async Task<PoolResponse?> SetPoolMembersAsync(Guid id, PoolMembersRequest request)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        // NodeIds is a JSON column, so validate membership against the Nodes table first
-        var existingIds = await db.Nodes
-            .Where(n => request.NodeIds.Contains(n.Id))
-            .Select(n => n.Id)
-            .ToListAsync();
-        if (existingIds.Count != request.NodeIds.Distinct().Count())
+        var updated = await _writeQueue.EnqueueAsync(async db =>
         {
-            throw new ArgumentException("Pool members include unknown node IDs");
-        }
+            // NodeIds is a JSON column, so validate membership against the Nodes table first
+            var existingIds = await db.Nodes
+                .Where(n => request.NodeIds.Contains(n.Id))
+                .Select(n => n.Id)
+                .ToListAsync();
+            if (existingIds.Count != request.NodeIds.Distinct().Count())
+            {
+                throw new ArgumentException("Pool members include unknown node IDs");
+            }
 
-        var pool = await db.NodePools.FindAsync(id);
-        if (pool == null)
-        {
-            return null;
-        }
+            var pool = await db.NodePools.FindAsync(id);
+            if (pool == null)
+            {
+                return (NodePool?)null;
+            }
 
-        pool.NodeIds = request.NodeIds.Distinct().ToList();
-        await db.SaveChangesAsync();
+            pool.NodeIds = request.NodeIds.Distinct().ToList();
+            await db.SaveChangesAsync();
 
-        _logger.LogInformation("Pool {PoolId} now has {Count} members", id, pool.NodeIds.Count);
-        return PoolResponse.From(pool);
+            _logger.LogInformation("Pool {PoolId} now has {Count} members", id, pool.NodeIds.Count);
+            return pool;
+        });
+
+        return updated == null ? null : PoolResponse.From(updated);
     }
 
     public async Task<bool> DeletePoolAsync(Guid id)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var pool = await db.NodePools.FindAsync(id);
-        if (pool == null)
+        var deleted = await _writeQueue.EnqueueAsync(async db =>
         {
-            return false;
+            var pool = await db.NodePools.FindAsync(id);
+            if (pool == null)
+            {
+                return false;
+            }
+
+            db.NodePools.Remove(pool);
+            await db.SaveChangesAsync();
+            return true;
+        });
+
+        if (deleted)
+        {
+            _logger.LogInformation("Deleted pool {PoolId}", id);
+            Metrics.ServerMetrics.Action("deleted_pool");
         }
-
-        db.NodePools.Remove(pool);
-        await db.SaveChangesAsync();
-
-        _logger.LogInformation("Deleted pool {PoolId}", id);
-        Metrics.ServerMetrics.Action("deleted_pool");
-        return true;
+        return deleted;
     }
 
     public async Task<IEnumerable<PoolResponse>> GetPoolsForNodeAsync(Guid nodeId)

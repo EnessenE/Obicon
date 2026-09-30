@@ -23,23 +23,18 @@ public interface IEnrollTokenService
 public class EnrollTokenService : IEnrollTokenService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
+    private readonly SqliteWriteQueue _writeQueue;
     private readonly ILogger<EnrollTokenService> _logger;
 
-    public EnrollTokenService(IDbContextFactory<ObiconDbContext> dbFactory, ILogger<EnrollTokenService> logger)
+    public EnrollTokenService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<EnrollTokenService> logger)
     {
         _dbFactory = dbFactory;
+        _writeQueue = writeQueue;
         _logger = logger;
     }
 
     public async Task<EnrollTokenResponse> CreateAsync(CreateEnrollTokenRequest request)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-
-        if (request.PoolId is { } poolId && !await db.NodePools.AnyAsync(p => p.Id == poolId))
-        {
-            throw new ArgumentException($"Unknown pool ID: {poolId}");
-        }
-
         var plainToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var token = new EnrollToken
         {
@@ -54,8 +49,16 @@ public class EnrollTokenService : IEnrollTokenService
             PoolId = request.PoolId
         };
 
-        db.EnrollTokens.Add(token);
-        await db.SaveChangesAsync();
+        await _writeQueue.EnqueueAsync(async db =>
+        {
+            if (request.PoolId is { } poolId && !await db.NodePools.AnyAsync(p => p.Id == poolId))
+            {
+                throw new ArgumentException($"Unknown pool ID: {poolId}");
+            }
+
+            db.EnrollTokens.Add(token);
+            await db.SaveChangesAsync();
+        });
 
         _logger.LogInformation("Created enroll token {TokenId} ({TokenName}){Scope}",
             token.Id, token.Name, token.PoolId is { } pid ? $" scoped to pool {pid}" : string.Empty);
@@ -75,36 +78,42 @@ public class EnrollTokenService : IEnrollTokenService
 
     public async Task<bool> RevokeAsync(Guid id)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var token = await db.EnrollTokens.FindAsync(id);
-        if (token == null || token.RevokedAt != null)
+        var revoked = await _writeQueue.EnqueueAsync(async db =>
         {
-            return token != null;
-        }
+            var token = await db.EnrollTokens.FindAsync(id);
+            if (token == null || token.RevokedAt != null)
+            {
+                return token != null;
+            }
 
-        token.RevokedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+            token.RevokedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
 
-        _logger.LogInformation("Revoked enroll token {TokenId} ({TokenName})", token.Id, token.Name);
-        Metrics.ServerMetrics.Action("revoked_enroll_token");
-        return true;
+            _logger.LogInformation("Revoked enroll token {TokenId} ({TokenName})", token.Id, token.Name);
+            Metrics.ServerMetrics.Action("revoked_enroll_token");
+            return true;
+        });
+        return revoked;
     }
 
     public async Task<bool> DeleteAsync(Guid id)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var token = await db.EnrollTokens.FindAsync(id);
-        if (token == null)
+        var deleted = await _writeQueue.EnqueueAsync(async db =>
         {
-            return false;
-        }
+            var token = await db.EnrollTokens.FindAsync(id);
+            if (token == null)
+            {
+                return false;
+            }
 
-        db.EnrollTokens.Remove(token);
-        await db.SaveChangesAsync();
+            db.EnrollTokens.Remove(token);
+            await db.SaveChangesAsync();
 
-        _logger.LogInformation("Deleted enroll token {TokenId} ({TokenName})", token.Id, token.Name);
-        Metrics.ServerMetrics.Action("deleted_enroll_token");
-        return true;
+            _logger.LogInformation("Deleted enroll token {TokenId} ({TokenName})", token.Id, token.Name);
+            Metrics.ServerMetrics.Action("deleted_enroll_token");
+            return true;
+        });
+        return deleted;
     }
 
     /// <summary>
