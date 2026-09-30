@@ -57,7 +57,7 @@ Creates a new node and returns its authentication token.
 {
   "Id": "00000000-0000-0000-0000-000000000000",
   "Name": "My Node",
-  "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
+  "AuthToken": "the plain token - shown here because this is a creation response; only its SHA-256 hash is stored",
   "IsActive": true,
   "CreatedAt": "2024-01-01T00:00:00Z",
   "LastSeenAt": null
@@ -76,7 +76,7 @@ Returns all registered nodes.
   {
     "Id": "00000000-0000-0000-0000-000000000000",
     "Name": "My Node",
-    "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
+    "AuthToken": "",
     "IsActive": true,
     "CreatedAt": "2024-01-01T00:00:00Z",
     "LastSeenAt": "2024-01-01T00:00:01Z",
@@ -85,6 +85,7 @@ Returns all registered nodes.
   }
 ]
 ```
+`AuthToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored.
 
 #### Get Node
 ```
@@ -97,7 +98,7 @@ Returns details for a specific node.
 {
   "Id": "00000000-0000-0000-0000-000000000000",
   "Name": "My Node",
-  "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
+  "AuthToken": "",
   "IsActive": true,
   "CreatedAt": "2024-01-01T00:00:00Z",
   "LastSeenAt": "2024-01-01T00:00:01Z",
@@ -127,14 +128,15 @@ Updates a node's name and labels, and optionally regenerates its auth token. A r
 {
   "Id": "00000000-0000-0000-0000-000000000000",
   "Name": "Node Updated Name",
-  "AuthToken": "plain token - only returned on creation, regeneration, or enrollment; only its SHA-256 hash is stored",
+  "AuthToken": "",
   "IsActive": true,
   "CreatedAt": "2024-01-01T00:00:00Z",
   "LastSeenAt": "2024-01-01T00:00:01Z",
   "EnrollmentType": "manual",
-  "Labels": ["edge", "eu-west"],
+  "Labels": ["edge", "eu-west"]
 }
 ```
+`AuthToken` is populated only when `RegenerateToken` was true; otherwise it is empty.
 
 #### Get Pools for Node
 ```
@@ -331,6 +333,14 @@ GET /v1/tests/{id}
 Returns details for a specific test.
 
 **Response:** 200 OK (same structure as Create Test)
+
+#### Get Tests for Node
+```
+GET /v1/tests/node/{nodeId}
+```
+Returns the active tests that directly target the given node, ordered by creation time. Pool membership is not considered.
+
+**Response:** 200 OK - list of tests
 
 #### Update Test
 ```
@@ -577,7 +587,7 @@ Returns all test jobs in the queue, newest first.
   }
 ]
 ```
-For one-off runs) (from `POST /v1/tests/run-once`), `TestId` is `00000000-0000-0000-0000-000000000000`.
+For one-off runs (from `POST /v1/tests/run-once`), `TestId` is `00000000-0000-0000-0000-000000000000`.
 
 #### Get Job
 ```
@@ -702,7 +712,7 @@ Sent by node to report test results.
 
 The `Metrics` dictionary carries detailed measurements: HTTP/HTTPS runs report DNS resolution, TCP connect, TLS handshake (including protocol and cipher), time to first byte, and transfer timings plus certificate details; DNS runs report the nameservers queried, which one answered, its round-trip time, and the A/AAAA records; ping, TCP, and traceroute report the resolved address and phase timings.
 
-#### TestStatusUpdate)
+#### TestStatusUpdate
 Sent by node to update test status.
 ```json
 {

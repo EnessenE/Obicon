@@ -19,7 +19,7 @@
 ## Next Priorities
 
 ### High Priority
-- [ ] Dump test results to Prometheus (endpoint excluded from auth already)
+- [x] Dump test results to Prometheus (endpoint excluded from auth already) — OpenTelemetry meters `Obicon.Tests`/`Obicon.Server` exported on `/metrics`
 - [ ] Add validation to all API endpoints
 - [ ] Implement proper error handling
 
@@ -30,19 +30,14 @@
 - [ ] Add rate limiting to API endpoints
 
 ### Low Priority
-- [ ] Prometheus integration
 - [ ] Advanced authentication (JWT)
-- [ ] Frontend UI
+- [x] Frontend UI (static Bootstrap pages: dashboard, nodes, pools, tests, queue, server, settings)
 - [ ] k6 test type support
 
 ## Backlog
-- Database persistence (PostgreSQL/SQLite)
 - Full EF Core migrations (SchemaMigrator covers missing tables/columns and one-time data fixups; column type changes and renames still need manual handling)
 - Test result history and analytics
 - Alerting system
-- Node auto-reconnection logic
-- Test timeout enforcement
 - Queue prioritization
-- Node health monitoring
 - API versioning beyond v1
 - Use labels when targeting tests at nodes

@@ -6,6 +6,15 @@
 - **Todo list:** See `/Project/todo.md` for current task tracking — keep it up to date as work lands
 - **API spec:** See `/docs/api-spec.md` — update it whenever an endpoint, DTO, or message changes
 
+## User Documentation
+
+`/docs` hosts the user-facing documentation and will eventually be served as a docs page:
+
+- `index.md` (overview), `getting-started.md`, `server.md`, `node.md`, `metrics.md`, and the full `api-spec.md`
+- Keep these pages **light and basic** — setup, configuration, and pointers; deep internals belong in `/Project` docs or the API spec, not duplicated there
+- Update them whenever user-facing behavior changes: ports, settings, env vars, endpoints, Docker usage. Like the API spec, a docs page that lags the code is a bug
+- The docs are plain Markdown with relative links between pages, so any static site generator (e.g. MkDocs) can host them without changes
+
 ## Build and Run
 
 - **Build everything:** `dotnet build Obicon.slnx`

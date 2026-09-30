@@ -37,7 +37,8 @@ The sections below describe the system as it is implemented today. Deviations fr
 - Auth layer: API requests require the header `Authorization: uwu`. The WebSocket endpoint authenticates with the node token instead (`/ws`, `/metrics`, `/swagger` are exempt from the header check)
 - Queue: `POST /v1/tests/{id}/run` and `POST /v1/tests/run-once` enqueue jobs; `TestQueueProcessor` sends `TestAssignment` to the connected node, stores reported results on the job, and reaps jobs whose node never reports back
 - Heartbeats update the node's `LastSeenAt` so the UI shows live node status
-- Test results are not yet dumped into Prometheus (todo). k6 is still a later addition
+- Test results are exported to Prometheus via OpenTelemetry on `/metrics` (`obicon.tests.runs`, `obicon.tests.duration_ms`). k6 is still a later addition
+- Frequency scheduling: the `TestScheduler` background loop enqueues active tests each time their interval elapses
 
 ## Self hosted node (src/Obicon.Node)
 
@@ -59,4 +60,4 @@ The spec originally said no frontend was needed; one exists now. It is plain sta
 
 ## Open work
 
-Tracked in /Project/todo.md. Highest priorities: frequency-based scheduling of tests (the Frequency field is stored but nothing schedules runs yet) and Prometheus export of test results.
+Tracked in /Project/todo.md. Highest priorities: Prometheus integration hardening (alert rules, dashboards — Phase 14), endpoint validation coverage, and proper error handling.
