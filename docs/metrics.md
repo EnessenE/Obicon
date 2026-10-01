@@ -15,6 +15,7 @@ No auth required. Scraped metrics:
 | `obicon.server.build_info` | gauge | `version` | Server build info; value is always 1, the label carries the version |
 | `obicon.server.actions` | counter | `action` | Server lifecycle actions (e.g. `created_pool`, `token_regenerated`) |
 | `obicon.server.noruns` | counter | `reason` (`never_acknowledged`, `never_started`, `node_offline`) | Jobs that never ran |
+| `obicon.server.nodelogs` | counter | `level`, `source_context`, `node_id`, `node_name` | Log entries received from nodes |
 
 Standard ASP.NET Core and HttpClient instrumentation metrics are exported alongside them. The server also exposes a health check at `GET /v1/health`.
 

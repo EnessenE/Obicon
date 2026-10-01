@@ -22,7 +22,7 @@ docker run -d --cap-add=NET_RAW \
   ghcr.io/enessene/obicon/node:latest
 ```
 
-Serve the UI — static files in `src/Obicon.Client/wwwroot` — with any static file server, open it, create a test, and watch the queue fill up. The UI is not yet ready for release: expect rough edges and breaking changes. The server and every node expose Prometheus metrics on `/metrics`, and the Grafana dashboards in [`observability/`](observability/) import as-is.
+Serve the UI — static files in `src/Obicon.Client/wwwroot` — with any static file server, open it, create a test, and watch the queue fill up. The UI is not yet ready for release: expect rough edges and breaking changes. The server serves Prometheus metrics at `/metrics` on port 5000 and each node at `/metrics` on its own port (default 9464), and the Grafana dashboards in [`observability/`](observability/) import as-is.
 
 ## Documentation
 
