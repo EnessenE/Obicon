@@ -13,6 +13,7 @@ separate version; its changes are listed under the server release.
 ## [Server 0.3.0] - Unreleased
 
 ### Server
+- Deleting a node now also removes it from every pool it belongs to, so a pool no longer carries a stale node ID that would produce jobs for a missing node
 - New `obicon.tests.queue_jobs` gauge on `/metrics`: current test job count per status, so the queue state can be tracked in Prometheus over time
 - New `obicon.tests.current_result` gauge on `/metrics`: the latest job status of every created test (one series per test, `-1` when it never ran), and `obicon.server.build_info` exposes the server version as a label
 - Deleting a node now closes its live WebSocket connection: a deleted node no longer keeps heartbeating as a connected ghost that is absent from the node list; a background connection watcher also sweeps every 30 seconds for connections whose node record no longer exists

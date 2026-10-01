@@ -195,7 +195,7 @@ Returns the live status of every node: its active flag and whether it currently 
 ```
 DELETE /v1/nodes/{id}
 ```
-Deletes a node.
+Deletes a node and removes it from every pool it belongs to.
 
 **Response:** 204 No Content
 

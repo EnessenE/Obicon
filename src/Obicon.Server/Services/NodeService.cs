@@ -129,6 +129,16 @@ public class NodeService : INodeService
             }
 
             db.Nodes.Remove(node);
+
+            // Drop the node from every pool; NodeIds is a JSON column, so a new
+            // list is assigned for EF's change tracker to see the change
+            var memberPools = (await db.NodePools.ToListAsync())
+                .Where(p => p.NodeIds.Contains(id)).ToList();
+            foreach (var pool in memberPools)
+            {
+                pool.NodeIds = pool.NodeIds.Where(nodeId => nodeId != id).ToList();
+            }
+
             await db.SaveChangesAsync();
             return true;
         });
