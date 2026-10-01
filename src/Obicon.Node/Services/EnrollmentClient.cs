@@ -1,8 +1,7 @@
-using Microsoft.Extensions.Logging;
-using System.Text.Json;
-using Microsoft.Extensions.Options;
-using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
 
 namespace Obicon.Node.Services;
@@ -11,7 +10,7 @@ namespace Obicon.Node.Services;
 /// Enrolls this node on the primary server using an enroll token and the
 /// NodeAutoEnrollmentEnabled server setting.
 /// </summary>
-public class EnrollmentClient
+public partial class EnrollmentClient
 {
     private static readonly HttpClient Client = new();
 
@@ -49,7 +48,7 @@ public class EnrollmentClient
             Pools = _settings.Pools
         };
 
-        _logger.LogInformation("Enrolling as {NodeName} at {EnrollUrl}", nodeName, enrollUrl);
+        LogEnrolling(nodeName, enrollUrl);
 
         using var response = await Client.PostAsJsonAsync(enrollUrl, payload, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -63,8 +62,14 @@ public class EnrollmentClient
         var authToken = document.RootElement.GetProperty("authToken").GetString()!;
 
         _identityStore.Save(nodeId, authToken);
-        _logger.LogInformation("Enrolled as node {NodeId}", nodeId);
+        LogEnrolled(nodeId);
 
         return authToken;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Enrolling as {NodeName} at {EnrollUrl}")]
+    private partial void LogEnrolling(string nodeName, Uri enrollUrl);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Enrolled as node {NodeId}")]
+    private partial void LogEnrolled(string nodeId);
 }

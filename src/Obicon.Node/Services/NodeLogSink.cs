@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
@@ -82,7 +83,7 @@ public class NodeLogSink : ILogEventSink
             NodeVersion = NodeInfo.Version,
             Timestamp = logEvent.Timestamp.UtcDateTime,
             Level = MapLevel(logEvent.Level),
-            Message = logEvent.RenderMessage(),
+            Message = logEvent.RenderMessage(CultureInfo.InvariantCulture),
             Exception = logEvent.Exception?.ToString(),
             Properties = properties.Count > 0 ? properties : null
         };

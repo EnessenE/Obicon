@@ -13,7 +13,12 @@ separate version; its changes are listed under the server release.
 ## [Server 0.3.1] - Unreleased
 
 ### Server
-- Coding standard: the repo now adheres to the C# Coding Guidelines (csharpcodingguidelines.com) — enforced by a root `.editorconfig` (naming and style rules, warnings in CLI builds) and a new `coding-guidelines` CI job that verifies formatting (`dotnet format`) and builds with warnings-as-errors. The job is expected to fail until the existing code is cleaned up
+- Coding standard: the repo now adheres to the C# Coding Guidelines (csharpcodingguidelines.com) — enforced by a root `.editorconfig` (naming and style rules, warnings in CLI builds) and a new `coding-guidelines` CI job that verifies formatting (`dotnet format`) and builds with warnings-as-errors. The full codebase was cleaned up to pass it: every log call is a source-generated `[LoggerMessage]` partial method (145 sites), culture-sensitive conversions specify `CultureInfo.InvariantCulture`, shared state classes expose properties instead of public fields, and `SqliteWriteQueue` disposes correctly
+
+## [Node 0.3.1] - Unreleased
+
+- Same guidelines cleanup as the server: source-generated `[LoggerMessage]` logging throughout, invariant culture on all conversions, the node's shared state classes (`NodeStatistics`, `NodeAddressState`, `NodeLoggingState`) encapsulated behind properties with thread-safe mutators, `TestExecutor` disposes its semaphore, and the node identity file reads use `nameof`
+- The `tls_cipher` metric now reports the negotiated TLS cipher suite (e.g. `Tls13Aes128GcmSha256`) instead of the legacy `SslStream.CipherAlgorithm` value, which is obsolete and returns `None` on TLS 1.3
 
 ## [Server 0.3.0] - 2026-10-01
 

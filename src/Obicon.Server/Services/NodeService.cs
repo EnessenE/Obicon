@@ -9,7 +9,7 @@ using Obicon.Shared;
 
 namespace Obicon.Server.Services;
 
-public class NodeService : INodeService
+public partial class NodeService : INodeService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly SqliteWriteQueue _writeQueue;
@@ -26,7 +26,7 @@ public class NodeService : INodeService
 
     public async Task<NodeResponse> CreateNodeAsync(CreateNodeRequest request)
     {
-        _logger.LogInformation("Creating a node with name: {NodeName}", request.Name);
+        LogCreatingNode(request.Name);
 
         // Only the hash of the auth token is stored; the plain value is returned once
         var plainToken = Guid.NewGuid().ToString();
@@ -47,7 +47,7 @@ public class NodeService : INodeService
             return ToResponse(node);
         });
 
-        _logger.LogInformation("Created node {NodeId} with name: {NodeName}", node.Id, node.Name);
+        LogCreatedNode(node.Id, node.Name);
         Metrics.ServerMetrics.Action("created_node");
 
         response.AuthToken = plainToken;
@@ -67,7 +67,7 @@ public class NodeService : INodeService
         var node = await db.Nodes.FindAsync(id);
         if (node == null)
         {
-            _logger.LogWarning("Node with id {NodeId} not found", id);
+            LogNodeNotFound(id);
             return null;
         }
         return ToResponse(node);
@@ -80,7 +80,7 @@ public class NodeService : INodeService
             var node = await db.Nodes.FindAsync(id);
             if (node == null)
             {
-                _logger.LogWarning("Cannot update node {NodeId}: not found", id);
+                LogCannotUpdateNode(id);
                 return ((NodeResponse?)null, (string?)null);
             }
 
@@ -97,7 +97,7 @@ public class NodeService : INodeService
             {
                 plainToken = Guid.NewGuid().ToString();
                 node.AuthToken = TokenHasher.Hash(plainToken);
-                _logger.LogInformation("Regenerated auth token for node {NodeId}", id);
+                LogRegeneratedToken(id);
                 Metrics.ServerMetrics.Action("token_regenerated");
             }
 
@@ -110,7 +110,7 @@ public class NodeService : INodeService
             return null;
         }
 
-        _logger.LogInformation("Updated node {NodeId} to name: {NewName}", id, request.Name);
+        LogUpdatedNode(id, request.Name);
 
         if (plainToken != null)
         {
@@ -126,7 +126,7 @@ public class NodeService : INodeService
             var node = await db.Nodes.FindAsync(id);
             if (node == null)
             {
-                _logger.LogWarning("Cannot delete node {NodeId}: not found", id);
+                LogCannotDeleteNode(id);
                 return false;
             }
 
@@ -150,7 +150,7 @@ public class NodeService : INodeService
             // The node record is gone: close its live connection too, otherwise a
             // deleted node keeps heartbeating as a ghost that no longer shows in the list
             await _connectionManager.DisconnectNodeAsync(id.ToString(), "Node was deleted");
-            _logger.LogInformation("Deleted node {NodeId}", id);
+            LogDeletedNode(id);
             Metrics.ServerMetrics.Action("deleted_node");
         }
         return deleted;
@@ -207,7 +207,7 @@ public class NodeService : INodeService
             node.Settings = reportedSettings;
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Node {NodeId} connection info updated: version={Version} ip={IpAddress}", nodeId, version, ipAddress);
+            LogConnectionInfoUpdated(nodeId, version, ipAddress);
         });
     }
 
@@ -229,8 +229,8 @@ public class NodeService : INodeService
             node.ExternalIpv6 = externalIpv6;
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Node {NodeId} addresses updated: int4={InternalIpv4} int6={InternalIpv6} ext4={ExternalIpv4} ext6={ExternalIpv6}",
-                nodeId, internalIpv4 ?? "unavailable", internalIpv6 ?? "unavailable",
+            LogAddressesUpdated(nodeId,
+                internalIpv4 ?? "unavailable", internalIpv6 ?? "unavailable",
                 externalIpv4 ?? "unavailable", externalIpv6 ?? "unavailable");
         });
     }
@@ -257,4 +257,34 @@ public class NodeService : INodeService
         ExternalIpv6 = node.ExternalIpv6,
         Settings = node.Settings
     };
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating a node with name: {NodeName}")]
+    private partial void LogCreatingNode(string nodeName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created node {NodeId} with name: {NodeName}")]
+    private partial void LogCreatedNode(Guid nodeId, string nodeName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Node with id {NodeId} not found")]
+    private partial void LogNodeNotFound(Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot update node {NodeId}: not found")]
+    private partial void LogCannotUpdateNode(Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Regenerated auth token for node {NodeId}")]
+    private partial void LogRegeneratedToken(Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updated node {NodeId} to name: {NewName}")]
+    private partial void LogUpdatedNode(Guid nodeId, string newName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot delete node {NodeId}: not found")]
+    private partial void LogCannotDeleteNode(Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted node {NodeId}")]
+    private partial void LogDeletedNode(Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} connection info updated: version={Version} ip={IpAddress}")]
+    private partial void LogConnectionInfoUpdated(Guid nodeId, string? version, string? ipAddress);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} addresses updated: int4={InternalIpv4} int6={InternalIpv6} ext4={ExternalIpv4} ext6={ExternalIpv6}")]
+    private partial void LogAddressesUpdated(Guid nodeId, string internalIpv4, string internalIpv6, string externalIpv4, string externalIpv6);
 }

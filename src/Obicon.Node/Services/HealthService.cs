@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
 using Obicon.Node.Models;
@@ -13,7 +13,7 @@ namespace Obicon.Node.Services;
 /// Exposes a /health endpoint over HttpListener without pulling in a web server,
 /// keeping the node a light console app.
 /// </summary>
-public class HealthService : BackgroundService
+public partial class HealthService : BackgroundService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -53,11 +53,11 @@ public class HealthService : BackgroundService
         try
         {
             listener.Start();
-            _logger.LogInformation("Health endpoint listening on {Prefix}health", prefix);
+            LogListening(prefix);
         }
         catch (HttpListenerException ex)
         {
-            _logger.LogError(ex, "Failed to start health endpoint on {Prefix}", prefix);
+            LogStartFailed(ex, prefix);
             return;
         }
 
@@ -74,7 +74,7 @@ public class HealthService : BackgroundService
             }
             catch (HttpListenerException ex)
             {
-                _logger.LogWarning(ex, "Health endpoint stopped accepting requests");
+                LogStoppedAccepting(ex);
                 break;
             }
 
@@ -84,11 +84,11 @@ public class HealthService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to respond to health request");
+                LogRespondFailed(ex);
             }
         }
 
-        _logger.LogInformation("Health endpoint stopped");
+        LogStopped();
     }
 
     private void Respond(HttpListenerContext context)
@@ -127,4 +127,19 @@ public class HealthService : BackgroundService
 
         context.Response.Close();
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Health endpoint listening on {Prefix}health")]
+    private partial void LogListening(string prefix);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to start health endpoint on {Prefix}")]
+    private partial void LogStartFailed(Exception exception, string prefix);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Health endpoint stopped accepting requests")]
+    private partial void LogStoppedAccepting(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to respond to health request")]
+    private partial void LogRespondFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Health endpoint stopped")]
+    private partial void LogStopped();
 }

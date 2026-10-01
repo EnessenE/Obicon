@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Obicon.Server.Data;
 
 namespace Obicon.Server.WebSockets;
@@ -12,7 +10,7 @@ namespace Obicon.Server.WebSockets;
 /// check such a connection keeps heartbeating as a connected ghost that no
 /// longer shows up in the node list.
 /// </summary>
-public class ConnectionWatcher : BackgroundService
+public partial class ConnectionWatcher : BackgroundService
 {
     private readonly NodeConnectionManager _connectionManager;
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
@@ -73,13 +71,14 @@ public class ConnectionWatcher : BackgroundService
                 continue;
             }
 
-            _logger.LogWarning(
-                "Closing ghost connection from node {NodeId} ({NodeName}): the node no longer exists",
-                connection.NodeId, connection.NodeName);
+            LogGhostConnection(connection.NodeId, connection.NodeName);
             await _connectionManager.DisconnectNodeAsync(connection.NodeId, "Node no longer exists");
             // The close alone is noticed by the receive loop; remove eagerly so the
             // ghost is gone immediately even if that loop is still unwinding
             _connectionManager.TryRemoveConnection(connection.NodeId);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Closing ghost connection from node {NodeId} ({NodeName}): the node no longer exists")]
+    private partial void LogGhostConnection(string nodeId, string nodeName);
 }

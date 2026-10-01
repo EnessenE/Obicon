@@ -2,7 +2,6 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Obicon.Server.WebSockets;
-using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Server.Services;
@@ -11,7 +10,7 @@ namespace Obicon.Server.Services;
 /// Pushes the node-facing policy to all connected nodes when it changes at runtime,
 /// so nodes apply new settings on the fly instead of waiting for a reconnect.
 /// </summary>
-public class NodePolicyBroadcaster
+public partial class NodePolicyBroadcaster
 {
     private readonly NodeConnectionManager _connectionManager;
     private readonly ILogger<NodePolicyBroadcaster> _logger;
@@ -60,15 +59,20 @@ public class NodePolicyBroadcaster
             catch (Exception ex)
             {
                 // The node may have dropped mid-broadcast; its reconnect will pick the policy up from the hello
-                _logger.LogDebug(ex, "Could not deliver policy update to node {NodeId}", connection.NodeId);
+                LogPolicyDeliveryFailed(ex, connection.NodeId);
             }
         }
 
         if (delivered > 0)
         {
-            _logger.LogInformation("Policy update delivered to {Count} node(s): logShipping={LogShipping} localLogging={LocalLogging}",
-                delivered, logShippingEnabled, nodeLocalLoggingEnabled);
+            LogPolicyDelivered(delivered, logShippingEnabled, nodeLocalLoggingEnabled);
             Metrics.ServerMetrics.Action("policy_updated");
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Could not deliver policy update to node {NodeId}")]
+    private partial void LogPolicyDeliveryFailed(System.Exception exception, string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Policy update delivered to {Count} node(s): logShipping={LogShipping} localLogging={LocalLogging}")]
+    private partial void LogPolicyDelivered(int count, bool logShipping, bool localLogging);
 }

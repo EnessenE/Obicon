@@ -2,7 +2,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
-using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Node.Services;
@@ -15,7 +14,7 @@ namespace Obicon.Node.Services;
 /// addresses. The external checks are best effort: when one fails (e.g. no IPv6
 /// connectivity), that family stays unavailable and the last known value is kept.
 /// </summary>
-public class IpAddressMonitor : BackgroundService
+public partial class IpAddressMonitor : BackgroundService
 {
     private readonly NodeSettings _settings;
     private readonly IServerConnection _connection;
@@ -92,8 +91,7 @@ public class IpAddressMonitor : BackgroundService
 
     private void LogChange(string label, string? newValue, string? oldValue)
     {
-        _logger.LogInformation("{Label} changed: {New} (was {Old})",
-            label, newValue ?? "unavailable", oldValue ?? "unavailable");
+        LogAddressChanged(label, newValue ?? "unavailable", oldValue ?? "unavailable");
     }
 
     /// <summary>
@@ -116,13 +114,14 @@ public class IpAddressMonitor : BackgroundService
             var parsed = parse(body);
             if (parsed == null)
             {
-                _logger.LogDebug("External IP check at {Url} returned no address: {Body}", url, body.Trim());
+                var trimmedBody = body.Trim();
+                LogExternalCheckNoAddress(url, trimmedBody);
             }
             return parsed;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogDebug(ex, "External IP check at {Url} failed; keeping the last known value", url);
+            LogExternalCheckFailed(ex, url);
             return null;
         }
     }
@@ -141,4 +140,13 @@ public class IpAddressMonitor : BackgroundService
             }
         });
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{Label} changed: {New} (was {Old})")]
+    private partial void LogAddressChanged(string label, string @new, string @old);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "External IP check at {Url} returned no address: {Body}")]
+    private partial void LogExternalCheckNoAddress(string? url, string body);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "External IP check at {Url} failed; keeping the last known value")]
+    private partial void LogExternalCheckFailed(Exception exception, string? url);
 }

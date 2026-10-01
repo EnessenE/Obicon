@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -17,7 +18,7 @@ namespace Obicon.Node.Services.TestRunners;
 /// DNS resolution, TCP connect, TLS handshake, time to first byte, and transfer.
 /// Also matches expected status codes and checks TLS certificate expiry.
 /// </summary>
-public abstract class HttpTestRunnerBase : ITestRunner
+public abstract partial class HttpTestRunnerBase : ITestRunner
 {
     private const int MaxBodyBytes = 2 * 1024 * 1024;
 
@@ -81,7 +82,7 @@ public abstract class HttpTestRunnerBase : ITestRunner
                         ?? throw new SocketException((int)SocketError.HostNotFound);
                     dnsStopwatch.Stop();
                     dnsMs = dnsStopwatch.Elapsed.TotalMilliseconds;
-                    _logger.LogInformation("DNS resolved {Host} to {Address} in {DnsMs:F1} ms", context.DnsEndPoint.Host, resolvedAddress, dnsMs);
+                    LogDnsResolved(context.DnsEndPoint.Host, resolvedAddress, dnsMs);
                     metrics["dns_resolved"] = resolvedAddress.ToString();
                     metrics["dns_ms"] = Math.Round(dnsMs, 2);
 
@@ -90,7 +91,7 @@ public abstract class HttpTestRunnerBase : ITestRunner
                     await socket.ConnectAsync(new IPEndPoint(resolvedAddress, context.DnsEndPoint.Port), ct);
                     connectStopwatch.Stop();
                     connectMs = connectStopwatch.Elapsed.TotalMilliseconds;
-                    _logger.LogInformation("TCP connected to {Host}:{Port} in {ConnectMs:F1} ms", context.DnsEndPoint.Host, context.DnsEndPoint.Port, connectMs);
+                    LogTcpConnected(context.DnsEndPoint.Host, context.DnsEndPoint.Port, connectMs);
                     metrics["connect_ms"] = Math.Round(connectMs, 2);
 
                     var networkStream = new NetworkStream(socket, ownsSocket: true);
@@ -114,11 +115,10 @@ public abstract class HttpTestRunnerBase : ITestRunner
                     }, ct);
                     tlsStopwatch.Stop();
                     tlsMs = tlsStopwatch.Elapsed.TotalMilliseconds;
-                    _logger.LogInformation("TLS handshake with {Host} finished in {TlsMs:F1} ms ({Protocol}, {Cipher})",
-                        context.DnsEndPoint.Host, tlsMs, sslStream.SslProtocol, sslStream.CipherAlgorithm);
+                    LogTlsHandshake(context.DnsEndPoint.Host, tlsMs, sslStream.SslProtocol, sslStream.NegotiatedCipherSuite);
                     metrics["tls_ms"] = Math.Round(tlsMs, 2);
                     metrics["tls_protocol"] = sslStream.SslProtocol.ToString();
-                    metrics["tls_cipher"] = sslStream.CipherAlgorithm.ToString();
+                    metrics["tls_cipher"] = sslStream.NegotiatedCipherSuite.ToString();
 
                     return sslStream;
                 }
@@ -146,7 +146,7 @@ public abstract class HttpTestRunnerBase : ITestRunner
                 {
                     if (!request.Headers.TryAddWithoutValidation(header.Key, header.Value))
                     {
-                        _logger.LogWarning("Could not set header {HeaderName} on the request", header.Key);
+                        LogHeaderNotSet(header.Key);
                     }
                 }
             }
@@ -157,8 +157,7 @@ public abstract class HttpTestRunnerBase : ITestRunner
             metrics["ttfb_ms"] = Math.Round(ttfbMs, 2);
             metrics["status_code"] = statusCode;
             metrics["final_url"] = response.RequestMessage?.RequestUri?.ToString() ?? url;
-            _logger.LogInformation("Received HTTP {StatusCode} from {Host} after {TtfbMs:F1} ms (time to first byte)",
-                statusCode, response.RequestMessage?.RequestUri?.Host ?? host, ttfbMs);
+            LogReceivedResponse(statusCode, response.RequestMessage?.RequestUri?.Host ?? host, ttfbMs);
 
             // Read the body (capped) to measure the transfer phase and check it against the pattern
             var transferStopwatch = Stopwatch.StartNew();
@@ -176,7 +175,7 @@ public abstract class HttpTestRunnerBase : ITestRunner
             metrics["transfer_ms"] = Math.Round(transferStopwatch.Elapsed.TotalMilliseconds, 2);
             metrics["bytes_read"] = body.Length;
             metrics["bytes_truncated"] = body.Length >= MaxBodyBytes;
-            _logger.LogInformation("Transferred {Bytes} bytes in {TransferMs:F1} ms", body.Length, transferStopwatch.Elapsed.TotalMilliseconds);
+            LogTransferred(body.Length, transferStopwatch.Elapsed.TotalMilliseconds);
 
             var details = new List<string> { $"HTTP {statusCode} {response.ReasonPhrase} from {response.RequestMessage?.RequestUri?.Host ?? url}" };
 
@@ -213,7 +212,7 @@ public abstract class HttpTestRunnerBase : ITestRunner
                 var daysRemaining = (serverCertificate.NotAfter - DateTime.UtcNow).TotalDays;
                 metrics["cert_subject"] = serverCertificate.Subject;
                 metrics["cert_issuer"] = serverCertificate.Issuer;
-                metrics["cert_expires"] = serverCertificate.NotAfter.ToString("yyyy-MM-dd");
+                metrics["cert_expires"] = serverCertificate.NotAfter.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                 details.Add($"TLS certificate expires {serverCertificate.NotAfter:yyyy-MM-dd} ({daysRemaining:F0} days)");
 
                 if (assignment.CheckCertificateExpiryDays is int threshold && daysRemaining < threshold)
@@ -266,4 +265,22 @@ public abstract class HttpTestRunnerBase : ITestRunner
         }
         return false;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "DNS resolved {Host} to {Address} in {DnsMs:F1} ms")]
+    private partial void LogDnsResolved(string host, IPAddress address, double dnsMs);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "TCP connected to {Host}:{Port} in {ConnectMs:F1} ms")]
+    private partial void LogTcpConnected(string host, int port, double connectMs);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "TLS handshake with {Host} finished in {TlsMs:F1} ms ({Protocol}, {Cipher})")]
+    private partial void LogTlsHandshake(string host, double tlsMs, SslProtocols protocol, TlsCipherSuite cipher);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not set header {HeaderName} on the request")]
+    private partial void LogHeaderNotSet(string headerName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Received HTTP {StatusCode} from {Host} after {TtfbMs:F1} ms (time to first byte)")]
+    private partial void LogReceivedResponse(int statusCode, string host, double ttfbMs);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Transferred {Bytes} bytes in {TransferMs:F1} ms")]
+    private partial void LogTransferred(long bytes, double transferMs);
 }

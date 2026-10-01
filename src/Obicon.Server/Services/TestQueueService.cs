@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Obicon.Server.Configuration;
 using Obicon.Server.Data;
 using Obicon.Server.Models;
 using Obicon.Shared.Models.Enums;

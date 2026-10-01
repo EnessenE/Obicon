@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
 using Obicon.Server.Models;
@@ -13,7 +13,7 @@ namespace Obicon.Server.Services;
 /// and read-only; everything else can be overridden at runtime (stored in SQLite).
 /// Effective values are cached and the cache is invalidated on change.
 /// </summary>
-public class ServerSettingsService : IServerSettingsService
+public partial class ServerSettingsService : IServerSettingsService
 {
     private const string ConfigSection = "ServerSettings";
 
@@ -120,7 +120,7 @@ public class ServerSettingsService : IServerSettingsService
         });
 
         _cache.TryRemove(key, out _);
-        _logger.LogInformation("Setting {Key} changed to {Value}", key, key == "AuthHeader" ? "***" : value);
+        LogSettingChanged(key, key == "AuthHeader" ? "***" : value);
         Metrics.ServerMetrics.Action("setting_changed");
 
         // Node-facing settings propagate to connected nodes immediately
@@ -192,7 +192,7 @@ public class ServerSettingsService : IServerSettingsService
     {
         if (key == "SchedulerLoopIntervalSeconds")
         {
-            return FrequencyPresets.SchedulerIntervalSeconds(frequencyPresets).ToString();
+            return FrequencyPresets.SchedulerIntervalSeconds(frequencyPresets).ToString(CultureInfo.InvariantCulture);
         }
 
         throw new ArgumentException($"No computation for read-only setting: {key}");
@@ -209,7 +209,7 @@ public class ServerSettingsService : IServerSettingsService
         {
             if (definition.ValueType == typeof(int))
             {
-                converted = int.Parse(value);
+                converted = int.Parse(value, CultureInfo.InvariantCulture);
                 return true;
             }
             if (definition.ValueType == typeof(bool))
@@ -226,4 +226,7 @@ public class ServerSettingsService : IServerSettingsService
             return false;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Setting {Key} changed to {Value}")]
+    private partial void LogSettingChanged(string key, string value);
 }

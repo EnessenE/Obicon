@@ -10,7 +10,7 @@ namespace Obicon.Node.Services.TestRunners;
 /// <summary>
 /// TCP connect test. Target format: host or host:port (default port 80).
 /// </summary>
-public class TcpTestRunner : ITestRunner
+public partial class TcpTestRunner : ITestRunner
 {
     private const int DefaultPort = 80;
     private readonly ILogger<TcpTestRunner> _logger;
@@ -43,7 +43,7 @@ public class TcpTestRunner : ITestRunner
 
             if (address == null)
             {
-                _logger.LogWarning("{Host} has no {Family} address", host, HostResolver.FamilyName(assignment.IpVersion));
+                LogNoAddress(host, HostResolver.FamilyName(assignment.IpVersion));
                 return new TestOutcome
                 {
                     Success = false,
@@ -53,7 +53,7 @@ public class TcpTestRunner : ITestRunner
             }
 
             metrics["resolved"] = address.ToString();
-            _logger.LogInformation("Resolved {Host} to {Address} in {DnsMs:F1} ms", host, address, dnsStopwatch.Elapsed.TotalMilliseconds);
+            LogResolved(host, address, dnsStopwatch.Elapsed.TotalMilliseconds);
         }
         catch (SocketException ex)
         {
@@ -71,7 +71,7 @@ public class TcpTestRunner : ITestRunner
             connectStopwatch.Stop();
             metrics["connect_ms"] = Math.Round(connectStopwatch.Elapsed.TotalMilliseconds, 2);
             metrics["family"] = address.AddressFamily.ToString();
-            _logger.LogInformation("TCP connected to {Host}:{Port} in {ConnectMs:F1} ms", host, port, connectStopwatch.Elapsed.TotalMilliseconds);
+            LogTcpConnected(host, port, connectStopwatch.Elapsed.TotalMilliseconds);
 
             return new TestOutcome
             {
@@ -82,8 +82,20 @@ public class TcpTestRunner : ITestRunner
         }
         catch (SocketException ex)
         {
-            _logger.LogWarning("TCP connect to {Host}:{Port} failed: {Error}", host, port, ex.SocketErrorCode);
+            LogTcpConnectFailed(host, port, ex.SocketErrorCode);
             return new TestOutcome { Success = false, Output = $"TCP connect to {host}:{port} failed: {ex.SocketErrorCode}", Metrics = metrics };
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Host} has no {Family} address")]
+    private partial void LogNoAddress(string host, string family);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resolved {Host} to {Address} in {DnsMs:F1} ms")]
+    private partial void LogResolved(string host, IPAddress address, double dnsMs);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "TCP connected to {Host}:{Port} in {ConnectMs:F1} ms")]
+    private partial void LogTcpConnected(string host, int port, double connectMs);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "TCP connect to {Host}:{Port} failed: {Error}")]
+    private partial void LogTcpConnectFailed(string host, int port, SocketError error);
 }

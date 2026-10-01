@@ -8,7 +8,7 @@ namespace Obicon.Node.Services;
 /// <summary>
 /// Dedicated monitoring task: periodically logs node state and reports it to the health payload consumers.
 /// </summary>
-public class MonitoringService : BackgroundService
+public partial class MonitoringService : BackgroundService
 {
     private readonly NodeSettings _settings;
     private readonly IServerConnection _serverConnection;
@@ -43,9 +43,10 @@ public class MonitoringService : BackgroundService
             }
 
             var stats = _testExecutor.Statistics;
-            _logger.LogInformation(
-                "Monitor: serverConnected={Connected} running={Running} pending={Pending} completed={Completed} failed={Failed} timedOut={TimedOut}",
-                _serverConnection.IsConnected, stats.Running, stats.Pending, stats.Completed, stats.Failed, stats.TimedOut);
+            LogMonitor(_serverConnection.IsConnected, stats.Running, stats.Pending, stats.Completed, stats.Failed, stats.TimedOut);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Monitor: serverConnected={Connected} running={Running} pending={Pending} completed={Completed} failed={Failed} timedOut={TimedOut}")]
+    private partial void LogMonitor(bool connected, long running, long pending, long completed, long failed, long timedOut);
 }

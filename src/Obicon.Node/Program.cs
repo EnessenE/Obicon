@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -37,7 +39,8 @@ builder.Services.AddSerilog((services, loggerConfiguration) =>
             {
                 sinkConfig.Console(
                     restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
-                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}");
+                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}",
+                    formatProvider: CultureInfo.InvariantCulture);
             })
         .WriteTo.Sink(services.GetRequiredService<NodeLogSink>());
 });
@@ -79,6 +82,6 @@ builder.Services.AddHostedService<HealthService>();
 builder.Services.AddHostedService<MonitoringService>();
 
 var host = builder.Build();
-host.Services.GetRequiredService<ILogger<Program>>().LogInformation(
-    "Obicon Node v{Version} starting; metrics on http://{MetricsHost}:{MetricsPort}/metrics", NodeInfo.Version, metricsHost, metricsPort);
+var logger = host.Services.GetRequiredService<ILogger<Program>>();
+ProgramLog.LogStarting(logger, NodeInfo.Version, metricsHost, metricsPort);
 await host.RunAsync();

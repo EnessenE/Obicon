@@ -64,6 +64,8 @@ Rules:
 
 ## Logging Standard
 
+Logging calls are written as `[LoggerMessage]` partial methods (CA1848): make the containing class `partial`, add the private partial method with `[LoggerMessage(Level = ..., Message = "...")]` at the bottom of the class, and call it instead of the `ILogger` extension. Top-level statements log through the project's `ProgramLog` class
+
 **Every basic action gets an `LogInformation` entry in the service that performs it** — created/updated/deleted for nodes, pools, and tests; token regeneration; test runs triggered; jobs enqueued, dispatched, and finished; connections opened and closed. Someone tailing the log should see the full lifecycle without debug logging enabled.
 
 - Log **what** and **identify it**: `"Created pool {PoolId} with name {PoolName}"`, `"Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms"`
@@ -74,7 +76,7 @@ Rules:
 
 ## Conventions
 
-- **C# Coding Guidelines:** we adhere to [csharpcodingguidelines.com](https://csharpcodingguidelines.com/). Enforcement lives in the root `.editorconfig` (naming, style, and formatting rules) plus the recommended .NET analyzer rules (`Directory.Build.props`); every rule fires as a build warning. The `coding-guidelines` CI job builds with `-warnaserror`, so any violation fails the pipeline. The job is currently expected to fail until the existing codebase is cleaned up — when writing or touching C# code, do not add new violations, and prefer fixing the ones in the files you already touch. Suppressions (`#pragma warning disable` or `[SuppressMessage]`) require a justification naming why the rule does not apply. Test method names keep the xUnit underscore convention (CA1707 is scoped off under `tests/`); private fields are `_camelCase`
+- **C# Coding Guidelines:** we adhere to [csharpcodingguidelines.com](https://csharpcodingguidelines.com/). Enforcement lives in the root `.editorconfig` (naming, style, and formatting rules) plus the recommended .NET analyzer rules (`Directory.Build.props`); every rule fires as a build warning. The `coding-guidelines` CI job builds with `-warnaserror`, so any violation fails the pipeline. The codebase is clean: keep it that way — when writing or touching C# code, do not add new violations. Suppressions (`#pragma warning disable` or `[SuppressMessage]`) require a justification naming why the rule does not apply. Test method names keep the xUnit underscore convention (CA1707 is scoped off under `tests/`); private fields are `_camelCase`
 
 - **SQLite writes are serialized** (`Data/SqliteWriteQueue`): every mutating database operation is enqueued as a read-modify-write unit and executed one by one by a single background consumer; reads go directly to the database. Rules:
   - New write paths go through `_writeQueue.EnqueueAsync(async db => ...)` and must do their whole read-modify-write inside the unit — entities never cross the queue boundary

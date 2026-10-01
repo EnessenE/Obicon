@@ -1,5 +1,5 @@
-using Xunit;
 using Obicon.Server.Services;
+using Xunit;
 
 namespace Obicon.Server.Tests;
 

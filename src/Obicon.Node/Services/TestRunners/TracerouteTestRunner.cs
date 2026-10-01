@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
@@ -10,7 +10,7 @@ namespace Obicon.Node.Services.TestRunners;
 /// <summary>
 /// Traceroute test: increments the TTL of ICMP echo requests hop by hop until the target responds.
 /// </summary>
-public class TracerouteTestRunner : ITestRunner
+public partial class TracerouteTestRunner : ITestRunner
 {
     private const int MaxHops = 30;
     private const int PerHopTimeoutMs = 2000;
@@ -48,7 +48,7 @@ public class TracerouteTestRunner : ITestRunner
             ["target"] = assignment.Target,
             ["resolved"] = address.ToString()
         };
-        _logger.LogInformation("Tracerouting to {Target} ({Address})", assignment.Target, address);
+        LogTracerouting(assignment.Target, address);
 
         var buffer = new byte[16];
         using var ping = new Ping();
@@ -66,19 +66,19 @@ public class TracerouteTestRunner : ITestRunner
                 hops.Add($"{ttl,2}  {reply.Address}  {reply.RoundtripTime} ms");
                 metrics["hop_count"] = ttl;
                 metrics["target_reached"] = true;
-                _logger.LogInformation("Target reached after {Hops} hop(s)", ttl);
+                LogTargetReached(ttl);
                 return new TestOutcome { Success = true, Output = string.Join(Environment.NewLine, hops), Metrics = metrics };
             }
 
             if (reply.Status == IPStatus.TtlExpired)
             {
                 hops.Add($"{ttl,2}  {reply.Address}  {reply.RoundtripTime} ms");
-                _logger.LogDebug("Hop {Hop}: {Address} ({Roundtrip} ms)", ttl, reply.Address, reply.RoundtripTime);
+                LogHop(ttl, reply.Address, reply.RoundtripTime);
             }
             else if (reply.Status == IPStatus.TimedOut)
             {
                 hops.Add($"{ttl,2}  *");
-                _logger.LogDebug("Hop {Hop}: no response", ttl);
+                LogHopNoResponse(ttl);
             }
             else
             {
@@ -93,4 +93,16 @@ public class TracerouteTestRunner : ITestRunner
         metrics["target_reached"] = false;
         return new TestOutcome { Success = false, Output = $"Max hops ({MaxHops}) reached:{Environment.NewLine}{string.Join(Environment.NewLine, hops)}", Metrics = metrics };
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Tracerouting to {Target} ({Address})")]
+    private partial void LogTracerouting(string target, IPAddress address);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Target reached after {Hops} hop(s)")]
+    private partial void LogTargetReached(int hops);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hop {Hop}: {Address} ({Roundtrip} ms)")]
+    private partial void LogHop(int hop, IPAddress address, long roundtrip);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hop {Hop}: no response")]
+    private partial void LogHopNoResponse(int hop);
 }

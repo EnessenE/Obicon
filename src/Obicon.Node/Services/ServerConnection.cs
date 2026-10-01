@@ -1,14 +1,14 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
 using Obicon.Shared;
-using Obicon.Shared.Models.Messages;
 using Obicon.Shared.Models.Enums;
+using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Node.Services;
 
@@ -17,7 +17,7 @@ namespace Obicon.Node.Services;
 /// registers the node, sends heartbeats, dispatches test assignments to the executor,
 /// and reconnects with a delay on disconnect.
 /// </summary>
-public class ServerConnection : BackgroundService, IServerConnection
+public partial class ServerConnection : BackgroundService, IServerConnection
 {
     private readonly NodeSettings _settings;
     private readonly ITestExecutor _testExecutor;
@@ -57,7 +57,7 @@ public class ServerConnection : BackgroundService, IServerConnection
         var socket = _socket;
         if (socket == null || socket.State != WebSocketState.Open)
         {
-            _logger.LogDebug("Dropping message {MessageType}: not connected to server", message.Type);
+            LogDroppingMessage(message.Type);
             return;
         }
 
@@ -69,7 +69,7 @@ public class ServerConnection : BackgroundService, IServerConnection
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to send {MessageType} to server", message.Type);
+            LogSendFailed(ex, message.Type);
         }
         finally
         {
@@ -81,13 +81,13 @@ public class ServerConnection : BackgroundService, IServerConnection
     {
         if (string.IsNullOrWhiteSpace(_settings.Token) && string.IsNullOrWhiteSpace(_settings.EnrollToken) && string.IsNullOrWhiteSpace(_identityStore.AuthToken))
         {
-            _logger.LogError("No token configured. Set Node:Token or Node:EnrollToken in appsettings.json, or the Node__Token / Node__EnrollToken environment variables");
+            LogNoTokenConfigured();
         }
 
         if (!Uri.TryCreate(_settings.ServerUrl, UriKind.Absolute, out var serverUri) ||
             (serverUri.Scheme != "ws" && serverUri.Scheme != "wss"))
         {
-            _logger.LogError("Invalid ServerUrl '{ServerUrl}'. It must be an absolute ws:// or wss:// URL", _settings.ServerUrl);
+            LogInvalidServerUrl(_settings.ServerUrl);
             return;
         }
 
@@ -95,15 +95,13 @@ public class ServerConnection : BackgroundService, IServerConnection
         // loopback addresses (local development)
         if (_settings.RequireTls && serverUri.Scheme == "ws" && !IsLoopbackHost(serverUri.Host))
         {
-            _logger.LogError(
-                "ServerUrl '{ServerUrl}' is an unencrypted ws:// connection, but TLS is required by default. " +
-                "Use a wss:// URL, or set Node:RequireTls to false to override", _settings.ServerUrl);
+            LogTlsRequired(_settings.ServerUrl);
             return;
         }
 
         if (_settings.HeartbeatIntervalSeconds < 1 || _settings.MaxConcurrentTests < 1 || _settings.DefaultTestTimeoutSeconds < 1)
         {
-            _logger.LogWarning("HeartbeatIntervalSeconds, MaxConcurrentTests and DefaultTestTimeoutSeconds should be at least 1; they are clamped to 1");
+            LogClampedSettings();
         }
 
         while (!stoppingToken.IsCancellationRequested)
@@ -121,19 +119,19 @@ public class ServerConnection : BackgroundService, IServerConnection
                 // The stored token was rejected (e.g. regenerated on the server): re-enroll if possible
                 if (string.IsNullOrWhiteSpace(_settings.Token) && !string.IsNullOrWhiteSpace(_settings.EnrollToken))
                 {
-                    _logger.LogWarning("Server rejected the stored token; re-enrolling");
+                    LogTokenRejected();
                     _identityStore.Reset();
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Connection to server lost");
+                LogConnectionLost(ex);
             }
 
             if (!stoppingToken.IsCancellationRequested)
             {
-                _logger.LogInformation("Reconnecting in {Delay}s", _settings.ReconnectDelaySeconds);
-            Metrics.NodeMetrics.Reconnect();
+                LogReconnecting(_settings.ReconnectDelaySeconds);
+                Metrics.NodeMetrics.Reconnect();
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(_settings.ReconnectDelaySeconds), stoppingToken);
@@ -145,7 +143,7 @@ public class ServerConnection : BackgroundService, IServerConnection
             }
         }
 
-        _logger.LogInformation("Communication task stopped");
+        LogCommunicationTaskStopped();
     }
 
     private static bool IsUnauthorized(WebSocketException ex)
@@ -207,11 +205,11 @@ public class ServerConnection : BackgroundService, IServerConnection
         using var socket = new ClientWebSocket();
         var uri = new Uri($"{_settings.ServerUrl.TrimEnd('/')}?token={Uri.EscapeDataString(token)}");
 
-        _logger.LogInformation("Connecting to {ServerUrl} as {NodeName}", _settings.ServerUrl, nodeName);
+        LogConnecting(_settings.ServerUrl, nodeName);
         await socket.ConnectAsync(uri, stoppingToken);
         _socket = socket;
 
-        _logger.LogInformation("Connected to primary server");
+        LogConnected();
 
         try
         {
@@ -262,7 +260,7 @@ public class ServerConnection : BackgroundService, IServerConnection
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "WebSocket close handshake failed");
+                    LogCloseHandshakeFailed(ex);
                 }
             }
         }
@@ -278,7 +276,7 @@ public class ServerConnection : BackgroundService, IServerConnection
         var serverVersion = hello?.ServerVersion;
         if (string.IsNullOrWhiteSpace(serverVersion))
         {
-            _logger.LogWarning("Server hello did not include a version; skipping the compatibility check");
+            LogServerHelloWithoutVersion();
             return;
         }
 
@@ -287,9 +285,9 @@ public class ServerConnection : BackgroundService, IServerConnection
         var previous = _identityStore.LastServerVersion;
         if (previous != null && !string.Equals(previous, serverVersion, StringComparison.Ordinal))
         {
-            _logger.LogInformation("Server version changed: v{PreviousVersion} is now v{ServerVersion}", previous, serverVersion);
+            LogServerVersionChanged(previous, serverVersion);
         }
-        _logger.LogInformation("Connected to Obicon server v{ServerVersion}", serverVersion);
+        LogConnectedServerVersion(serverVersion);
         _identityStore.SaveServerVersion(serverVersion);
 
         // Observability policy from the server: log shipping gate and the
@@ -305,13 +303,11 @@ public class ServerConnection : BackgroundService, IServerConnection
 
         if (_settings.AllowUnsupportedServerVersion)
         {
-            _logger.LogWarning("Server v{ServerVersion} is outside this node's supported range (same major.minor as v{NodeVersion}); AllowUnsupportedServerVersion is enabled, continuing anyway",
-                serverVersion, NodeInfo.Version);
+            LogUnsupportedVersionAllowed(serverVersion, NodeInfo.Version);
             return;
         }
 
-        _logger.LogError("Server v{ServerVersion} is not supported by this node (v{NodeVersion}, same major.minor required). Disconnecting; upgrade the node or the server, or set Node:AllowUnsupportedServerVersion to continue anyway",
-            serverVersion, NodeInfo.Version);
+        LogUnsupportedServerVersion(serverVersion, NodeInfo.Version);
 
         var socket = _socket;
         if (socket != null)
@@ -323,7 +319,7 @@ public class ServerConnection : BackgroundService, IServerConnection
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Close handshake after unsupported server version failed");
+                LogCloseAfterUnsupportedVersionFailed(ex);
             }
         }
 
@@ -342,7 +338,7 @@ public class ServerConnection : BackgroundService, IServerConnection
         var shippingChanged = _loggingState.ServerAllowsLogShipping != logShippingEnabled;
         if (shippingChanged)
         {
-            _logger.LogInformation("Setting changed: server log shipping is now {New} (was {Old})",
+            LogLogShippingSettingChanged(
                 logShippingEnabled ? "enabled" : "disabled",
                 _loggingState.ServerAllowsLogShipping ? "enabled" : "disabled");
         }
@@ -353,7 +349,7 @@ public class ServerConnection : BackgroundService, IServerConnection
         var newLocalLogging = _settings.LocalLoggingEnabled ?? nodeLocalLoggingEnabled;
         if (_loggingState.LastAppliedLocalLogging != newLocalLogging)
         {
-            _logger.LogInformation("Setting changed: local test logging is now {New} (was {Old}){Override}",
+            LogLocalLoggingSettingChanged(
                 newLocalLogging ? "enabled" : "disabled",
                 _loggingState.LastAppliedLocalLogging ? "enabled" : "disabled",
                 _settings.LocalLoggingEnabled == false
@@ -400,7 +396,7 @@ public class ServerConnection : BackgroundService, IServerConnection
                 result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    _logger.LogInformation("Server closed the connection: {Description}", result.CloseStatusDescription);
+                    LogServerClosedConnection(result.CloseStatusDescription);
                     return;
                 }
                 payload.Write(buffer, 0, result.Count);
@@ -421,7 +417,7 @@ public class ServerConnection : BackgroundService, IServerConnection
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Received malformed message: {Json}", json);
+            LogMalformedMessage(ex, json);
             return;
         }
 
@@ -430,7 +426,7 @@ public class ServerConnection : BackgroundService, IServerConnection
             return;
         }
 
-        _logger.LogDebug("Received {MessageType} from server", message.Type);
+        LogReceivedMessage(message.Type);
 
         switch (message.Type)
         {
@@ -443,35 +439,117 @@ public class ServerConnection : BackgroundService, IServerConnection
                 if (update != null)
                 {
                     ApplyObservabilityPolicy(update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
-                    _logger.LogInformation("Server updated its policy on the fly: logShipping={LogShipping} localLogging={LocalLogging}",
-                        update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
+                    LogPolicyUpdatedOnTheFly(update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
                 }
                 break;
 
             case MessageType.TestAssignment when message.Data is JsonElement element:
-            {
-                var assignment = element.Deserialize<TestAssignmentMessage>();
-                if (assignment == null)
                 {
-                    _logger.LogWarning("Test assignment could not be parsed: {Json}", json);
-                    return;
+                    var assignment = element.Deserialize<TestAssignmentMessage>();
+                    if (assignment == null)
+                    {
+                        LogUnparseableAssignment(json);
+                        return;
+                    }
+                    // Marked as test activity so the local logging policy can mute just these,
+                    // without silencing this class's lifecycle logs; the scope flows into the
+                    // event properties like the executor's JobId scope does
+                    using var _ = _logger.BeginScope(new Dictionary<string, object>
+                    {
+                        [NodeLoggingState.TestActivityProperty] = true
+                    });
+                    LogAssignedJob(assignment.JobId, assignment.TestType, assignment.Target);
+                    await _testExecutor.ExecuteAssignmentAsync(assignment);
+                    break;
                 }
-                // Marked as test activity so the local logging policy can mute just these,
-                // without silencing this class's lifecycle logs; the scope flows into the
-                // event properties like the executor's JobId scope does
-                using var _ = _logger.BeginScope(new Dictionary<string, object>
-                {
-                    [NodeLoggingState.TestActivityProperty] = true
-                });
-                _logger.LogInformation("Assigned job {JobId}: {TestType} against {Target}",
-                    assignment.JobId, assignment.TestType, assignment.Target);
-                await _testExecutor.ExecuteAssignmentAsync(assignment);
-                break;
-            }
 
             default:
-                _logger.LogDebug("Ignoring message type {MessageType}", message.Type);
+                LogIgnoringMessage(message.Type);
                 break;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Dropping message {MessageType}: not connected to server")]
+    private partial void LogDroppingMessage(MessageType messageType);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to send {MessageType} to server")]
+    private partial void LogSendFailed(Exception exception, MessageType messageType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "No token configured. Set Node:Token or Node:EnrollToken in appsettings.json, or the Node__Token / Node__EnrollToken environment variables")]
+    private partial void LogNoTokenConfigured();
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Invalid ServerUrl '{ServerUrl}'. It must be an absolute ws:// or wss:// URL")]
+    private partial void LogInvalidServerUrl(string serverUrl);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "ServerUrl '{ServerUrl}' is an unencrypted ws:// connection, but TLS is required by default. Use a wss:// URL, or set Node:RequireTls to false to override")]
+    private partial void LogTlsRequired(string serverUrl);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "HeartbeatIntervalSeconds, MaxConcurrentTests and DefaultTestTimeoutSeconds should be at least 1; they are clamped to 1")]
+    private partial void LogClampedSettings();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server rejected the stored token; re-enrolling")]
+    private partial void LogTokenRejected();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Connection to server lost")]
+    private partial void LogConnectionLost(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reconnecting in {Delay}s")]
+    private partial void LogReconnecting(int delay);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Communication task stopped")]
+    private partial void LogCommunicationTaskStopped();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Connecting to {ServerUrl} as {NodeName}")]
+    private partial void LogConnecting(string serverUrl, string nodeName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Connected to primary server")]
+    private partial void LogConnected();
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "WebSocket close handshake failed")]
+    private partial void LogCloseHandshakeFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server hello did not include a version; skipping the compatibility check")]
+    private partial void LogServerHelloWithoutVersion();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server version changed: v{PreviousVersion} is now v{ServerVersion}")]
+    private partial void LogServerVersionChanged(string? previousVersion, string? serverVersion);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Connected to Obicon server v{ServerVersion}")]
+    private partial void LogConnectedServerVersion(string? serverVersion);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server v{ServerVersion} is outside this node's supported range (same major.minor as v{NodeVersion}); AllowUnsupportedServerVersion is enabled, continuing anyway")]
+    private partial void LogUnsupportedVersionAllowed(string? serverVersion, string nodeVersion);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server v{ServerVersion} is not supported by this node (v{NodeVersion}, same major.minor required). Disconnecting; upgrade the node or the server, or set Node:AllowUnsupportedServerVersion to continue anyway")]
+    private partial void LogUnsupportedServerVersion(string? serverVersion, string nodeVersion);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Close handshake after unsupported server version failed")]
+    private partial void LogCloseAfterUnsupportedVersionFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Setting changed: server log shipping is now {New} (was {Old})")]
+    private partial void LogLogShippingSettingChanged(string @new, string @old);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Setting changed: local test logging is now {New} (was {Old}){Override}")]
+    private partial void LogLocalLoggingSettingChanged(string @new, string @old, string @override);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server closed the connection: {Description}")]
+    private partial void LogServerClosedConnection(string? description);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Received malformed message: {Json}")]
+    private partial void LogMalformedMessage(Exception exception, string json);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Received {MessageType} from server")]
+    private partial void LogReceivedMessage(MessageType messageType);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server updated its policy on the fly: logShipping={LogShipping} localLogging={LocalLogging}")]
+    private partial void LogPolicyUpdatedOnTheFly(bool logShipping, bool localLogging);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Test assignment could not be parsed: {Json}")]
+    private partial void LogUnparseableAssignment(string json);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Assigned job {JobId}: {TestType} against {Target}")]
+    private partial void LogAssignedJob(string jobId, TestType testType, string target);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Ignoring message type {MessageType}")]
+    private partial void LogIgnoringMessage(MessageType messageType);
 }

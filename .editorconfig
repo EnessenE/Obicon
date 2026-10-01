@@ -111,3 +111,19 @@ dotnet_diagnostic.IDE0005.severity = warning
 # Test method names use the xUnit underscore convention by design
 [tests/**/*.cs]
 dotnet_diagnostic.CA1707.severity = none
+
+# Justified deviations from the guidelines, scoped as narrowly as possible:
+# CA1716: the shared wire-contract project is deliberately named Obicon.Shared;
+#         the rule guards cross-language (VB) consumers, and this solution is C#-only
+[src/Obicon.Shared/**]
+dotnet_diagnostic.CA1716.severity = none
+
+# CA1711: SqliteWriteQueue really is a queue of serialized write units; the
+#         suffix rule guards System.Collections-style collection types
+[src/Obicon.Server/Data/SqliteWriteQueue.cs]
+dotnet_diagnostic.CA1711.severity = none
+
+# CA5359: HTTP(S) tests deliberately accept any certificate - self-signed targets
+#         are valid test targets, and TLS properties are reported in the result
+[src/Obicon.Node/Services/TestRunners/HttpTestRunnerBase.cs]
+dotnet_diagnostic.CA5359.severity = none

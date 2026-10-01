@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Obicon.Server.Configuration;
 
@@ -70,7 +69,7 @@ public class ServerMetrics
     }
 
     /// <summary>
-    /// Latest queue snapshot per status name, swapped in atomically by <see cref="QueueMetricsSampler"/>.
+    /// Latest queue snapshot per status name, swapped in atomically by <see cref="MetricsSampler"/>.
     /// </summary>
     private static volatile IReadOnlyDictionary<string, long> _queueCounts = new Dictionary<string, long>();
 

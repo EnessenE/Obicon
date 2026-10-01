@@ -1,5 +1,3 @@
-using System.IO;
-using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Obicon.Node.Services;
@@ -86,8 +84,8 @@ public class NodeIdentityStore
             using var document = JsonDocument.Parse(File.ReadAllText(_path));
             var json = JsonSerializer.Serialize(new
             {
-                NodeId = document.RootElement.TryGetProperty("NodeId", out var id) ? id.GetString() : null,
-                AuthToken = document.RootElement.TryGetProperty("AuthToken", out var token) ? token.GetString() : null,
+                NodeId = document.RootElement.TryGetProperty(nameof(NodeId), out var id) ? id.GetString() : null,
+                AuthToken = document.RootElement.TryGetProperty(nameof(AuthToken), out var token) ? token.GetString() : null,
                 LastServerVersion = serverVersion
             }, JsonOptions);
             File.WriteAllText(_path, json);
@@ -108,9 +106,9 @@ public class NodeIdentityStore
             }
 
             using var document = JsonDocument.Parse(File.ReadAllText(_path));
-            NodeId = document.RootElement.TryGetProperty("NodeId", out var id) ? id.GetString() : null;
-            AuthToken = document.RootElement.TryGetProperty("AuthToken", out var token) ? token.GetString() : null;
-            LastServerVersion = document.RootElement.TryGetProperty("LastServerVersion", out var version) ? version.GetString() : null;
+            NodeId = document.RootElement.TryGetProperty(nameof(NodeId), out var id) ? id.GetString() : null;
+            AuthToken = document.RootElement.TryGetProperty(nameof(AuthToken), out var token) ? token.GetString() : null;
+            LastServerVersion = document.RootElement.TryGetProperty(nameof(LastServerVersion), out var version) ? version.GetString() : null;
         }
         catch (Exception)
         {

@@ -12,7 +12,7 @@ namespace Obicon.Server.BackgroundServices;
 /// Dispatches queued test jobs to connected nodes and reaps jobs whose node never reported back.
 /// The NoRun scenario is checked on a fixed 10-second cadence.
 /// </summary>
-public class TestQueueProcessor : BackgroundService
+public partial class TestQueueProcessor : BackgroundService
 {
     private static readonly TimeSpan NoRunCheckInterval = TimeSpan.FromSeconds(10);
 
@@ -38,7 +38,7 @@ public class TestQueueProcessor : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("TestQueueProcessor started");
+        LogStarted();
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -55,7 +55,7 @@ public class TestQueueProcessor : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in TestQueueProcessor");
+                LogLoopError(ex);
             }
 
             try
@@ -68,7 +68,7 @@ public class TestQueueProcessor : BackgroundService
             }
         }
 
-        _logger.LogInformation("TestQueueProcessor stopped");
+        LogStopped();
     }
 
     private async Task DispatchPendingJobsAsync(CancellationToken stoppingToken)
@@ -109,12 +109,12 @@ public class TestQueueProcessor : BackgroundService
                 var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(assignment, JsonOptions));
                 await connection.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, stoppingToken);
                 await _queueService.MarkJobAssignedAsync(job.Id);
-                _logger.LogInformation("Assigned job {JobId} to node {NodeId} ({TestType} {Target})", job.Id, job.NodeId, job.TestType, job.Target);
+                LogJobAssigned(job.Id, job.NodeId, job.TestType, job.Target);
                 Metrics.ServerMetrics.Action("job_dispatched");
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to assign job {JobId} to node {NodeId}", job.Id, job.NodeId);
+                LogAssignFailed(ex, job.Id, job.NodeId);
             }
         }
     }
@@ -136,7 +136,7 @@ public class TestQueueProcessor : BackgroundService
                     job.Id,
                     TestJobStatus.NoRun,
                     errorMessage: $"Node {job.NodeId} was not connected within {offlineLimit.TotalSeconds:F0}s");
-                _logger.LogWarning("Job {JobId} marked NoRun: node {NodeId} never came online", job.Id, job.NodeId);
+                LogMarkedNoRunOffline(job.Id, job.NodeId);
                 Metrics.ServerMetrics.NoRun("node_offline");
             }
         }
@@ -159,7 +159,7 @@ public class TestQueueProcessor : BackgroundService
                             TestJobStatus.NoRun,
                             errorMessage: $"Node {job.NodeId} never acknowledged the job within {noRunAfter.TotalSeconds:F0}s");
                         Metrics.ServerMetrics.NoRun("never_acknowledged");
-                        _logger.LogWarning("Job {JobId} marked NoRun: node {NodeId} never acknowledged it", job.Id, job.NodeId);
+                        LogMarkedNoRunNotAcknowledged(job.Id, job.NodeId);
                     }
                     continue;
                 }
@@ -173,8 +173,8 @@ public class TestQueueProcessor : BackgroundService
                         job.Id,
                         TestJobStatus.NoRun,
                         errorMessage: $"Node {job.NodeId} acknowledged the job but never started it within {startLimit.TotalSeconds:F0}s");
-                        Metrics.ServerMetrics.NoRun("never_started");
-                    _logger.LogWarning("Job {JobId} marked NoRun: node {NodeId} acknowledged but never started it", job.Id, job.NodeId);
+                    Metrics.ServerMetrics.NoRun("never_started");
+                    LogMarkedNoRunNotStarted(job.Id, job.NodeId);
                 }
                 continue;
             }
@@ -192,8 +192,35 @@ public class TestQueueProcessor : BackgroundService
                     job.Id,
                     TestJobStatus.Timeout,
                     errorMessage: $"No result from node within {job.TimeoutSeconds + 15}s");
-                _logger.LogWarning("Reaped job {JobId}: no result from node {NodeId}", job.Id, job.NodeId);
+                LogReapedJob(job.Id, job.NodeId);
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "TestQueueProcessor started")]
+    private partial void LogStarted();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "TestQueueProcessor stopped")]
+    private partial void LogStopped();
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error in TestQueueProcessor")]
+    private partial void LogLoopError(System.Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Assigned job {JobId} to node {NodeId} ({TestType} {Target})")]
+    private partial void LogJobAssigned(Guid jobId, Guid nodeId, TestType testType, string target);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to assign job {JobId} to node {NodeId}")]
+    private partial void LogAssignFailed(System.Exception exception, Guid jobId, Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} marked NoRun: node {NodeId} never came online")]
+    private partial void LogMarkedNoRunOffline(Guid jobId, Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} marked NoRun: node {NodeId} never acknowledged it")]
+    private partial void LogMarkedNoRunNotAcknowledged(Guid jobId, Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} marked NoRun: node {NodeId} acknowledged but never started it")]
+    private partial void LogMarkedNoRunNotStarted(Guid jobId, Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reaped job {JobId}: no result from node {NodeId}")]
+    private partial void LogReapedJob(Guid jobId, Guid nodeId);
 }

@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace Obicon.Server.Models.Requests;
 
 /// <summary>

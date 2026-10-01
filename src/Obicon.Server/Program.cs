@@ -1,9 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
-using OpenTelemetry;
-using OpenTelemetry.Metrics;
 using Obicon.Server.BackgroundServices;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
@@ -12,12 +11,13 @@ using Obicon.Server.Metrics;
 using Obicon.Server.Middleware;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
+using OpenTelemetry.Metrics;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((context, services, configuration) => configuration
-    .WriteTo.Console()
+    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
     .ReadFrom.Configuration(context.Configuration));
 
 builder.Services.AddOpenTelemetry()
@@ -43,7 +43,7 @@ builder.Services.AddSwaggerGen(c =>
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Authorization" } }, new string[] {} }
+        { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Authorization" } }, Array.Empty<string>() }
     });
 });
 builder.Services.AddSingleton<INodeService, NodeService>();
@@ -114,7 +114,7 @@ app.MapHealthChecks("/v1/health", new HealthCheckOptions
 });
 app.MapPrometheusScrapingEndpoint();
 
-app.Logger.LogInformation("Obicon Server v{Version} starting", ServerInfo.Version);
+ProgramLog.LogServerStarting(app.Logger, ServerInfo.Version);
 
 app.Run();
 

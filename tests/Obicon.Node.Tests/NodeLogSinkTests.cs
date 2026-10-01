@@ -25,6 +25,7 @@ public class NodeLogSinkTests : IDisposable
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
         try
         {
             File.Delete(_identityPath);
@@ -54,7 +55,7 @@ public class NodeLogSinkTests : IDisposable
         return new LogEvent(DateTimeOffset.UtcNow, level, exception, template, eventProperties);
     }
 
-    private static LogEventPropertyValue Scalar(object value) => new ScalarValue(value);
+    private static ScalarValue Scalar(object value) => new(value);
 
     [Fact]
     public void Emit_QueuesEntryWithFullMetadata()
