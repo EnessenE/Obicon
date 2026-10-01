@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Obicon.Server.Configuration;
 
 namespace Obicon.Server.Metrics;
 
@@ -30,6 +31,63 @@ public class ServerMetrics
     private static readonly Counter<long> NodeLogs = ServerMeter.CreateCounter<long>(
         "obicon.server.nodelogs", description: "Log entries received from nodes, by level and source");
 
+    private static readonly ObservableGauge<long> QueueJobs = TestsMeter.CreateObservableGauge<long>(
+        "obicon.tests.queue_jobs",
+        () => ObserveQueueJobs(),
+        description: "Current test jobs by status, so the queue state can be tracked in Prometheus over time");
+
+    private static readonly ObservableGauge<long> BuildInfo = ServerMeter.CreateObservableGauge<long>(
+        "obicon.server.build_info",
+        () => new Measurement<long>(1, new KeyValuePair<string, object?>("version", ServerInfo.Version)),
+        description: "Server build information; the version label carries the server version and the value is always 1");
+
+    private static readonly ObservableGauge<long> CurrentResults = TestsMeter.CreateObservableGauge<long>(
+        "obicon.tests.current_result",
+        () => ObserveCurrentResults(),
+        description: "Latest job status per created test: 0=Queued 1=Assigned 2=Running 3=Completed 4=Failed 5=Timeout 6=NoRun, -1=never ran");
+
+    /// <summary>
+    /// Latest test results per test id, swapped in atomically by the metrics sampler.
+    /// The value is the latest job's <see cref="Obicon.Shared.Models.Enums.TestJobStatus"/>, or -1 when the test never ran.
+    /// </summary>
+    private static volatile IReadOnlyList<(string TestId, string TestName, string Status, long Value)> _currentResults = Array.Empty<(string, string, string, long)>();
+
+    /// <summary>
+    /// Publishes a fresh per-test result snapshot to the <c>obicon.tests.current_result</c> gauge.
+    /// </summary>
+    public static void UpdateCurrentResults(IReadOnlyList<(string TestId, string TestName, string Status, long Value)> results)
+    {
+        _currentResults = results;
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveCurrentResults()
+    {
+        return _currentResults.Select(r => new Measurement<long>(
+            r.Value,
+            new KeyValuePair<string, object?>("test_id", r.TestId),
+            new KeyValuePair<string, object?>("test_name", r.TestName),
+            new KeyValuePair<string, object?>("status", r.Status)));
+    }
+
+    /// <summary>
+    /// Latest queue snapshot per status name, swapped in atomically by <see cref="QueueMetricsSampler"/>.
+    /// </summary>
+    private static volatile IReadOnlyDictionary<string, long> _queueCounts = new Dictionary<string, long>();
+
+    /// <summary>
+    /// Publishes a fresh queue snapshot to the <c>obicon.tests.queue_jobs</c> gauge.
+    /// </summary>
+    public static void UpdateQueueCounts(IReadOnlyDictionary<string, long> counts)
+    {
+        _queueCounts = counts;
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveQueueJobs()
+    {
+        return _queueCounts.Select(kv =>
+            new Measurement<long>(kv.Value, new KeyValuePair<string, object?>("status", kv.Key)));
+    }
+
     /// <summary>
     /// Counts a log entry shipped by a node, labeled with its level, source context,
     /// and the node's identity.
@@ -46,7 +104,8 @@ public class ServerMetrics
     }
 
     /// <summary>
-    /// Records a finished test run, labeled per test and per node.
+    /// Records a finished test run, labeled per test and per node. When <paramref name="nodeLabels"/>
+    /// is not null, it is attached as the comma-separated node_labels label.
     /// </summary>
     public static void TestRun(
         string status,
@@ -55,9 +114,10 @@ public class ServerMetrics
         string testName,
         string nodeId,
         string nodeName,
-        double durationMs)
+        double durationMs,
+        string? nodeLabels = null)
     {
-        var labels = new KeyValuePair<string, object?>[]
+        var labels = new List<KeyValuePair<string, object?>>
         {
             new("status", status),
             new("test_type", testType),
@@ -67,8 +127,17 @@ public class ServerMetrics
             new("node_name", nodeName)
         };
 
-        TestRuns.Add(1, labels);
-        TestDuration.Record(durationMs, labels.Where(l => l.Key is "test_type" or "test_id" or "test_name" or "node_id" or "node_name").ToArray());
+        if (nodeLabels != null)
+        {
+            labels.Add(new("node_labels", nodeLabels));
+        }
+
+        TestRuns.Add(1, labels.ToArray());
+
+        var durationKeys = nodeLabels != null
+            ? new HashSet<string> { "test_type", "test_id", "test_name", "node_id", "node_name", "node_labels" }
+            : new HashSet<string> { "test_type", "test_id", "test_name", "node_id", "node_name" };
+        TestDuration.Record(durationMs, labels.Where(l => durationKeys.Contains(l.Key)).ToArray());
     }
 
     /// <summary>

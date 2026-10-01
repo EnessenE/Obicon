@@ -49,6 +49,12 @@ public class NodeResponse
     public string? Version { get; set; }
 
     /// <summary>
+    /// Whether the reported version is inside the server's supported range (same major.minor),
+    /// as checked on the node's connection. Null if the node never reported a version.
+    /// </summary>
+    public bool? VersionSupported { get; set; }
+
+    /// <summary>
     /// IP address the server observed on the node's connection. Null if the node never connected.
     /// </summary>
     public string? IpAddress { get; set; }

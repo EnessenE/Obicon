@@ -10,6 +10,28 @@ The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
 
+## [Server 0.3.0] - 2026-10-01
+
+### Server
+- New `obicon.tests.queue_jobs` gauge on `/metrics`: current test job count per status, so the queue state can be tracked in Prometheus over time
+- New `obicon.tests.current_result` gauge on `/metrics`: the latest job status of every created test (one series per test, `-1` when it never ran), and `obicon.server.build_info` exposes the server version as a label
+- Grafana dashboards ship in `observability/`: one for node health, one for tests, and one for the server, each with filter variables (node, test type, test, log level)
+- Deleting a node now closes its live WebSocket connection: a deleted node no longer keeps heartbeating as a connected ghost that is absent from the node list; a background connection watcher also sweeps every 30 seconds for connections whose node record no longer exists
+- New settings controlling the test metrics: `TestMetricsEnabled` (default on) gates whether finished runs are exported on `/metrics`, and `TestMetricsIncludeNodeLabels` (default on) attaches the executing node's labels as the comma-separated `node_labels` label on `obicon.tests.runs` and `obicon.tests.duration_ms`
+- Grafana tests dashboard: a `Tests` table listing every created test with its latest result, 24h run count, success rate, and average duration — clicking a test filters the whole dashboard to it — plus a per-node runs table and a node-labels filter variable
+- `GET /v1/server/stats` now reports the server's own `version`, shown on the Server page as a link to the matching GitHub release
+- The nodes API reports `versionSupported` per node: the server's own verdict (same major.minor, as checked on the node's connection) on the reported version; null when the node never connected
+- Deleting a node now also removes it from every pool it belongs to, so a pool no longer carries a stale node ID that would produce jobs for a missing node
+
+### Frontend
+- Nodes page: decluttered rows (name, version, state, one representative IP, actions) with everything else — addresses per family, capacity, enrollment, labels, pools, reported settings — in a new read-only details modal
+- A warning icon marks nodes the server reports as version-mismatched (`versionSupported: false`), with the explanation as its tooltip and in the details modal
+- Server page: the current server version links to its GitHub release
+
+## [Node 0.3.0] - 2026-10-01
+
+- No functional changes; version bump only, so nodes stay within the server's supported version range (same major.minor as the server they connect to — server 0.3.0 disconnects 0.2.x nodes unless `AllowUnsupportedNodeVersions` is enabled)
+
 ## [Server 0.2.0] - 2026-09-30
 
 ### Server

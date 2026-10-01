@@ -48,25 +48,32 @@ Creates a new node and returns its authentication token.
 **Request Body:**
 ```json
 {
-  "Name": "My Node"
+  "name": "My Node"
 }
 ```
 
 **Response:** 201 Created
 ```json
 {
-  "Id": "00000000-0000-0000-0000-000000000000",
-  "Name": "My Node",
-  "AuthToken": "the plain token - shown here because this is a creation response; only its SHA-256 hash is stored",
-  "IsActive": true,
-  "CreatedAt": "2024-01-01T00:00:00Z",
-  "LastSeenAt": null,
-  "Version": null,
-  "IpAddress": null,
-  "Settings": {}
+  "id": "00000000-0000-0000-0000-000000000000",
+  "name": "My Node",
+  "authToken": "the plain token - shown here because this is a creation response; only its SHA-256 hash is stored",
+  "isActive": true,
+  "createdAt": "2024-01-01T00:00:00Z",
+  "lastSeenAt": null,
+  "labels": [],
+  "enrollmentType": "manual",
+  "version": null,
+  "versionSupported": null,
+  "ipAddress": null,
+  "internalIpv4": null,
+  "internalIpv6": null,
+  "externalIpv4": null,
+  "externalIpv6": null,
+  "settings": {}
 }
 ```
-`Version`, `IpAddress`, and `Settings` are filled by the node when it connects: the node reports its software version and operating settings, and the server records the IP of its WebSocket connection. They are empty until the first connection.
+`enrollmentType` is `manual` here or `auto-enrollment` when the node registered itself. `version`, `ipAddress`, and `settings` are filled by the node when it connects: the node reports its software version and operating settings, and the server records the IP of its WebSocket connection. They are empty until the first connection. `versionSupported` is the server's verdict on the reported version (same major.minor as the server, as checked on the node's connection): true, false, or null when the node never reported a version. The four `internal*`/`external*` addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
 
 #### List Nodes
 ```
@@ -78,21 +85,22 @@ Returns all registered nodes.
 ```json
 [
   {
-    "Id": "00000000-0000-0000-0000-000000000000",
-    "Name": "My Node",
-    "AuthToken": "",
-    "IsActive": true,
-    "CreatedAt": "2024-01-01T00:00:00Z",
-    "LastSeenAt": "2024-01-01T00:00:01Z",
-    "EnrollmentType": "manual",
-    "Labels": [],
-    "Version": "0.2.0",
-    "IpAddress": "192.168.1.42",
-    "InternalIpv4": "192.168.1.42",
-    "InternalIpv6": null,
-    "ExternalIpv4": "77.166.248.192",
-    "ExternalIpv6": null,
-    "Settings": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "name": "My Node",
+    "authToken": "",
+    "isActive": true,
+    "createdAt": "2024-01-01T00:00:00Z",
+    "lastSeenAt": "2024-01-01T00:00:01Z",
+    "enrollmentType": "manual",
+    "labels": [],
+    "version": "0.2.0",
+    "versionSupported": true,
+    "ipAddress": "192.168.1.42",
+    "internalIpv4": "192.168.1.42",
+    "internalIpv6": null,
+    "externalIpv4": "77.166.248.192",
+    "externalIpv6": null,
+    "settings": {
       "MaxConcurrentTests": "4",
       "HeartbeatIntervalSeconds": "1",
       "DefaultTestTimeoutSeconds": "60",
@@ -102,7 +110,7 @@ Returns all registered nodes.
   }
 ]
 ```
-`AuthToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored. `IpAddress` is the address the server observed on the WebSocket; the four reported addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
+`authToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored. `ipAddress` is the address the server observed on the WebSocket; the four reported addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
 
 #### Get Node
 ```
@@ -113,56 +121,49 @@ Returns details for a specific node.
 **Response:** 200 OK
 ```json
 {
-  "Id": "00000000-0000-0000-0000-000000000000",
-  "Name": "My Node",
-  "AuthToken": "",
-  "IsActive": true,
-  "CreatedAt": "2024-01-01T00:00:00Z",
-  "LastSeenAt": "2024-01-01T00:00:01Z",
-    "EnrollmentType": "manual",
-    "Labels": [],
-    "Version": "0.2.0",
-    "IpAddress": "192.168.1.42",
-    "Settings": {
-      "MaxConcurrentTests": "4",
-      "HeartbeatIntervalSeconds": "1",
-      "DefaultTestTimeoutSeconds": "60",
-      "MaxTestTimeoutSeconds": "60",
-      "ReconnectDelaySeconds": "5"
-    }
+  "id": "00000000-0000-0000-0000-000000000000",
+  "name": "My Node",
+  "authToken": "",
+  "isActive": true,
+  "createdAt": "2024-01-01T00:00:00Z",
+  "lastSeenAt": "2024-01-01T00:00:01Z",
+  "labels": [],
+  "enrollmentType": "manual",
+  "version": "0.2.0",
+  "versionSupported": true,
+  "ipAddress": "192.168.1.42",
+  "internalIpv4": "192.168.1.42",
+  "internalIpv6": null,
+  "externalIpv4": "77.166.248.192",
+  "externalIpv6": null,
+  "settings": {
+    "MaxConcurrentTests": "4",
+    "HeartbeatIntervalSeconds": "1",
+    "DefaultTestTimeoutSeconds": "60",
+    "MaxTestTimeoutSeconds": "60",
+    "ReconnectDelaySeconds": "5"
+  }
 }
 ```
+Same structure as the List Nodes entries.
 
 #### Update Node
 ```
 PUT /v1/nodes/{id}
 ```
-Updates a node's name and labels, and optionally regenerates its auth token. A regenerated token expires immediately: the old token no longer authenticates and any live connection using it is closed.
+Updates a node's name and labels, and optionally regenerates its auth token. A regenerated token expires immediately: the old token no longer authenticates and any live connection using it is closed. `PUT` returns 409 for nodes that enrolled themselves (they manage their own name and labels).
 
 **Request Body:**
 ```json
 {
-  "Name": "Node Updated Name",
-  "EnrollmentType": "manual",
-  "Labels": ["edge", "eu-west"],
-  "RegenerateToken": false
+  "name": "Node Updated Name",
+  "labels": ["edge", "eu-west"],
+  "regenerateToken": false
 }
 ```
 
-**Response:** 200 OK
-```json
-{
-  "Id": "00000000-0000-0000-0000-000000000000",
-  "Name": "Node Updated Name",
-  "AuthToken": "",
-  "IsActive": true,
-  "CreatedAt": "2024-01-01T00:00:00Z",
-  "LastSeenAt": "2024-01-01T00:00:01Z",
-  "EnrollmentType": "manual",
-  "Labels": ["edge", "eu-west"]
-}
-```
-`AuthToken` is populated only when `RegenerateToken` was true; otherwise it is empty.
+**Response:** 200 OK (same structure as Get Node, with the updated `name` and `labels`)
+`authToken` is populated only when `regenerateToken` was true; otherwise it is empty.
 
 #### Get Pools for Node
 ```
@@ -182,11 +183,11 @@ Returns the live status of every node: its active flag and whether it currently 
 ```json
 [
   {
-    "Id": "00000000-0000-0000-0000-000000000000",
-    "Name": "My Node",
-    "IsActive": true,
-    "IsConnected": true,
-    "LastSeenAt": "2024-01-01T00:00:01Z"
+    "id": "00000000-0000-0000-0000-000000000000",
+    "name": "My Node",
+    "isActive": true,
+    "isConnected": true,
+    "lastSeenAt": "2024-01-01T00:00:01Z"
   }
 ]
 ```
@@ -195,7 +196,7 @@ Returns the live status of every node: its active flag and whether it currently 
 ```
 DELETE /v1/nodes/{id}
 ```
-Deletes a node.
+Deletes a node and removes it from every pool it belongs to.
 
 **Response:** 204 No Content
 
@@ -212,19 +213,19 @@ POST /v1/pools
 **Request Body:**
 ```json
 {
-  "Name": "EU edge",
-  "Description": "Nodes close to EU customers"
+  "name": "EU edge",
+  "description": "Nodes close to EU customers"
 }
 ```
 
 **Response:** 201 Created
 ```json
 {
-  "Id": "55555555-5555-5555-5555-555555555555",
-  "Name": "EU edge",
-  "Description": "Nodes close to EU customers",
-  "NodeIds": [],
-  "CreatedAt": "2024-01-01T00:00:00Z"
+  "id": "55555555-5555-5555-5555-555555555555",
+  "name": "EU edge",
+  "description": "Nodes close to EU customers",
+  "nodeIds": [],
+  "createdAt": "2024-01-01T00:00:00Z"
 }
 ```
 
@@ -249,8 +250,8 @@ Updates a pool's name and description.
 **Request Body:**
 ```json
 {
-  "Name": "EU edge renamed",
-  "Description": "New description, replacing the old one"
+  "name": "EU edge renamed",
+  "description": "New description, replacing the old one"
 }
 ```
 **Response:** 200 OK (same structure as Create Pool)
@@ -264,7 +265,7 @@ Replaces the pool's member list. Unknown node IDs are rejected with 400.
 **Request Body:**
 ```json
 {
-  "NodeIds": ["11111111-1111-1111-1111-111111111111"]
+  "nodeIds": ["11111111-1111-1111-1111-111111111111"]
 }
 ```
 **Response:** 200 OK (same structure as Create Pool)
@@ -290,60 +291,60 @@ Creates a new test.
 **Request Body:**
 ```json
 {
-  "Name": "My HTTP Test",
-  "Type": 2,  // Http = 2, see TestType enum below
-  "Target": "http://example.com/health",
-  "NodeIds": ["11111111-1111-1111-1111-111111111111"],
-  "PoolIds": ["55555555-5555-5555-5555-555555555555"],
-  "Frequency": 120,  // interval in seconds; must be one of the FrequencyPresetsSeconds presets
-  "IsActive": true,
-  "IpVersion": 0,  // Any = 0, Ipv4 = 1, Ipv6 = 2
-  "TimeoutSeconds": 30,  // max execution time per run, seconds
-  "ExpectedStatusCodes": "200-399",
-  "CheckCertificateExpiryDays": 14,
-  "ExpectedDnsResult": null,
-  "ExpectedBodyPattern": null,  // HTTP/HTTPS: body must match this regex; null = no check
-  "Headers": {},  // HTTP/HTTPS: custom request headers
-  "ProxyUrl": null,  // HTTP/HTTPS: http(s) proxy URL; null = direct
-  "CacheBust": false  // HTTP/HTTPS: append a unique query parameter to bypass caches
+  "name": "My HTTP Test",
+  "type": 2,  // Http = 2, see TestType enum below
+  "target": "http://example.com/health",
+  "nodeIds": ["11111111-1111-1111-1111-111111111111"],
+  "poolIds": ["55555555-5555-5555-5555-555555555555"],
+  "frequency": 120,  // interval in seconds; must be one of the FrequencyPresetsSeconds presets
+  "isActive": true,
+  "ipVersion": 0,  // Any = 0, Ipv4 = 1, Ipv6 = 2
+  "timeoutSeconds": 30,  // max execution time per run, seconds
+  "expectedStatusCodes": "200-399",
+  "checkCertificateExpiryDays": 14,
+  "expectedDnsResult": null,
+  "expectedBodyPattern": null,  // HTTP/HTTPS: body must match this regex; null = no check
+  "headers": {},  // HTTP/HTTPS: custom request headers
+  "proxyUrl": null,  // HTTP/HTTPS: http(s) proxy URL; null = direct
+  "cacheBust": false  // HTTP/HTTPS: append a unique query parameter to bypass caches
 }
 ```
 
-Validation (returns 400 with details on failure): `Name` and `Target` are required, at least one node ID or pool ID must be given, `Type` must be a valid enum value, `Frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `TimeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `ExpectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `CheckCertificateExpiryDays` must be 0-3650, `ExpectedBodyPattern` must be a valid regular expression, `Headers` names must be non-empty without whitespace or colons, and `ProxyUrl` must be an absolute `http://` or `https://` URL.
+Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL.
 
-Targeting: the test runs on the union of `NodeIds` and all members of `PoolIds` (deduplicated).
+Targeting: the test runs on the union of `nodeIds` and all members of `poolIds` (deduplicated).
 
 Expectations, evaluated by the node:
-- `ExpectedStatusCodes` (HTTP/HTTPS): the response status must match, otherwise the run fails
-- `ExpectedBodyPattern` (HTTP/HTTPS): the response body must match this regular expression (1-second match timeout), otherwise the run fails; the result is reported in the `body_matched` metric
-- `Headers` (HTTP/HTTPS): custom headers sent with the request, e.g. authentication
-- `ProxyUrl` (HTTP/HTTPS): the request goes through this HTTP proxy; per-phase DNS/TLS timings are omitted for proxied runs
-- `CacheBust` (HTTP/HTTPS): a unique `_cb` query parameter is appended to the request URL so caches serve a fresh response
-- `CheckCertificateExpiryDays` (HTTPS): the run fails if the TLS certificate expires within this many days; the expiry date is always reported in the output
-- `ExpectedDnsResult` (DNS): when set, the run fails unless this address is among the resolved addresses; null accepts any successful resolution
+- `expectedStatusCodes` (HTTP/HTTPS): the response status must match, otherwise the run fails
+- `expectedBodyPattern` (HTTP/HTTPS): the response body must match this regular expression (1-second match timeout), otherwise the run fails; the result is reported in the `body_matched` metric
+- `headers` (HTTP/HTTPS): custom headers sent with the request, e.g. authentication
+- `proxyUrl` (HTTP/HTTPS): the request goes through this HTTP proxy; per-phase DNS/TLS timings are omitted for proxied runs
+- `cacheBust` (HTTP/HTTPS): a unique `_cb` query parameter is appended to the request URL so caches serve a fresh response
+- `checkCertificateExpiryDays` (HTTPS): the run fails if the TLS certificate expires within this many days; the expiry date is always reported in the output
+- `expectedDnsResult` (DNS): when set, the run fails unless this address is among the resolved addresses; null accepts any successful resolution
 
 **Response:** 201 Created
 ```json
 {
-  "Id": "22222222-2222-2222-2222-222222222222",
-  "Name": "My HTTP Test",
-  "Type": 2,
-  "Target": "http://example.com/health",
-  "NodeIds": ["11111111-1111-1111-1111-111111111111"],
-  "PoolIds": ["55555555-5555-5555-5555-555555555555"],
-  "Frequency": 120,
-  "IsActive": true,
-  "IpVersion": 0,
-  "TimeoutSeconds": 30,
-  "ExpectedStatusCodes": "200-399",
-  "CheckCertificateExpiryDays": 14,
-  "ExpectedDnsResult": null,
-  "ExpectedBodyPattern": null,
-  "Headers": {},
-  "ProxyUrl": null,
-  "CacheBust": false,
-  "CreatedAt": "2024-01-01T00:00:00Z",
-  "UpdatedAt": null
+  "id": "22222222-2222-2222-2222-222222222222",
+  "name": "My HTTP Test",
+  "type": 2,
+  "target": "http://example.com/health",
+  "nodeIds": ["11111111-1111-1111-1111-111111111111"],
+  "poolIds": ["55555555-5555-5555-5555-555555555555"],
+  "frequency": 120,
+  "isActive": true,
+  "ipVersion": 0,
+  "timeoutSeconds": 30,
+  "expectedStatusCodes": "200-399",
+  "checkCertificateExpiryDays": 14,
+  "expectedDnsResult": null,
+  "expectedBodyPattern": null,
+  "headers": {},
+  "proxyUrl": null,
+  "cacheBust": false,
+  "createdAt": "2024-01-01T00:00:00Z",
+  "updatedAt": null
 }
 ```
 
@@ -357,14 +358,14 @@ Returns all tests.
 ```json
 [
   {
-    "Id": "22222222-2222-2222-2222-222222222222",
-    "Name": "My HTTP Test",
-    "Type": 3,
-    "NodeIds": ["11111111-1111-1111-1111-111111111111"],
-    "Frequency": 120,
-    "IsActive": true,
-    "CreatedAt": "2024-01-01T00:00:00Z",
-    "UpdatedAt": null
+    "id": "22222222-2222-2222-2222-222222222222",
+    "name": "My HTTP Test",
+    "type": 2,
+    "nodeIds": ["11111111-1111-1111-1111-111111111111"],
+    "frequency": 120,
+    "isActive": true,
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": null
   }
 ]
 ```
@@ -394,11 +395,11 @@ Updates a test.
 **Request Body:**
 ```json
 {
-  "Type": 2,
-  "Target": "http://example.com/health",
-  "NodeIds": ["11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"],
-  "Frequency": 60,
-  "IsActive": true
+  "type": 2,
+  "target": "http://example.com/health",
+  "nodeIds": ["11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"],
+  "frequency": 60,
+  "isActive": true
 }
 ```
 
@@ -418,7 +419,7 @@ POST /v1/tests/{id}/toggle
 ```
 Flips a test between active and inactive without deleting it. Inactive tests are not run.
 
-**Response:** 200 OK (same structure as Create Test, with flipped `IsActive`)
+**Response:** 200 OK (same structure as Create Test, with flipped `isActive`)
 
 #### Trigger Test Run
 ```
@@ -429,7 +430,7 @@ Triggers immediate execution of a test. Enqueues one job per targeted node (dire
 **Response:** 200 OK
 ```json
 {
-  "Message": "Test run triggered"
+  "message": "Test run triggered"
 }
 ```
 
@@ -437,28 +438,28 @@ Triggers immediate execution of a test. Enqueues one job per targeted node (dire
 ```
 POST /v1/tests/run-once
 ```
-Runs a single test immediately on a selection of nodes without creating a test first. Accepts explicit `NodeIds` and/or `PoolIds`: the explicit nodes always run, and each pool contributes its top 3 connected members — least busy first (fewest queued/assigned/running jobs). All referenced nodes and pools must exist; jobs only go to connected nodes among the selection.
+Runs a single test immediately on a selection of nodes without creating a test first. Accepts explicit `nodeIds` and/or `poolIds`: the explicit nodes always run, and each pool contributes its top 3 connected members — least busy first (fewest queued/assigned/running jobs). All referenced nodes and pools must exist; jobs only go to connected nodes among the selection.
 
 **Request Body:**
 ```json
 {
-  "Type": 5,  // Dns
-  "Target": "example.com",
-  "NodeIds": ["11111111-1111-1111-1111-111111111111"],
-  "PoolIds": ["55555555-5555-5555-5555-555555555555"],
-  "TimeoutSeconds": 30,
-  "ExpectedStatusCodes": "200-399",
-  "CheckCertificateExpiryDays": null,
-  "ExpectedDnsResult": "93.184.216.34",
-  "ExpectedBodyPattern": null,
-  "Headers": null,
-  "ProxyUrl": null,
-  "CacheBust": false
+  "type": 5,  // Dns
+  "target": "example.com",
+  "nodeIds": ["11111111-1111-1111-1111-111111111111"],
+  "poolIds": ["55555555-5555-5555-5555-555555555555"],
+  "timeoutSeconds": 30,
+  "expectedStatusCodes": "200-399",
+  "checkCertificateExpiryDays": null,
+  "expectedDnsResult": "93.184.216.34",
+  "expectedBodyPattern": null,
+  "headers": null,
+  "proxyUrl": null,
+  "cacheBust": false
 }
 ```
-`TimeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`ExpectedStatusCodes`, `ExpectedBodyPattern`, `Headers`, `ProxyUrl`, `CacheBust`, `CheckCertificateExpiryDays`, `ExpectedDnsResult`). At least one node ID or pool ID is required.
+`timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`). At least one node ID or pool ID is required.
 
-**Response:** 200 OK - one job per selected node, in the order of the request; poll each at `GET /v1/queue/{id}` until `Status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
+**Response:** 200 OK - one job per selected node, in the order of the request; poll each at `GET /v1/queue/{id}` until `status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
 
 **Errors:** 400 Bad Request for invalid expectations, unknown node or pool IDs, an empty selection, or when none of the selected nodes are connected.
 
@@ -470,7 +471,7 @@ Runs a single test immediately on a selection of nodes without creating a test f
 GET /metrics
 ```
 Prometheus scrape endpoint (no auth). Exposes:
-- `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) and `obicon.tests.duration_ms` (histogram, dims `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) from the `Obicon.Tests` meter. One label set per test and node combination
+- `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`, and `node_labels` while the `TestMetricsIncludeNodeLabels` setting is on) and `obicon.tests.duration_ms` (histogram, same dims minus `status`) from the `Obicon.Tests` meter. One label set per test and node combination; both are exported only while the `TestMetricsEnabled` setting is on
 - `obicon.server.actions` (counter, dim `action`), `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`), and `obicon.server.nodelogs` (counter, dims `level`, `source_context`, `node_id`, `node_name`) counting received node log entries, from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
@@ -478,7 +479,7 @@ Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.no
 
 ### Settings
 
-Server settings resolve as: forced by appsettings/env (read-only) → database override → default. Read-only derived settings (e.g. `SchedulerLoopIntervalSeconds`) are computed from other settings: `PUT` returns 409 for them, and their `Source` is `Derived`. Each setting carries a `Group` naming the section it is displayed under in the settings UI, e.g. `General` or `Observability`.
+Server settings resolve as: forced by appsettings/env (read-only) → database override → default. Read-only derived settings (e.g. `SchedulerLoopIntervalSeconds`) are computed from other settings: `PUT` returns 409 for them, and their `source` is `Derived`. Each setting carries a `group` naming the section it is displayed under in the settings UI, e.g. `General` or `Observability`.
 
 #### List Settings
 ```
@@ -488,15 +489,17 @@ GET /v1/settings
 ```json
 [
   {
-    "Key": "NodeAutoEnrollmentEnabled",
-    "Description": "If enabled, nodes can register themselves with a valid enroll token...",
-    "Value": "false",
-    "IsForced": false,
-    "Source": "Default",
-    "Group": "General"
+    "key": "NodeAutoEnrollmentEnabled",
+    "description": "If enabled, nodes can register themselves with a valid enroll token...",
+    "value": "false",
+    "isForced": false,
+    "isReadOnly": false,
+    "source": "Default",
+    "group": "General"
   }
 ]
 ```
+`source` is one of `Default`, `Configuration (forced)`, `Database`, or `Derived`.
 
 #### Change Setting
 ```
@@ -504,7 +507,7 @@ PUT /v1/settings/{key}
 ```
 **Request Body:**
 ```json
-{ "Value": "true" }
+{ "value": "true" }
 ```
 **Response:** 200 OK (the updated setting)
 **Errors:** 409 when the setting is forced by configuration, 400 for unknown keys or invalid values.
@@ -515,7 +518,7 @@ PUT /v1/settings/{key}
 
 Enroll tokens let nodes register themselves (requires the `NodeAutoEnrollmentEnabled` setting). Only the SHA-256 hash is stored; the plain token is returned exactly once, on creation. Token names default to `enroll-token-dd-MM-yyyy-HH-mm-ss`.
 
-A token can be **scoped to a pool** (`PoolId`): nodes enrolling with it are always added to that pool, on top of the pools they request themselves. A token without `PoolId` is server-wide.
+A token can be **scoped to a pool** (`poolId`): nodes enrolling with it are always added to that pool, on top of the pools they request themselves. A token without `poolId` is server-wide.
 
 #### Create Token
 ```
@@ -523,15 +526,15 @@ POST /v1/enroll-tokens
 ```
 **Request Body:**
 ```json
-{ "Name": "raspberry-pis", "ExpiresAt": "2026-12-31T00:00:00Z", "PoolId": null }
+{ "name": "raspberry-pis", "expiresAt": "2026-12-31T00:00:00Z", "poolId": null }
 ```
-Both fields optional. **Response:** 201 Created, includes the plain `Token` once and the `PoolId`. **Errors:** 400 for an unknown pool ID.
+Both fields optional. **Response:** 201 Created, includes the plain `token` once and the `poolId`. **Errors:** 400 for an unknown pool ID.
 
 #### List Tokens
 ```
 GET /v1/enroll-tokens
 ```
-**Response:** 200 OK - list without plain tokens, with `CreatedAt`, `ExpiresAt`, `RevokedAt`.
+**Response:** 200 OK - list without plain tokens, with `createdAt`, `expiresAt`, `revokedAt`.
 
 #### Revoke Token
 ```
@@ -557,23 +560,23 @@ Authenticates with the enroll token in the body instead of the API Authorization
 **Request Body:**
 ```json
 {
-  "EnrollToken": "the-plain-enroll-token",
-  "NodeId": null,
-  "NodeName": "pi-1",
-  "Labels": ["edge", "home"],
-  "Pools": ["raspberry-pis"]
+  "enrollToken": "the-plain-enroll-token",
+  "nodeId": null,
+  "nodeName": "pi-1",
+  "labels": ["edge", "home"],
+  "pools": ["raspberry-pis"]
 }
 ```
-`NodeId` is set when updating an already enrolled node; pools are matched by name and created when missing.
+`nodeId` is set when updating an already enrolled node; pools are matched by name and created when missing.
 
 **Response:** 200 OK
 ```json
 {
-  "Id": "00000000-0000-0000-0000-000000000000",
-  "Name": "pi-1",
-  "AuthToken": "the-node-auth-token",
-  "Labels": ["edge", "home"],
-  "PoolIds": ["55555555-5555-5555-5555-555555555555"]
+  "id": "00000000-0000-0000-0000-000000000000",
+  "name": "pi-1",
+  "authToken": "the-node-auth-token",
+  "labels": ["edge", "home"],
+  "poolIds": ["55555555-5555-5555-5555-555555555555"]
 }
 ```
 
@@ -590,18 +593,19 @@ Returns aggregated statistics about the server.
 **Response:** 200 OK
 ```json
 {
-  "TotalTests": 3,
-  "ActiveTests": 2,
-  "TotalNodes": 4,
-  "ConnectedNodes": 1,
-  "QueuedJobs": 0,
-  "RunningJobs": 0,
-  "CompletedJobs": 12,
-  "FailedJobs": 1,
-  "TimedOutJobs": 0,
-  "NoRunJobs": 0,
-  "Uptime": "1.02:03:04",
-  "Timestamp": "2024-01-01T00:00:00Z"
+  "version": "0.2.0",
+  "totalTests": 3,
+  "activeTests": 2,
+  "totalNodes": 4,
+  "connectedNodes": 1,
+  "queuedJobs": 0,
+  "runningJobs": 0,
+  "completedJobs": 12,
+  "failedJobs": 1,
+  "timedOutJobs": 0,
+  "noRunJobs": 0,
+  "uptime": "1.02:03:04",
+  "timestamp": "2024-01-01T00:00:00Z"
 }
 ```
 
@@ -619,26 +623,26 @@ Returns all test jobs in the queue, newest first.
 ```json
 [
   {
-    "Id": "44444444-4444-4444-4444-444444444444",
-    "TestId": "22222222-2222-2222-2222-222222222222",
-    "NodeId": "11111111-1111-1111-1111-111111111111",
-    "TestType": 5,
-    "Target": "example.com",
-    "TimeoutSeconds": 60,
-    "Status": 0,
-    "CreatedAt": "2024-01-01T00:00:00Z",
-    "AcknowledgedAt": null,
-    "StartedAt": null,
-    "CompletedAt": null,
-    "Success": null,
-    "DurationMs": null,
-    "Output": null,
-    "ErrorMessage": null,
-    "Metrics": null
+    "id": "44444444-4444-4444-4444-444444444444",
+    "testId": "22222222-2222-2222-2222-222222222222",
+    "nodeId": "11111111-1111-1111-1111-111111111111",
+    "testType": 5,
+    "target": "example.com",
+    "timeoutSeconds": 60,
+    "status": 0,
+    "createdAt": "2024-01-01T00:00:00Z",
+    "acknowledgedAt": null,
+    "startedAt": null,
+    "completedAt": null,
+    "success": null,
+    "durationMs": null,
+    "output": null,
+    "errorMessage": null,
+    "metrics": null
   }
 ]
 ```
-For one-off runs (from `POST /v1/tests/run-once`), `TestId` is `00000000-0000-0000-0000-000000000000`.
+For one-off runs (from `POST /v1/tests/run-once`), `testId` is `00000000-0000-0000-0000-000000000000`.
 
 #### Get Job
 ```
@@ -692,7 +696,7 @@ Databases from before this change stored `Frequency` as the old `TestFrequency` 
 
 ### Connection
 ```
-wss://localhost:5000/ws/nodes?token={authToken}
+ws://localhost:5000/ws/nodes?token={authToken}
 ```
 
 ### Message Format
@@ -794,7 +798,7 @@ Sent by node to report test results.
 The `Metrics` dictionary carries detailed measurements: HTTP/HTTPS runs report DNS resolution, TCP connect, TLS handshake (including protocol and cipher), time to first byte, transfer timings plus certificate details, and `body_matched` when a body pattern is set (the proxy URL is reported for proxied runs); DNS runs report the nameservers queried, which one answered, its round-trip time, and the A/AAAA records; ping, TCP, and traceroute report the resolved address and phase timings.
 
 #### TestStatusUpdate
-Sent by node to update test status.
+Sent by node to report in-progress job status: `Assigned` (1) when it accepts a job and `Running` (2) when execution starts. Final outcomes (Completed, Failed, Timeout) are reported via `TestResult` instead; `Queued` and `NoRun` are server-side only.
 ```json
 {
   "type": "TestStatusUpdate",
@@ -802,7 +806,7 @@ Sent by node to update test status.
     "JobId": "string",
     "TestId": "string",
     "NodeId": "string",
-    "Status": 0-5,
+    "Status": 1-2,
     "Message": "string"
   }
 }

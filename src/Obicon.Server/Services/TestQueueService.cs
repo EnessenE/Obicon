@@ -140,6 +140,30 @@ public class TestQueueService : ITestQueueService
         return await db.TestJobs.CountAsync(j => j.Status == TestJobStatus.Queued);
     }
 
+    public async Task<Dictionary<TestJobStatus, int>> GetStatusCountsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.TestJobs
+            .GroupBy(j => j.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Status, x => x.Count);
+    }
+
+    public async Task<List<TestCurrentResult>> GetCurrentResultsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Tests
+            .Select(t => new TestCurrentResult(
+                t.Id,
+                t.Name,
+                db.TestJobs
+                    .Where(j => j.TestId == t.Id)
+                    .OrderByDescending(j => j.CompletedAt ?? j.CreatedAt)
+                    .Select(j => (TestJobStatus?)j.Status)
+                    .FirstOrDefault()))
+            .ToListAsync();
+    }
+
     public Task MarkJobAcknowledgedAsync(Guid jobId)
     {
         return _writeQueue.EnqueueAsync(async db =>

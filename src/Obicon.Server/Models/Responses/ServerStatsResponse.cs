@@ -6,6 +6,11 @@ namespace Obicon.Server.Models.Responses;
 public class ServerStatsResponse
 {
     /// <summary>
+    /// Version of this server build, e.g. "0.2.0". Used by the UI to check node compatibility.
+    /// </summary>
+    public string Version { get; set; } = string.Empty;
+
+    /// <summary>
     /// Number of tests currently configured.
     /// </summary>
     public int TotalTests { get; set; }

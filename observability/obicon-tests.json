@@ -1,0 +1,800 @@
+{
+  "uid": "obicon-tests",
+  "title": "Obicon / Tests",
+  "description": "Test runs as recorded by the server: results by status and type, durations, queue depth, and NoRuns. The Tests table lists every created test - click a name to inspect its individual runs. Requires the server's /metrics to be scraped.",
+  "tags": [
+    "obicon",
+    "observability"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      },
+      {
+        "name": "test_type",
+        "label": "Test type",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(obicon_tests_runs_total, test_type)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      },
+      {
+        "name": "node_name",
+        "label": "Node",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(obicon_tests_runs_total{test_type=~\"$test_type\"}, node_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      },
+      {
+        "name": "node_labels",
+        "label": "Node labels",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\"}, node_labels)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "sort": 1
+      },
+      {
+        "name": "test_name",
+        "label": "Test",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\"}, test_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Test runs (24h)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[24h]))",
+          "legendFormat": "runs",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Success rate (1h)",
+      "description": "Completed runs vs total runs. Empty when nothing ran in the window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(obicon_tests_runs_total{status=\"Completed\", test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[1h])) / clamp_min(sum(rate(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[1h])), 1e-9)",
+          "legendFormat": "success",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.9
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Jobs in flight",
+      "description": "Jobs currently queued, assigned, or running on the server.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(obicon_tests_queue_jobs{status=~\"Queued|Assigned|Running\"})",
+          "legendFormat": "in flight",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "NoRuns (24h)",
+      "description": "Jobs that never ran (never acknowledged, never started, node offline).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(obicon_server_noruns_total[24h]))",
+          "legendFormat": "noruns",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Test runs by status",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[$__rate_interval]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Test duration p50 / p95 / p99",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[$__rate_interval])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(obicon_tests_duration_ms_milliseconds_bucket{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[$__rate_interval])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Test runs by type",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "expr": "sum by (test_type) (rate(obicon_tests_runs_total{node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[$__rate_interval]))",
+          "legendFormat": "{{test_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Queue jobs by status",
+      "description": "Current job count per status, sampled by the server every 5 seconds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "targets": [
+        {
+          "expr": "max by (status) (obicon_tests_queue_jobs)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "NoRuns by reason",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(obicon_server_noruns_total[$__rate_interval]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Tests",
+      "description": "Every created test with its latest result, 24h run count, success rate, and average duration. Click a test name to filter the whole dashboard to it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "expr": "max by (test_name, test_id) (obicon_tests_current_result{test_name=~\"$test_name\"})",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (test_name, test_id) (increase(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[24h]))",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        },
+        {
+          "expr": "100 * sum by (test_name, test_id) (increase(obicon_tests_runs_total{status=\"Completed\", test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[24h])) / clamp_min(sum by (test_name, test_id) (increase(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[24h])), 1e-9)",
+          "format": "table",
+          "instant": true,
+          "refId": "C"
+        },
+        {
+          "expr": "sum by (test_name, test_id) (increase(obicon_tests_duration_ms_milliseconds_sum{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[24h])) / clamp_min(sum by (test_name, test_id) (increase(obicon_tests_duration_ms_milliseconds_count{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[24h])), 1e-9)",
+          "format": "table",
+          "instant": true,
+          "refId": "D"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge"
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "test_id": true
+            },
+            "renameByName": {
+              "test_name": "Test",
+              "Value": "Last result",
+              "Value #1": "Runs (24h)",
+              "Value #2": "Success rate % (24h)",
+              "Value #3": "Avg duration (24h)"
+            },
+            "indexByName": {
+              "Test": 0,
+              "Last result": 1,
+              "Runs (24h)": 2,
+              "Success rate % (24h)": 3,
+              "Avg duration (24h)": 4
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Test"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Filter the dashboard to this test",
+                    "url": "/d/obicon-tests/tests?var-test_name=${__value.text}"
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last result"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "Never ran",
+                        "color": "gray"
+                      },
+                      "0": {
+                        "text": "Queued",
+                        "color": "blue"
+                      },
+                      "1": {
+                        "text": "Assigned",
+                        "color": "blue"
+                      },
+                      "2": {
+                        "text": "Running",
+                        "color": "blue"
+                      },
+                      "3": {
+                        "text": "Completed",
+                        "color": "green"
+                      },
+                      "4": {
+                        "text": "Failed",
+                        "color": "red"
+                      },
+                      "5": {
+                        "text": "Timeout",
+                        "color": "orange"
+                      },
+                      "6": {
+                        "text": "NoRun",
+                        "color": "orange"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "colorBackground",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success rate % (24h)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 50
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 90
+                    },
+                    {
+                      "color": "green",
+                      "value": 99
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "colorBackground",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg duration (24h)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Runs by node and status (24h)",
+      "description": "Run count of the selected tests per node and status over the last 24 hours; narrow the Test variable above to inspect a single test.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "sum by (test_name, node_name, status) (increase(obicon_tests_runs_total{test_type=~\"$test_type\", node_name=~\"$node_name\", node_labels=~\"$node_labels\", test_name=~\"$test_name\"}[24h]))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "renameByName": {
+              "test_name": "Test",
+              "node_name": "Node",
+              "status": "Status",
+              "Value": "Runs (24h)"
+            },
+            "indexByName": {
+              "Test": 0,
+              "Node": 1,
+              "Status": 2,
+              "Runs (24h)": 3
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Runs (24h)"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "colorBackground",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Runs (24h)"
+          }
+        ]
+      }
+    }
+  ]
+}

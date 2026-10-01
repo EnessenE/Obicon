@@ -60,6 +60,7 @@ builder.Services.AddDbContextFactory<ObiconDbContext>(options =>
 // values present there (or as ServerSettings__* environment variables) are forced and read-only
 builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
 builder.Services.AddSingleton<IServerSettingsService, ServerSettingsService>();
+builder.Services.AddSingleton<Obicon.Server.Metrics.ITestMetricsEmitter, Obicon.Server.Metrics.TestMetricsEmitter>();
 builder.Services.AddSingleton<NodePolicyBroadcaster>();
 builder.Services.AddSingleton<IEnrollTokenService, EnrollTokenService>();
 builder.Services.AddSingleton<INodeEnrollmentService, NodeEnrollmentService>();
@@ -67,6 +68,8 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddHostedService<TestQueueProcessor>();
 builder.Services.AddHostedService<TestScheduler>();
+builder.Services.AddHostedService<Obicon.Server.Metrics.MetricsSampler>();
+builder.Services.AddHostedService<Obicon.Server.WebSockets.ConnectionWatcher>();
 
 var app = builder.Build();
 

@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Obicon.Server.Configuration;
 using Obicon.Server.Data;
 using Obicon.Server.Models;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
+using Obicon.Server.WebSockets;
+using Obicon.Shared;
 
 namespace Obicon.Server.Services;
 
@@ -10,12 +13,14 @@ public class NodeService : INodeService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly SqliteWriteQueue _writeQueue;
+    private readonly NodeConnectionManager _connectionManager;
     private readonly ILogger<NodeService> _logger;
 
-    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<NodeService> logger)
+    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, NodeConnectionManager connectionManager, ILogger<NodeService> logger)
     {
         _dbFactory = dbFactory;
         _writeQueue = writeQueue;
+        _connectionManager = connectionManager;
         _logger = logger;
     }
 
@@ -126,12 +131,25 @@ public class NodeService : INodeService
             }
 
             db.Nodes.Remove(node);
+
+            // Drop the node from every pool; NodeIds is a JSON column, so a new
+            // list is assigned for EF's change tracker to see the change
+            var memberPools = (await db.NodePools.ToListAsync())
+                .Where(p => p.NodeIds.Contains(id)).ToList();
+            foreach (var pool in memberPools)
+            {
+                pool.NodeIds = pool.NodeIds.Where(nodeId => nodeId != id).ToList();
+            }
+
             await db.SaveChangesAsync();
             return true;
         });
 
         if (deleted)
         {
+            // The node record is gone: close its live connection too, otherwise a
+            // deleted node keeps heartbeating as a ghost that no longer shows in the list
+            await _connectionManager.DisconnectNodeAsync(id.ToString(), "Node was deleted");
             _logger.LogInformation("Deleted node {NodeId}", id);
             Metrics.ServerMetrics.Action("deleted_node");
         }
@@ -229,6 +247,9 @@ public class NodeService : INodeService
         Labels = node.Labels,
         EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual",
         Version = node.Version,
+        VersionSupported = node.Version == null
+            ? null
+            : ObiconVersions.IsSupported(ServerInfo.Version, node.Version),
         IpAddress = node.IpAddress,
         InternalIpv4 = node.InternalIpv4,
         InternalIpv6 = node.InternalIpv6,

@@ -48,6 +48,77 @@
         <div id="noNodesMessage" class="alert alert-info" style="display:none;">No nodes found.</div>
     </main>
 
+    <!-- Node details modal (read-only) -->
+    <div class="modal fade" id="detailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Node details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="fw-semibold fs-5" id="detailsNodeName"></div>
+                        <div class="text-muted small" id="detailsNodeId"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-6">
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Version</div>
+                                <div id="detailsVersion"></div>
+                                <div id="detailsVersionNote" class="small text-danger mt-1" style="display:none;">
+                                    This node's version is outside the server's supported range (same major.minor).
+                                    The server disconnects it unless the <code>AllowUnsupportedNodeVersions</code> setting is enabled.
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Enrollment</div>
+                                <div id="detailsEnrollment"></div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Capacity</div>
+                                <div id="detailsCapacity"></div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Pools</div>
+                                <div id="detailsPools">-</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Created</div>
+                                <div id="detailsCreated"></div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Last seen</div>
+                                <div id="detailsLastSeen"></div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Active</div>
+                                <div id="detailsActive"></div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-label mb-1">Labels</div>
+                                <div id="detailsLabels"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-label mb-1">Addresses</div>
+                        <div id="detailsIps"></div>
+                    </div>
+                    <div class="mb-0">
+                        <div class="form-label mb-1">Reported settings <span class="text-muted">(read-only, reported by the node)</span></div>
+                        <div id="detailsSettings">-</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit node modal -->
     <div class="modal fade" id="editModal" tabindex="-1">
         <div class="modal-dialog">
@@ -92,6 +163,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=2"></script>
-    <script src="js/nodes.js?v=14"></script>
+    <script src="js/nodes.js?v=16"></script>
 </body>
 </html>

@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Obicon.Server.Configuration;
+using Obicon.Server.Metrics;
 using Obicon.Server.Models;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
@@ -19,6 +20,7 @@ public class WebSocketMiddleware
     private readonly ITestService _testService;
     private readonly ITestQueueService _queueService;
     private readonly IServerSettingsService _settingsService;
+    private readonly ITestMetricsEmitter _testMetricsEmitter;
     private readonly ILogger<WebSocketMiddleware> _logger;
 
     public WebSocketMiddleware(
@@ -28,6 +30,7 @@ public class WebSocketMiddleware
         ITestService testService,
         ITestQueueService queueService,
         IServerSettingsService settingsService,
+        ITestMetricsEmitter testMetricsEmitter,
         ILogger<WebSocketMiddleware> logger)
     {
         _next = next;
@@ -36,6 +39,7 @@ public class WebSocketMiddleware
         _testService = testService;
         _queueService = queueService;
         _settingsService = settingsService;
+        _testMetricsEmitter = testMetricsEmitter;
         _logger = logger;
     }
 
@@ -414,14 +418,7 @@ public class WebSocketMiddleware
         var test = job != null && job.TestId != Guid.Empty ? await _testService.GetTestAsync(job.TestId) : null;
         var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
 
-        Metrics.ServerMetrics.TestRun(
-            status.ToString(),
-            job?.TestType.ToString() ?? "unknown",
-            job?.TestId.ToString() ?? "unknown",
-            test?.Name ?? "run-once",
-            nodeId,
-            node?.Name ?? "unknown",
-            result.DurationMs);
+        await _testMetricsEmitter.EmitAsync(job, test, node, status, result.DurationMs);
 
         _logger.LogInformation("Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms",
             jobId, nodeId, result.Success, result.DurationMs);

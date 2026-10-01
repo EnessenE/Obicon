@@ -136,6 +136,22 @@ public static class ServerSettingDefinitions
             ValueType = typeof(bool),
             Default = "false",
             Group = "Observability"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "TestMetricsEnabled",
+            Description = "If enabled, finished test runs are exported on /metrics as obicon.tests.runs and obicon.tests.duration_ms. When disabled, new runs are not recorded; already exported series persist until the server restarts.",
+            ValueType = typeof(bool),
+            Default = "true",
+            Group = "Observability"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "TestMetricsIncludeNodeLabels",
+            Description = "If enabled, the executing node's labels are attached to the exported test metrics as the comma-separated node_labels label. Changing it starts new series for subsequent runs. Requires TestMetricsEnabled.",
+            ValueType = typeof(bool),
+            Default = "true",
+            Group = "Observability"
         }
     };
 }

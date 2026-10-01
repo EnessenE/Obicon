@@ -53,4 +53,14 @@ public class ServerSettings
     /// If enabled, log entries received from nodes are written to the server's own console. Default: false.
     /// </summary>
     public bool ShipNodeLogsToConsole { get; set; }
+
+    /// <summary>
+    /// If enabled, finished test runs are exported as test metrics on /metrics. Default: true.
+    /// </summary>
+    public bool TestMetricsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// If enabled, the executing node's labels are attached to the exported test metrics. Default: true.
+    /// </summary>
+    public bool TestMetricsIncludeNodeLabels { get; set; } = true;
 }

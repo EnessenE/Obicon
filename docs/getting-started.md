@@ -1,34 +1,48 @@
 # Getting started
 
-This guide takes you from a fresh clone to a running test in a few minutes. Everything runs locally; no external services are required.
+This guide takes you from nothing to a running test in a few minutes using the published container images — no build required. Building from source is covered at the end; that path is for contributing and self-building.
+
+The API listens on port 5000 and the UI is plain static HTML/JS that calls it from your browser. Run the pieces wherever you like, as long as your browser can reach the server on port 5000.
 
 ## 1. Run the server
 
 ```bash
-dotnet run --project src/Obicon.Server
+docker run -d --name obicon-server -p 5000:5000 \
+  -v obicon-data:/app/data \
+  -e ConnectionStrings__Default="Data Source=/app/data/obicon.db" \
+  ghcr.io/enessene/obicon/server:latest
 ```
 
-The API is now on http://localhost:5000 (Swagger at http://localhost:5000/swagger) and the database (`obicon.db`, SQLite) is created automatically on first start — including schema upgrades, so you never need to delete it.
+The API is now on http://localhost:5000 (Swagger at http://localhost:5000/swagger) and the SQLite database is created automatically in the mounted volume — including schema upgrades, so you never need to delete it.
 
-## 2. Run the frontend (optional, but recommended)
+## 2. Serve the UI
+
+The UI is static files with no backend. Serve `src/Obicon.Client/wwwroot` with any static file server — for example:
 
 ```bash
-dotnet run --project src/Obicon.Client --urls http://localhost:5003
+docker run -d --name obicon-ui -p 5003:80 \
+  -v ./src/Obicon.Client/wwwroot:/usr/share/nginx/html:ro \
+  nginx:alpine
 ```
 
-Open http://localhost:5003. All pages call the API on port 5000.
+Open http://localhost:5003.
 
-## 3. Add a node
+## 3. Connect a node
 
-The quickest path is through the UI: on the **Nodes** page, create a node and copy the auth token it shows you. Tokens are shown exactly once — only their SHA-256 hash is stored.
-
-Then start a node with that token:
+On the **Settings** page, create an enroll token (optionally scoped to a pool), then start a node with it — the server creates the node automatically on first contact:
 
 ```bash
-Node__Token="<paste the token here>" dotnet run --project src/Obicon.Node
+docker run -d --name obicon-node \
+  --cap-add=NET_RAW \
+  -e Node__ServerUrl="ws://<server-host>:5000/ws/nodes" \
+  -e Node__EnrollToken="<enroll token>" \
+  -e Node__RequireTls=false \
+  ghcr.io/enessene/obicon/node:latest
 ```
 
-Within a second or two the node connects, registers, and appears as connected on the Nodes page. See [Node](node.md) for all configuration options, or the auto-enrollment flow if you don't want to create nodes by hand.
+`<server-host>` is the address of the server as seen from the node's container. `NET_RAW` is needed for ping and traceroute tests, and `Node__RequireTls=false` allows the plain `ws://` connection of a local setup — use `wss://` and keep TLS required for real deployments. Alternatively, create a node on the **Nodes** page and pass its token with `Node__Token` instead.
+
+Within a second or two the node connects, registers, and appears as connected on the Nodes page. See [Node](node.md) for all configuration options.
 
 ## 4. Create and run a test
 
@@ -38,10 +52,30 @@ Before saving, use **dry run** to execute it once immediately and see the full r
 
 ## 5. Watch the metrics
 
-Point Prometheus at the server's `/metrics` endpoint (http://localhost:5000/metrics, no auth) and each node's metrics endpoint (default http://localhost:9464/metrics). See [Metrics](metrics.md) for what's exported.
+Point Prometheus at the server's `/metrics` endpoint (http://localhost:5000/metrics, no auth) and each node's metrics endpoint (default http://localhost:9464/metrics, exposed in Docker with `Node__MetricsHost=+`). See [Metrics](metrics.md) for what's exported.
+
+The Grafana dashboards in [`observability/`](../observability/) import as-is — one for node health, one for tests, and one for the server — with dropdowns to filter by node, test type, or log level.
+
+## Building from source
+
+For contributing and self-building, run the projects directly:
+
+```bash
+# Server (API on http://localhost:5000)
+dotnet run --project src/Obicon.Server
+
+# Frontend (UI on http://localhost:5003)
+dotnet run --project src/Obicon.Client --urls http://localhost:5003
+
+# Node with a token created in the UI, or an enroll token
+Node__Token="<token>" dotnet run --project src/Obicon.Node
+```
+
+The tests run with `dotnet test tests/Obicon.Server.Tests` and `dotnet test tests/Obicon.Node.Tests`.
 
 ## Where to go next
 
 - [Server](server.md) — settings, configuration layers, auth
 - [Node](node.md) — pools, labels, auto-enrollment, Docker
 - [API specification](api-spec.md) — everything the UI does is a plain REST call
+- [Observability](../observability/) — ready-made Grafana dashboards
