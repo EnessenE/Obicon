@@ -32,3 +32,27 @@ jobs:
 
       - name: Test node
         run: dotnet test tests/Obicon.Node.Tests --configuration Release --no-build
+
+  # Validates adherence to the C# Coding Guidelines (https://csharpcodingguidelines.com/):
+  # the root .editorconfig plus the recommended .NET analyzer rules, with all
+  # warnings elevated to errors. Expected to fail until the codebase is cleaned up.
+  coding-guidelines:
+    name: C# coding guidelines
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Obicon.slnx
+
+      - name: Verify formatting and style
+        run: dotnet format Obicon.slnx --verify-no-changes --no-restore
+
+      - name: Build with guidelines warnings as errors
+        run: dotnet build Obicon.slnx --configuration Release --no-restore --warnaserror

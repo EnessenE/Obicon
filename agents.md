@@ -74,6 +74,8 @@ Rules:
 
 ## Conventions
 
+- **C# Coding Guidelines:** we adhere to [csharpcodingguidelines.com](https://csharpcodingguidelines.com/). Enforcement lives in the root `.editorconfig` (naming, style, and formatting rules) plus the recommended .NET analyzer rules (`Directory.Build.props`); every rule fires as a build warning. The `coding-guidelines` CI job builds with `-warnaserror`, so any violation fails the pipeline. The job is currently expected to fail until the existing codebase is cleaned up — when writing or touching C# code, do not add new violations, and prefer fixing the ones in the files you already touch. Suppressions (`#pragma warning disable` or `[SuppressMessage]`) require a justification naming why the rule does not apply. Test method names keep the xUnit underscore convention (CA1707 is scoped off under `tests/`); private fields are `_camelCase`
+
 - **SQLite writes are serialized** (`Data/SqliteWriteQueue`): every mutating database operation is enqueued as a read-modify-write unit and executed one by one by a single background consumer; reads go directly to the database. Rules:
   - New write paths go through `_writeQueue.EnqueueAsync(async db => ...)` and must do their whole read-modify-write inside the unit — entities never cross the queue boundary
   - Code that already runs *inside* a queued unit must not enqueue again (it would deadlock): call direct helpers that take the unit's `db` instead (e.g. `TestQueueService.CreateJobAsync(db, job)`)

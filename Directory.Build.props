@@ -1,0 +1,14 @@
+<Project>
+
+  <!--
+    Shared across all projects: surfaces the C# Coding Guidelines rules from
+    the root .editorconfig in CLI builds and enables the .NET analyzer rules
+    at recommended severity. The coding-guidelines CI job builds with
+    -warnaserror, so every warning listed here fails the pipeline.
+  -->
+  <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+  </PropertyGroup>
+
+</Project>
