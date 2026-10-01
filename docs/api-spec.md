@@ -64,6 +64,7 @@ Creates a new node and returns its authentication token.
   "labels": [],
   "enrollmentType": "manual",
   "version": null,
+  "versionSupported": null,
   "ipAddress": null,
   "internalIpv4": null,
   "internalIpv6": null,
@@ -72,7 +73,7 @@ Creates a new node and returns its authentication token.
   "settings": {}
 }
 ```
-`enrollmentType` is `manual` here or `auto-enrollment` when the node registered itself. `version`, `ipAddress`, and `settings` are filled by the node when it connects: the node reports its software version and operating settings, and the server records the IP of its WebSocket connection. They are empty until the first connection. The four `internal*`/`external*` addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
+`enrollmentType` is `manual` here or `auto-enrollment` when the node registered itself. `version`, `ipAddress`, and `settings` are filled by the node when it connects: the node reports its software version and operating settings, and the server records the IP of its WebSocket connection. They are empty until the first connection. `versionSupported` is the server's verdict on the reported version (same major.minor as the server, as checked on the node's connection): true, false, or null when the node never reported a version. The four `internal*`/`external*` addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
 
 #### List Nodes
 ```
@@ -93,6 +94,7 @@ Returns all registered nodes.
     "enrollmentType": "manual",
     "labels": [],
     "version": "0.2.0",
+    "versionSupported": true,
     "ipAddress": "192.168.1.42",
     "internalIpv4": "192.168.1.42",
     "internalIpv6": null,
@@ -128,6 +130,7 @@ Returns details for a specific node.
   "labels": [],
   "enrollmentType": "manual",
   "version": "0.2.0",
+  "versionSupported": true,
   "ipAddress": "192.168.1.42",
   "internalIpv4": "192.168.1.42",
   "internalIpv6": null,
@@ -468,7 +471,7 @@ Runs a single test immediately on a selection of nodes without creating a test f
 GET /metrics
 ```
 Prometheus scrape endpoint (no auth). Exposes:
-- `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) and `obicon.tests.duration_ms` (histogram, dims `test_type`, `test_id`, `test_name`, `node_id`, `node_name`) from the `Obicon.Tests` meter. One label set per test and node combination
+- `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`, and `node_labels` while the `TestMetricsIncludeNodeLabels` setting is on) and `obicon.tests.duration_ms` (histogram, same dims minus `status`) from the `Obicon.Tests` meter. One label set per test and node combination; both are exported only while the `TestMetricsEnabled` setting is on
 - `obicon.server.actions` (counter, dim `action`), `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`), and `obicon.server.nodelogs` (counter, dims `level`, `source_context`, `node_id`, `node_name`) counting received node log entries, from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
@@ -590,6 +593,7 @@ Returns aggregated statistics about the server.
 **Response:** 200 OK
 ```json
 {
+  "version": "0.2.0",
   "totalTests": 3,
   "activeTests": 2,
   "totalNodes": 4,

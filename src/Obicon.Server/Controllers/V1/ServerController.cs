@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Obicon.Server.Configuration;
 using Obicon.Server.Models.Responses;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
@@ -40,6 +41,7 @@ public class ServerController : ControllerBase
 
         return Ok(new ServerStatsResponse
         {
+            Version = ServerInfo.Version,
             TotalNodes = nodes.Count(),
             ConnectedNodes = _connectionManager.GetAllConnections().Count(),
             TotalTests = tests.Count(),

@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Obicon.Server.Configuration;
 using Obicon.Server.Data;
 using Obicon.Server.Models;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
 using Obicon.Server.WebSockets;
+using Obicon.Shared;
 
 namespace Obicon.Server.Services;
 
@@ -245,6 +247,9 @@ public class NodeService : INodeService
         Labels = node.Labels,
         EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual",
         Version = node.Version,
+        VersionSupported = node.Version == null
+            ? null
+            : ObiconVersions.IsSupported(ServerInfo.Version, node.Version),
         IpAddress = node.IpAddress,
         InternalIpv4 = node.InternalIpv4,
         InternalIpv6 = node.InternalIpv6,

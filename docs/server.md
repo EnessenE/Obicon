@@ -57,6 +57,8 @@ The settings UI groups settings into sections; the **Observability** section con
 | `NodeLogShippingEnabled` | `false` | Nodes may ship their log entries to the server; while off, shipped entries are dropped |
 | `NodeLocalLoggingEnabled` | `true` | The server's default policy for the node's **test-related** console output (assignments, execution, monitoring); a node's own configuration takes precedence |
 | `ShipNodeLogsToConsole` | `false` | Log entries received from nodes are written to the server's own console, tagged with the node's identity |
+| `TestMetricsEnabled` | `true` | Finished test runs are exported on `/metrics` as `obicon.tests.runs` and `obicon.tests.duration_ms`; when off, new runs are not recorded (already exported series persist until restart) |
+| `TestMetricsIncludeNodeLabels` | `true` | The executing node's labels are attached to the exported test metrics as the comma-separated `node_labels` label; changing it starts new series for subsequent runs |
 
 The policy is announced to every node in the server hello message. Changing `NodeLogShippingEnabled` or `NodeLocalLoggingEnabled` through the API or UI pushes a `ServerPolicyUpdate` to all connected nodes immediately — they apply it on the fly, without reconnecting. A node's `Node:LocalLoggingEnabled` override always wins over the server's local logging default.
 

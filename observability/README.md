@@ -5,7 +5,7 @@ Grafana dashboards and related resources for Obicon. Import via Grafana: Dashboa
 | Dashboard | File | Covers |
 |-----------|------|--------|
 | Node Health | `obicon-nodes.json` | Per-node heartbeats, reconnects, executions, and durations (from each node's own metrics endpoint) |
-| Tests | `obicon-tests.json` | Test runs by status and type, durations, queue depth over time, current result per test, NoRuns |
+| Tests | `obicon-tests.json` | Test runs by status and type, durations, queue depth over time, current result per test, NoRuns, plus a Tests table (latest result, 24h runs, success rate, avg duration — click a test to drill into its runs) and a per-node runs table |
 | Server | `obicon-server.json` | Received node logs (by level and source), server actions, queue state, web server load |
 
 ## Metrics

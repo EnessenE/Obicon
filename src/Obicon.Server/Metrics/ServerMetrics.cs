@@ -104,7 +104,8 @@ public class ServerMetrics
     }
 
     /// <summary>
-    /// Records a finished test run, labeled per test and per node.
+    /// Records a finished test run, labeled per test and per node. When <paramref name="nodeLabels"/>
+    /// is not null, it is attached as the comma-separated node_labels label.
     /// </summary>
     public static void TestRun(
         string status,
@@ -113,9 +114,10 @@ public class ServerMetrics
         string testName,
         string nodeId,
         string nodeName,
-        double durationMs)
+        double durationMs,
+        string? nodeLabels = null)
     {
-        var labels = new KeyValuePair<string, object?>[]
+        var labels = new List<KeyValuePair<string, object?>>
         {
             new("status", status),
             new("test_type", testType),
@@ -125,8 +127,17 @@ public class ServerMetrics
             new("node_name", nodeName)
         };
 
-        TestRuns.Add(1, labels);
-        TestDuration.Record(durationMs, labels.Where(l => l.Key is "test_type" or "test_id" or "test_name" or "node_id" or "node_name").ToArray());
+        if (nodeLabels != null)
+        {
+            labels.Add(new("node_labels", nodeLabels));
+        }
+
+        TestRuns.Add(1, labels.ToArray());
+
+        var durationKeys = nodeLabels != null
+            ? new HashSet<string> { "test_type", "test_id", "test_name", "node_id", "node_name", "node_labels" }
+            : new HashSet<string> { "test_type", "test_id", "test_name", "node_id", "node_name" };
+        TestDuration.Record(durationMs, labels.Where(l => durationKeys.Contains(l.Key)).ToArray());
     }
 
     /// <summary>

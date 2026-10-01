@@ -36,6 +36,14 @@ async function loadAll() {
 
     if (stats.status === 'fulfilled') {
         document.getElementById('healthUptime').textContent = formatUptime(stats.value.uptime);
+
+        // The version links to the GitHub release for this server version
+        const versionLink = document.getElementById('serverVersionLink');
+        if (stats.value.version) {
+            versionLink.textContent = 'v' + stats.value.version;
+            versionLink.href = 'https://github.com/enessene/Obicon/releases/tag/server-v' + stats.value.version;
+        }
+
         setText('statTotalNodes', stats.value.totalNodes);
         setText('statConnectedNodes', stats.value.connectedNodes);
         setText('statTotalTests', stats.value.totalTests);
