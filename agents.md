@@ -31,6 +31,11 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 - **Client (frontend):** `dotnet run --project src/Obicon.Client --urls http://localhost:5003` — plain static files from `wwwroot`, no build step; a browser refresh picks up changes
   - Shared chrome lives in `js/layout.js`: every page has empty `<div id="appNavbar"></div>` and `<div id="appFooter"></div>` placeholders that it fills (nav links + active state). Do not copy the navbar into pages
   - Styling is Bootstrap 5.3.8 via CDN (there is no 5.4.8 release) plus Bootstrap Icons and `css/styles.css`; page JS references elements by `id`, so keep ids stable when editing markup
+- **Grafana plugin:** `src/grafana-plugin` is a standalone npm project (scaffolded with `@grafana/create-plugin`, frontend-only, never touches `Obicon.slnx`). Tooling prefers Node 22+ (`.nvmrc`) but Node 20 works
+  - Build/watch: `npm run dev`; production build: `npm run build`; checks: `npm run typecheck`, `npm run lint`, `npm run test:ci` (run inside `src/grafana-plugin`)
+  - Dev Grafana: `docker compose up --build` (provisions the plugin, http://localhost:3000)
+  - All Obicon API calls go through the Grafana proxy route `obicon` defined in `src/plugin.json` via `src/api.ts` — never call the server directly from the browser
+  - The proxy sends the Obicon `Authorization` header from the plugin's `secureJsonData.authHeader`; the config page requires server URL, auth header, and a Prometheus datasource (a logs datasource is optional)
 
 ## Project Layout
 
@@ -38,6 +43,7 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 - `src/Obicon.Server` — ASP.NET Core API (`/v1`), WebSocket host (`/ws/nodes`), SQLite persistence (EF Core, `Data/ObiconDbContext.cs`), and `TestQueueProcessor` which dispatches queued jobs to connected nodes
 - `src/Obicon.Node` — .NET console app (generic host): `ServerConnection` (dedicated comm task: register, heartbeat, reconnect), `TestExecutor` (max concurrency, `[timeout]+5s` hard kill), test runners, `HealthService`, `MonitoringService`
 - `src/Obicon.Client` — static frontend; `js/api.js` is the shared API helper (already handles 204 and the auth header)
+- `src/grafana-plugin` — Grafana app plugin (`enessene-obicon-app`): configuration page, Overview/Nodes/Tests/Logs pages, Obicon REST client through the Grafana proxy; see its own `README.md`
 
 ## CI, Releases, and Docker
 

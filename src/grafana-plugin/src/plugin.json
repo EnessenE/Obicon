@@ -1,0 +1,89 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "app",
+  "name": "Obicon",
+  "id": "enessene-obicon-app",
+  "info": {
+    "keywords": ["app", "synthetic monitoring", "observability"],
+    "description": "Manage Obicon synthetic monitoring from Grafana: nodes, tests, and Obicon's Prometheus metrics.",
+    "author": {
+      "name": "Enessene"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "routes": [
+    {
+      "path": "obicon/*",
+      "url": "{{ .JsonData.serverUrl }}",
+      "headers": [
+        {
+          "name": "Authorization",
+          "content": "{{ .SecureJsonData.authHeader }}"
+        }
+      ]
+    }
+  ],
+  "includes": [
+    {
+      "type": "page",
+      "name": "Overview",
+      "path": "/a/%PLUGIN_ID%/overview",
+      "addToNav": true,
+      "defaultNav": true
+    },
+    {
+      "type": "page",
+      "name": "Nodes",
+      "path": "/a/%PLUGIN_ID%/nodes",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "name": "Tests",
+      "path": "/a/%PLUGIN_ID%/tests",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "name": "Results",
+      "path": "/a/%PLUGIN_ID%/results",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "name": "Logs",
+      "path": "/a/%PLUGIN_ID%/logs",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "name": "Server",
+      "path": "/a/%PLUGIN_ID%/server",
+      "role": "Admin",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "icon": "cog",
+      "name": "Configuration",
+      "path": "/plugins/%PLUGIN_ID%",
+      "role": "Admin",
+      "addToNav": true
+    }
+  ],
+  "dependencies": {
+    "grafanaDependency": ">=12.3.0",
+    "plugins": []
+  }
+}

@@ -8,7 +8,20 @@ Versions are tracked per component: `## [Server x.y.z]` and `## [Node x.y.z]`.
 The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
 `.../node:<node version>`, and creates the tags/releases `server-vx.y.z` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
-separate version; its changes are listed under the server release.
+separate version; its changes are listed under the server release. The Grafana
+plugin is versioned separately and not yet published by CI.
+
+## [Plugin 0.1.0] - Unreleased
+
+Initial Grafana app plugin (`enessene-obicon-app`, frontend-only, all Obicon API traffic through the Grafana app proxy route so no CORS setup is needed).
+
+- Configuration page: Obicon server URL and API Authorization header (stored as a secret), a required Prometheus datasource scraping the server's `/metrics`, and an optional logs datasource with a configurable query; the save button is always active and names any missing required settings
+- Overview page: server stats plus Prometheus tiles (24h test success rate, run count, NoRuns, queue depth) and the latest result of every test
+- Nodes page: all nodes with version (and the server's version-support verdict), connection state, last-seen, address, labels; search and filters (state, version support), sortable columns, and a per-node details/edit dialog (rename, labels, token regeneration — auto-enrolled nodes are read-only); auto-refresh every 10s
+- Tests page: create, edit, enable/disable, delete, trigger, and dry-run tests with per-type expectations (status codes, body regex, headers, proxy, cache busting, certificate expiry, DNS expectations); dry runs poll the queue and show per-node results and output; switching the test type preserves the entered data
+- Results page: every queued job straight from the Obicon API — status, duration, per-node output and metrics, filters by test and status
+- Server page: the Obicon server's runtime settings, grouped like the Obicon UI, editable per setting (forced and read-only settings are shown but locked), plus server stats
+- Logs page: query the configured logs datasource (e.g. Loki) when one is set
 
 ## [Server 0.3.0] - 2026-10-01
 

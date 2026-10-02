@@ -1,0 +1,19 @@
+apiVersion: 1
+
+# Dev provisioning for `docker compose up`: pre-configures the app plugin so
+# the dev Grafana has it enabled. serverUrl must be reachable FROM the
+# Grafana container — with Docker Desktop that's host.docker.internal, not
+# localhost. Set prometheusUid/logsUid to real datasource UIDs, or clear
+# jsonData and configure the plugin in the Grafana UI instead.
+apps:
+  - type: 'enessene-obicon-app'
+    org_id: 1
+    org_name: 'enessene'
+    disabled: false
+    jsonData:
+      serverUrl: http://host.docker.internal:5000
+      prometheusUid: ''
+      logsUid: ''
+      logsQuery: '{job=~".+"}'
+    secureJsonData:
+      authHeader: uwu

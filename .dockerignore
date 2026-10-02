@@ -10,6 +10,7 @@ src/Obicon.Client/
 
 **/bin/
 **/obj/
+**/node_modules/
 **/*.db
 **/*.db-shm
 **/*.db-wal
