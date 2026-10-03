@@ -682,6 +682,8 @@ Returns all test jobs in the queue, newest first.
 ```
 For one-off runs (from `POST /v1/tests/run-once`), `testId` is `00000000-0000-0000-0000-000000000000`. `details` carries the structured result sections described under the TestResult message; it is null for results reported by nodes older than 0.4.0 (which also lose their old flat metrics).
 
+The queue is a bounded window, not a history: finished jobs are governed by the `TestResultStorageMode` setting (`Full` keeps the payload, `MetadataOnly` keeps the row without it, `None` deletes the row on completion — so with `None` only in-flight jobs are ever listed) and the `JobRetentionDays` sweep deletes finished jobs after the window (default 30 days). Anything older lives in the user's metrics and log backend.
+
 #### Get Job
 ```
 GET /v1/queue/{id}
