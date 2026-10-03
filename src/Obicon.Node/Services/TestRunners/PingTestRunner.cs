@@ -1,10 +1,10 @@
-using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
+using Obicon.Shared.Models.Results;
 
 namespace Obicon.Node.Services.TestRunners;
 
@@ -28,7 +28,7 @@ public partial class PingTestRunner : ITestRunner
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var metrics = new Dictionary<string, object> { ["target"] = assignment.Target };
+        var details = new PingDetails { Target = assignment.Target };
 
         IPAddress? address;
         try
@@ -36,25 +36,32 @@ public partial class PingTestRunner : ITestRunner
             var dnsStopwatch = System.Diagnostics.Stopwatch.StartNew();
             address = await HostResolver.ResolveAsync(assignment.Target, assignment.IpVersion, cancellationToken);
             dnsStopwatch.Stop();
+            details.DnsMs = Math.Round(dnsStopwatch.Elapsed.TotalMilliseconds, 2);
 
             if (address == null)
             {
                 LogNoAddress(assignment.Target, HostResolver.FamilyName(assignment.IpVersion));
+                details.Error = $"no {HostResolver.FamilyName(assignment.IpVersion)} address";
                 return new TestOutcome
                 {
                     Success = false,
                     Output = $"{assignment.Target} has no {HostResolver.FamilyName(assignment.IpVersion)} address",
-                    Metrics = metrics
+                    Details = new TestResultDetails { Ping = details }
                 };
             }
 
-            metrics["resolved"] = address.ToString();
-            metrics["dns_ms"] = Math.Round(dnsStopwatch.Elapsed.TotalMilliseconds, 2);
+            details.ResolvedAddress = address.ToString();
             LogResolved(assignment.Target, address, dnsStopwatch.Elapsed.TotalMilliseconds);
         }
         catch (SocketException ex)
         {
-            return new TestOutcome { Success = false, Output = $"Could not resolve {assignment.Target}: {ex.SocketErrorCode}", Metrics = metrics };
+            details.Error = ex.SocketErrorCode.ToString();
+            return new TestOutcome
+            {
+                Success = false,
+                Output = $"Could not resolve {assignment.Target}: {ex.SocketErrorCode}",
+                Details = new TestResultDetails { Ping = details }
+            };
         }
 
         using var ping = new Ping();
@@ -62,16 +69,17 @@ public partial class PingTestRunner : ITestRunner
         var reply = await ping.SendPingAsync(address, (int)timeout.TotalMilliseconds);
         pingStopwatch.Stop();
 
-        metrics["reply_from"] = reply.Address.ToString();
-        metrics["reply_status"] = reply.Status.ToString();
-        metrics["roundtrip_ms"] = reply.RoundtripTime;
-        metrics["ttl"] = reply.Options?.Ttl.ToString(CultureInfo.InvariantCulture) ?? "";
-        metrics["wallclock_ms"] = Math.Round(pingStopwatch.Elapsed.TotalMilliseconds, 2);
+        details.ReplyAddress = reply.Address.ToString();
+        details.ReplyStatus = reply.Status.ToString();
+        details.RoundtripMs = reply.RoundtripTime;
+        details.Ttl = reply.Options?.Ttl;
+        details.WallclockMs = Math.Round(pingStopwatch.Elapsed.TotalMilliseconds, 2);
+
         LogPingReply(reply.Address, reply.Status, reply.RoundtripTime, reply.Options?.Ttl);
 
         return reply.Status == IPStatus.Success
-            ? new TestOutcome { Success = true, Output = $"Reply from {reply.Address}: time={reply.RoundtripTime}ms ttl={reply.Options?.Ttl}", Metrics = metrics }
-            : new TestOutcome { Success = false, Output = $"Ping failed: {reply.Status}", Metrics = metrics };
+            ? new TestOutcome { Success = true, Output = $"Reply from {reply.Address}: time={reply.RoundtripTime}ms ttl={reply.Options?.Ttl}", Details = new TestResultDetails { Ping = details } }
+            : new TestOutcome { Success = false, Output = $"Ping failed: {reply.Status}", Details = new TestResultDetails { Ping = details } };
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Target} has no {Family} address")]

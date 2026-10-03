@@ -1,0 +1,153 @@
+using System.Text.Json;
+using Obicon.Shared.Models.Messages;
+using Obicon.Shared.Models.Results;
+using Xunit;
+
+namespace Obicon.Node.Tests;
+
+/// <summary>
+/// Wire-contract tests for the structured result details: the WebSocket JSON must
+/// carry the PascalCase section names and round-trip every section intact, and
+/// messages from nodes that predate details must still parse.
+/// </summary>
+public class TestResultDetailsTests
+{
+    [Fact]
+    public void TestResultMessage_Details_RoundTrip_Preserves_All_Sections()
+    {
+        var message = new TestResultMessage
+        {
+            JobId = "job-1",
+            TestId = "test-1",
+            NodeId = "node-1",
+            Success = true,
+            DurationMs = 42,
+            Details = new TestResultDetails
+            {
+                Traceroute = new TracerouteDetails
+                {
+                    ResolvedAddress = "93.184.216.34",
+                    TargetReached = true,
+                    HopCount = 2,
+                    Hops =
+                    [
+                        new TracerouteHop { Hop = 1, Address = "10.0.0.1", Status = "TtlExpired", RoundtripMs = 5 },
+                        new TracerouteHop { Hop = 2, Status = "TimedOut", Error = "TimedOut" }
+                    ]
+                },
+                Ping = new PingDetails
+                {
+                    Target = "example.com",
+                    ResolvedAddress = "93.184.216.34",
+                    DnsMs = 1.5,
+                    ReplyAddress = "93.184.216.34",
+                    ReplyStatus = "Success",
+                    RoundtripMs = 12,
+                    Ttl = 57,
+                    WallclockMs = 13.5
+                },
+                Tcp = new TcpDetails
+                {
+                    Host = "example.com",
+                    Port = 443,
+                    ResolvedAddress = "93.184.216.34",
+                    Family = "InterNetwork",
+                    DnsMs = 2.5,
+                    ConnectMs = 30.25
+                },
+                Http = new HttpDetails
+                {
+                    Url = "https://example.com",
+                    FinalUrl = "https://example.com/",
+                    StatusCode = 200,
+                    ReasonPhrase = "OK",
+                    ResolvedAddress = "93.184.216.34",
+                    DnsMs = 1,
+                    ConnectMs = 2,
+                    TlsMs = 3,
+                    TlsProtocol = "Tls13",
+                    TlsCipher = "Tls13Aes128GcmSha256",
+                    TtfbMs = 40,
+                    TransferMs = 5,
+                    BytesRead = 1024,
+                    BytesTruncated = false,
+                    BodyMatched = true,
+                    Certificate = new CertificateDetails
+                    {
+                        Subject = "CN=example.com",
+                        Issuer = "CN=ca",
+                        NotAfter = new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                        DaysRemaining = 100.5
+                    }
+                },
+                Dns = new DnsDetails
+                {
+                    Host = "example.com",
+                    NameserversQueried = ["8.8.8.8"],
+                    AnsweringNameserver = "8.8.8.8",
+                    NameserverRttMs = 12.5,
+                    ARecords = ["93.184.216.34"],
+                    AaaaRecords = [],
+                    Resolved = ["93.184.216.34"],
+                    Via = "nameserver",
+                    ExpectedAddress = "93.184.216.34",
+                    ExpectedMatched = true
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(message);
+
+        // The wire contract is PascalCase on every section and nested property
+        Assert.Contains("\"Details\"", json);
+        Assert.Contains("\"Traceroute\"", json);
+        Assert.Contains("\"TargetReached\"", json);
+        Assert.Contains("\"Ping\"", json);
+        Assert.Contains("\"Tcp\"", json);
+        Assert.Contains("\"Http\"", json);
+        Assert.Contains("\"Certificate\"", json);
+        Assert.Contains("\"Dns\"", json);
+
+        var parsed = JsonSerializer.Deserialize<TestResultMessage>(json)!;
+        var details = Assert.IsType<TestResultDetails>(parsed.Details);
+
+        var traceroute = Assert.IsType<TracerouteDetails>(details.Traceroute);
+        Assert.True(traceroute.TargetReached);
+        Assert.Equal(2, traceroute.HopCount);
+        var hop = Assert.Single(traceroute.Hops, h => h.Address == null);
+        Assert.Equal("TimedOut", hop.Status);
+        Assert.Null(hop.RoundtripMs);
+
+        var ping = Assert.IsType<PingDetails>(details.Ping);
+        Assert.Equal("Success", ping.ReplyStatus);
+        Assert.Equal(57, ping.Ttl);
+
+        var tcp = Assert.IsType<TcpDetails>(details.Tcp);
+        Assert.Equal(443, tcp.Port);
+        Assert.Equal(30.25, tcp.ConnectMs);
+
+        var http = Assert.IsType<HttpDetails>(details.Http);
+        Assert.Equal(200, http.StatusCode);
+        Assert.True(http.BodyMatched);
+        var certificate = Assert.IsType<CertificateDetails>(http.Certificate);
+        Assert.Equal("CN=example.com", certificate.Subject);
+        Assert.Equal(new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc), certificate.NotAfter);
+
+        var dns = Assert.IsType<DnsDetails>(details.Dns);
+        Assert.Equal("8.8.8.8", Assert.Single(dns.NameserversQueried));
+        Assert.Equal("93.184.216.34", Assert.Single(dns.Resolved));
+        Assert.True(dns.ExpectedMatched);
+    }
+
+    [Fact]
+    public void TestResultMessage_Without_Details_Still_Parses()
+    {
+        // Messages from nodes older than 0.4.0 carry no Details and must stay valid
+        const string json = """{"JobId":"job-1","TestId":"test-1","NodeId":"node-1","Success":true,"DurationMs":7,"Output":"ok","Metrics":{"a":"b"}}""";
+
+        var parsed = JsonSerializer.Deserialize<TestResultMessage>(json)!;
+
+        Assert.True(parsed.Success);
+        Assert.Null(parsed.Details);
+    }
+}

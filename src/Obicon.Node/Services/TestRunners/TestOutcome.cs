@@ -1,3 +1,5 @@
+using Obicon.Shared.Models.Results;
+
 namespace Obicon.Node.Services.TestRunners;
 
 /// <summary>
@@ -16,8 +18,7 @@ public class TestOutcome
     public string Output { get; init; } = string.Empty;
 
     /// <summary>
-    /// Detailed measurements of the test run: resolved addresses, phase timings,
-    /// nameservers, certificate details, and anything else worth recording. Default: empty.
+    /// Structured details of the run, one populated section per test type. Default: null.
     /// </summary>
-    public Dictionary<string, object> Metrics { get; init; } = new();
+    public TestResultDetails? Details { get; init; }
 }

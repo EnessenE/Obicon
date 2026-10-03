@@ -7,6 +7,7 @@ using Obicon.Node.Configuration;
 using Obicon.Node.Services.TestRunners;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
+using Obicon.Shared.Models.Results;
 
 namespace Obicon.Node.Services;
 
@@ -121,7 +122,7 @@ public partial class TestExecutor : ITestExecutor, IDisposable
                 outcome = new TestOutcome { Success = false, Output = $"Timed out after {timeout.TotalSeconds}s" };
             }
 
-            await ReportAsync(assignment, outcome.Success, stopwatch, outcome.Output, finalStatus, outcome.Metrics);
+            await ReportAsync(assignment, outcome.Success, stopwatch, outcome.Output, finalStatus, outcome.Details);
         }
         catch (OperationCanceledException) when (hardKill?.IsCancellationRequested == true
                                                 && !_lifetime.ApplicationStopping.IsCancellationRequested)
@@ -155,7 +156,7 @@ public partial class TestExecutor : ITestExecutor, IDisposable
         Stopwatch stopwatch,
         string output,
         TestJobStatus finalStatus,
-        Dictionary<string, object>? metrics = null)
+        TestResultDetails? details = null)
     {
         var stats = Statistics;
         Metrics.NodeMetrics.TestExecuted(finalStatus.ToString(), assignment.TestType.ToString(), stopwatch.Elapsed.TotalMilliseconds);
@@ -185,7 +186,7 @@ public partial class TestExecutor : ITestExecutor, IDisposable
                     Success = success,
                     DurationMs = stopwatch.ElapsedMilliseconds,
                     Output = output,
-                    Metrics = metrics
+                    Details = details
                 }
             });
 

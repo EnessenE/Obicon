@@ -407,7 +407,7 @@ public partial class WebSocketMiddleware
             Success = result.Success,
             DurationMs = result.DurationMs,
             Output = result.Output,
-            Metrics = result.Metrics
+            Details = result.Details
         };
 
         await _queueService.UpdateJobStatusAsync(jobId, status, testResult);

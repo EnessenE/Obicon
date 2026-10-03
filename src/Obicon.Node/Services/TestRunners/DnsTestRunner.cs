@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
+using Obicon.Shared.Models.Results;
 
 namespace Obicon.Node.Services.TestRunners;
 
@@ -26,26 +27,34 @@ public partial class DnsTestRunner : ITestRunner
     /// <inheritdoc />
     public async Task<TestOutcome> ExecuteAsync(TestAssignmentMessage assignment, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var metrics = new Dictionary<string, object> { ["host"] = assignment.Target };
+        var details = new DnsDetails { Host = assignment.Target };
 
         if (IPAddress.TryParse(assignment.Target, out var literal))
         {
             // Literal IP: nothing to resolve
             var matches = HostResolver.Matches(literal, assignment.IpVersion);
+            details.Resolved = [assignment.Target];
+            details.Via = "literal";
+            if (!matches)
+            {
+                details.Error = $"not {HostResolver.FamilyName(assignment.IpVersion)}";
+            }
+
             return new TestOutcome
             {
                 Success = matches,
                 Output = matches
                     ? $"{assignment.Target} is a literal {literal.AddressFamily} address"
                     : $"{assignment.Target} is a literal {literal.AddressFamily} address, not {HostResolver.FamilyName(assignment.IpVersion)}",
-                Metrics = metrics
+                Details = new TestResultDetails { Dns = details }
             };
         }
 
         var nameservers = DnsQueryClient.GetSystemNameservers();
         if (nameservers.Count > 0)
         {
-            metrics["nameservers_queried"] = string.Join(",", nameservers);
+            details.NameserversQueried = nameservers.Select(n => n.ToString()).ToList();
+            details.Via = "nameserver";
             if (_logger.IsEnabled(LogLevel.Information))
             {
                 var nameserversText = string.Join(", ", nameservers);
@@ -63,8 +72,8 @@ public partial class DnsTestRunner : ITestRunner
                     continue;
                 }
 
-                metrics["answering_nameserver"] = result.Nameserver;
-                metrics["nameserver_rtt_ms"] = Math.Round(result.RttMs, 2);
+                details.AnsweringNameserver = result.Nameserver;
+                details.NameserverRttMs = Math.Round(result.RttMs, 2);
                 if (_logger.IsEnabled(LogLevel.Information))
                 {
                     var aRecords = string.Join(", ", result.A);
@@ -73,23 +82,24 @@ public partial class DnsTestRunner : ITestRunner
                 }
 
                 var resolved = Filter(result, assignment.IpVersion);
-                metrics["a_records"] = string.Join(",", result.A);
-                metrics["aaaa_records"] = string.Join(",", result.Aaaa);
-                metrics["resolved"] = string.Join(",", resolved);
+                details.ARecords = result.A;
+                details.AaaaRecords = result.Aaaa;
+                details.Resolved = resolved;
 
-                return Evaluate(assignment, resolved, metrics, $"via nameserver {result.Nameserver}");
+                return Evaluate(assignment, resolved, details, $"via nameserver {result.Nameserver}");
             }
 
-            metrics["raw_query_error"] = "no nameserver responded";
+            details.Error = "no nameserver responded";
             LogNoNameserverAnswered(assignment.Target);
         }
         else
         {
-            metrics["raw_query_error"] = "no nameservers discovered";
+            details.Error = "no nameservers discovered";
         }
 
         // Fallback: the OS resolver, without visibility into which server answered
         LogResolvingThroughOs(assignment.Target);
+        details.Via = "os-resolver";
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
         try
@@ -99,12 +109,18 @@ public partial class DnsTestRunner : ITestRunner
                 ? allAddresses.ToList()
                 : allAddresses.Where(a => HostResolver.Matches(a, assignment.IpVersion)).ToList();
 
-            metrics["resolved"] = string.Join(",", resolved.Select(a => a.ToString()));
-            return Evaluate(assignment, resolved.Select(a => a.ToString()).ToList(), metrics, "via the OS resolver");
+            details.Resolved = resolved.Select(a => a.ToString()).ToList();
+            return Evaluate(assignment, resolved.Select(a => a.ToString()).ToList(), details, "via the OS resolver");
         }
         catch (SocketException ex)
         {
-            return new TestOutcome { Success = false, Output = $"DNS resolution of {assignment.Target} failed: {ex.SocketErrorCode}", Metrics = metrics };
+            details.Error = ex.SocketErrorCode.ToString();
+            return new TestOutcome
+            {
+                Success = false,
+                Output = $"DNS resolution of {assignment.Target} failed: {ex.SocketErrorCode}",
+                Details = new TestResultDetails { Dns = details }
+            };
         }
     }
 
@@ -118,15 +134,16 @@ public partial class DnsTestRunner : ITestRunner
         };
     }
 
-    private TestOutcome Evaluate(TestAssignmentMessage assignment, List<string> resolved, Dictionary<string, object> metrics, string via)
+    private TestOutcome Evaluate(TestAssignmentMessage assignment, List<string> resolved, DnsDetails details, string via)
     {
         if (resolved.Count == 0)
         {
+            details.Error ??= $"no {HostResolver.FamilyName(assignment.IpVersion)} address";
             return new TestOutcome
             {
                 Success = false,
                 Output = $"{assignment.Target} has no {HostResolver.FamilyName(assignment.IpVersion)} address ({via})",
-                Metrics = metrics
+                Details = new TestResultDetails { Dns = details }
             };
         }
 
@@ -139,11 +156,13 @@ public partial class DnsTestRunner : ITestRunner
             {
                 Success = true,
                 Output = $"Resolved {assignment.Target} to {resolvedText} ({via})",
-                Metrics = metrics
+                Details = new TestResultDetails { Dns = details }
             };
         }
 
         var matches = resolved.Any(r => string.Equals(r, assignment.ExpectedDnsResult, StringComparison.OrdinalIgnoreCase));
+        details.ExpectedAddress = assignment.ExpectedDnsResult;
+        details.ExpectedMatched = matches;
         LogResolvedWithExpectation(assignment.Target, resolvedText, assignment.ExpectedDnsResult, matches ? "match" : "mismatch");
 
         return new TestOutcome
@@ -152,7 +171,7 @@ public partial class DnsTestRunner : ITestRunner
             Output = matches
                 ? $"Resolved {assignment.Target} to {resolvedText} (expected {assignment.ExpectedDnsResult}) ({via})"
                 : $"Resolved {assignment.Target} to {resolvedText} but expected {assignment.ExpectedDnsResult} ({via})",
-            Metrics = metrics
+            Details = new TestResultDetails { Dns = details }
         };
     }
 

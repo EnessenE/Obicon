@@ -638,11 +638,11 @@ Returns all test jobs in the queue, newest first.
     "durationMs": null,
     "output": null,
     "errorMessage": null,
-    "metrics": null
+    "details": null
   }
 ]
 ```
-For one-off runs (from `POST /v1/tests/run-once`), `testId` is `00000000-0000-0000-0000-000000000000`.
+For one-off runs (from `POST /v1/tests/run-once`), `testId` is `00000000-0000-0000-0000-000000000000`. `details` carries the structured result sections described under the TestResult message; it is null for results reported by nodes older than 0.4.0 (which also lose their old flat metrics).
 
 #### Get Job
 ```
@@ -790,12 +790,18 @@ Sent by node to report test results.
     "Success": true/false,
     "DurationMs": 1234,
     "Output": "string",
-    "Metrics": { "dns_resolved": "93.184.216.34", "dns_ms": 12.5, "connect_ms": 3.2, "tls_ms": 41.0, "ttfb_ms": 120.7, "transfer_ms": 8.1, "bytes_read": 1256 }
+    "Details": { "Traceroute": { "ResolvedAddress": "93.184.216.34", "TargetReached": true, "HopCount": 2, "Hops": [ { "Hop": 1, "Address": "10.0.0.1", "Status": "TtlExpired", "RoundtripMs": 5.0, "Error": null } ] } }
   }
 }
 ```
 
-The `Metrics` dictionary carries detailed measurements: HTTP/HTTPS runs report DNS resolution, TCP connect, TLS handshake (including protocol and cipher), time to first byte, transfer timings plus certificate details, and `body_matched` when a body pattern is set (the proxy URL is reported for proxied runs); DNS runs report the nameservers queried, which one answered, its round-trip time, and the A/AAAA records; ping, TCP, and traceroute report the resolved address and phase timings.
+`Details` carries the structured measurements of the run — exactly one populated section matching the test type, with HTTP and HTTPS both using `Http`. It is persisted on the job and exposed by the queue API as `details` (camelCased there, like every HTTP response, while the WebSocket payload uses the PascalCase names shown here); the web UI renders it. Sections:
+
+- **Traceroute** — `ResolvedAddress`, `TargetReached`, `HopCount`, and `Hops`: one record per hop with `Hop` (number), `Address` (null when nothing responded), `Status` (`TtlExpired`, `Success`, `TimedOut`, ...), `RoundtripMs` (null for no response), and `Error` when the hop ended the trace
+- **Ping** — `Target`, `ResolvedAddress`, `DnsMs`, `ReplyAddress`, `ReplyStatus`, `RoundtripMs`, `Ttl`, `WallclockMs`, `Error`
+- **Tcp** — `Host`, `Port`, `ResolvedAddress`, `Family`, `DnsMs`, `ConnectMs`, `Error`
+- **Http** (HTTP and HTTPS) — `Url`, `FinalUrl`, `StatusCode`, `ReasonPhrase`, `ResolvedAddress`, the phase timings `DnsMs`/`ConnectMs`/`TlsMs`/`TtfbMs`/`TransferMs` (`DnsMs`, `ConnectMs`, and `TlsMs` are null for proxied requests), `TlsProtocol`, `TlsCipher`, `BytesRead`, `BytesTruncated`, `ProxyUrl`, `BodyMatched` (null when no pattern was set), `Certificate` (`Subject`, `Issuer`, `NotAfter`, `DaysRemaining`), `Error`
+- **Dns** — `Host`, `NameserversQueried`, `AnsweringNameserver`, `NameserverRttMs`, `ARecords`, `AaaaRecords`, `Resolved` (after the IP version filter), `Via` (`nameserver`, `os-resolver`, or `literal`), `ExpectedAddress`, `ExpectedMatched`, `Error`
 
 #### TestStatusUpdate
 Sent by node to report in-progress job status: `Assigned` (1) when it accepts a job and `Running` (2) when execution starts. Final outcomes (Completed, Failed, Timeout) are reported via `TestResult` instead; `Queued` and `NoRun` are server-side only.

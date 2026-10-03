@@ -90,20 +90,10 @@ function renderJobs() {
             <div class="col-12 col-lg-6">
                 <div class="field-label">Result</div>
                 <code class="text-break">${escapeHtml(job.errorMessage || job.output || '-')}</code>
-                ${renderMetrics(job.metrics)}
+                ${renderTestDetails(job.details)}
             </div>
         </div>
     `).join('');
-}
-
-// Renders the detailed measurements of a run as a compact line under the output
-function renderMetrics(metrics) {
-    if (!metrics || Object.keys(metrics).length === 0) {
-        return '';
-    }
-
-    const pairs = Object.entries(metrics).map(([key, value]) => `${key}=${value}`);
-    return `<div class="small text-muted">${escapeHtml(pairs.join(' · '))}</div>`;
 }
 
 function showQueueLoading() {

@@ -499,6 +499,7 @@ function showDryRunResult(results) {
             <strong>${job.success ? 'Success' : (jobStatusMap[job.status] || 'Failed')}</strong>
             on ${escapeHtml(node.name)} in ${job.durationMs != null ? job.durationMs + ' ms' : '-'}<br>
             <code class="text-break">${escapeHtml(job.output || job.errorMessage || '')}</code>
+            ${renderTestDetails(job.details)}
         </div>
     `).join('<hr class="my-2">');
 }

@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
+using Obicon.Shared.Models.Results;
 
 namespace Obicon.Node.Services.TestRunners;
 
@@ -26,12 +27,12 @@ public partial class TcpTestRunner : ITestRunner
     /// <inheritdoc />
     public async Task<TestOutcome> ExecuteAsync(TestAssignmentMessage assignment, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var metrics = new Dictionary<string, object> { ["target"] = assignment.Target };
 
         var separator = assignment.Target.LastIndexOf(':');
         var host = separator > 0 ? assignment.Target[..separator] : assignment.Target;
         var port = separator > 0 && int.TryParse(assignment.Target[(separator + 1)..], out var parsed) ? parsed : DefaultPort;
-        metrics["port"] = port;
+
+        var details = new TcpDetails { Host = host, Port = port };
 
         IPAddress? address;
         try
@@ -39,25 +40,33 @@ public partial class TcpTestRunner : ITestRunner
             var dnsStopwatch = Stopwatch.StartNew();
             address = await HostResolver.ResolveAsync(host, assignment.IpVersion, cancellationToken);
             dnsStopwatch.Stop();
-            metrics["dns_ms"] = Math.Round(dnsStopwatch.Elapsed.TotalMilliseconds, 2);
+            details.DnsMs = Math.Round(dnsStopwatch.Elapsed.TotalMilliseconds, 2);
 
             if (address == null)
             {
                 LogNoAddress(host, HostResolver.FamilyName(assignment.IpVersion));
+                details.Error = $"no {HostResolver.FamilyName(assignment.IpVersion)} address";
                 return new TestOutcome
                 {
                     Success = false,
                     Output = $"{host} has no {HostResolver.FamilyName(assignment.IpVersion)} address",
-                    Metrics = metrics
+                    Details = new TestResultDetails { Tcp = details }
                 };
             }
 
-            metrics["resolved"] = address.ToString();
+            details.ResolvedAddress = address.ToString();
+            details.Family = address.AddressFamily.ToString();
             LogResolved(host, address, dnsStopwatch.Elapsed.TotalMilliseconds);
         }
         catch (SocketException ex)
         {
-            return new TestOutcome { Success = false, Output = $"Could not resolve {host}: {ex.SocketErrorCode}", Metrics = metrics };
+            details.Error = ex.SocketErrorCode.ToString();
+            return new TestOutcome
+            {
+                Success = false,
+                Output = $"Could not resolve {host}: {ex.SocketErrorCode}",
+                Details = new TestResultDetails { Tcp = details }
+            };
         }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -69,21 +78,26 @@ public partial class TcpTestRunner : ITestRunner
         {
             await socket.ConnectAsync(new IPEndPoint(address, port), timeoutCts.Token);
             connectStopwatch.Stop();
-            metrics["connect_ms"] = Math.Round(connectStopwatch.Elapsed.TotalMilliseconds, 2);
-            metrics["family"] = address.AddressFamily.ToString();
+            details.ConnectMs = Math.Round(connectStopwatch.Elapsed.TotalMilliseconds, 2);
             LogTcpConnected(host, port, connectStopwatch.Elapsed.TotalMilliseconds);
 
             return new TestOutcome
             {
                 Success = true,
                 Output = $"Connected to {host}:{port} ({address.AddressFamily}) in {connectStopwatch.Elapsed.TotalMilliseconds:F0} ms",
-                Metrics = metrics
+                Details = new TestResultDetails { Tcp = details }
             };
         }
         catch (SocketException ex)
         {
             LogTcpConnectFailed(host, port, ex.SocketErrorCode);
-            return new TestOutcome { Success = false, Output = $"TCP connect to {host}:{port} failed: {ex.SocketErrorCode}", Metrics = metrics };
+            details.Error = ex.SocketErrorCode.ToString();
+            return new TestOutcome
+            {
+                Success = false,
+                Output = $"TCP connect to {host}:{port} failed: {ex.SocketErrorCode}",
+                Details = new TestResultDetails { Tcp = details }
+            };
         }
     }
 
