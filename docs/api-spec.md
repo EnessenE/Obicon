@@ -6,9 +6,9 @@ http://localhost:5000
 ```
 
 ## Authentication
-All endpoints require the following header:
+All endpoints require the `Authorization` header carrying the configured API key (`ServerSettings:AuthHeader` on the server, default `secureobiconkey`):
 ```
-Authorization: uwu
+Authorization: secureobiconkey
 ```
 
 ## Endpoints

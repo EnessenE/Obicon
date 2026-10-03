@@ -38,6 +38,7 @@ builder.Services.AddOpenTelemetry()
 builder.Services.AddCors();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddControllers();
+var authHeader = builder.Configuration["ServerSettings:AuthHeader"] ?? new ServerSettings().AuthHeader;
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Obicon API", Version = "v1" });
@@ -46,7 +47,7 @@ builder.Services.AddSwaggerGen(c =>
         Type = SecuritySchemeType.ApiKey,
         In = ParameterLocation.Header,
         Name = "Authorization",
-        Description = "Enter 'uwu' for authorization"
+        Description = $"Enter '{authHeader}' for authorization"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {

@@ -24,7 +24,7 @@ All data lives in a SQLite file (`obicon.db`, in the working directory by defaul
 
 ## Authentication
 
-API requests must carry the auth header (default: `Authorization: uwu`). `/ws`, `/metrics`, and `/swagger` are exempt; the WebSocket endpoint instead authenticates nodes by their token, and `/v1/enroll` authenticates by enroll token.
+API requests must carry the auth header (default: `Authorization: secureobiconkey`). `/ws`, `/metrics`, and `/swagger` are exempt; the WebSocket endpoint instead authenticates nodes by their token, and `/v1/enroll` authenticates by enroll token.
 
 The header value and the WebSocket path are configurable (see below). The frontend's `js/api.js` already sends the header for every call.
 
@@ -35,7 +35,7 @@ Server configuration lives in `appsettings.json` (override with `ServerSettings_
 | Key | Default | Purpose |
 |-----|---------|---------|
 | `ConnectionStrings:Default` | `Data Source=obicon.db` | SQLite connection string |
-| `ServerSettings:AuthHeader` | `uwu` | Required API auth header value |
+| `ServerSettings:AuthHeader` | `secureobiconkey` | Required API auth header value |
 | `ServerSettings:MaxTestTimeoutSeconds` | `60` | Upper bound for test timeouts |
 | `ServerSettings:NodeConnectionTimeoutSeconds` | `30` | Node WebSocket connection timeout |
 | `ServerSettings:WebSocketPath` | `/ws/nodes` | Path nodes connect to |

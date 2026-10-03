@@ -36,7 +36,7 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>, IDisposable
     private static HttpClient CreateClient(ObiconServerFactory factory)
     {
         var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new("uwu");
+        client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
         return client;
     }
 

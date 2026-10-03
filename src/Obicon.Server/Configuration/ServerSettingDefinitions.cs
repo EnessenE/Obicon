@@ -54,7 +54,7 @@ public static class ServerSettingDefinitions
             Key = "AuthHeader",
             Description = "Value required in the Authorization header to access the API. Change this to use a real secret.",
             ValueType = typeof(string),
-            Default = "uwu"
+            Default = "secureobiconkey"
         },
         new ServerSettingDefinition
         {

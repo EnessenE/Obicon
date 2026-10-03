@@ -16,7 +16,7 @@ public class HttpExpectationTests : IClassFixture<ObiconServerFactory>
     public HttpExpectationTests(ObiconServerFactory factory)
     {
         _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Authorization = new("uwu");
+        _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
     }
 
     private async Task<Guid> CreateNodeAsync()

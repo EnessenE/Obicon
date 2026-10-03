@@ -24,7 +24,7 @@ public class TestMetricsTests : IClassFixture<ObiconServerFactory>
     {
         _factory = factory;
         _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Authorization = new("uwu");
+        _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
         _emitter = factory.Services.GetRequiredService<ITestMetricsEmitter>();
     }
 

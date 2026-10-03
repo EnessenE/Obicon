@@ -22,7 +22,7 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 - **Build everything:** `dotnet build Obicon.slnx`
 - **Tests:** `dotnet test tests/Obicon.Server.Tests` (xUnit with `WebApplicationFactory<Program>` integration tests, each factory instance gets an isolated temp SQLite database, plus unit tests) and `dotnet test tests/Obicon.Node.Tests` (unit tests for the node: log capture sink, logging policy, identity store). Add a test for every security-relevant behavior (e.g. enrollment disabled, forced settings, token expiry)
 - **Server:** `dotnet run --project src/Obicon.Server` → http://localhost:5000, Swagger at `/swagger`
-  - API auth: header `Authorization: uwu`. `/ws`, `/metrics`, and `/swagger` are exempt (WebSocket authenticates with the node token instead)
+  - API auth: header `Authorization: <ServerSettings:AuthHeader>` (default `secureobiconkey`; the Swagger description shows the configured value and the web UI stores its key in localStorage, prompted on the first 401). `/ws`, `/metrics`, and `/swagger` are exempt (WebSocket authenticates with the node token instead)
   - Data: SQLite file `obicon.db` in the project directory, schema created on startup. `Data/SchemaMigrator.cs` then adds any missing tables/columns with sensible defaults and applies one-time data conversions (recorded in its `SchemaMigrations` table, e.g. enum frequencies to seconds), so upgrades keep the existing `obicon.db` — no need to delete it. Only *changing* an existing column (type, rename) still requires manual migration
 - **Node:** `Node__Token="<token>" dotnet run --project src/Obicon.Node`
   - Every setting in `appsettings.json` (`Node` section) can be overridden by env vars: `Node__ServerUrl`, `Node__MaxConcurrentTests`, etc.

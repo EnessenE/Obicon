@@ -18,7 +18,7 @@ public class SettingsTests : IClassFixture<ObiconServerFactory>
     public SettingsTests(ObiconServerFactory factory)
     {
         _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Authorization = new("uwu");
+        _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
     }
 
     private async Task<Dictionary<string, JsonElement>> GetSettingsMapAsync()
@@ -98,7 +98,7 @@ public class SettingsTests : IClassFixture<ObiconServerFactory>
     public async Task AuthHeader_WrongValueIsRejected()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/nodes");
-        request.Headers.Authorization = new("definitely-not-uwu");
+        request.Headers.Authorization = new("definitely-not-the-configured-key");
 
         var response = await _client.SendAsync(request);
 
