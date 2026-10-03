@@ -15,15 +15,17 @@ separate version; its changes are listed under the server release.
 ### Server
 - Test results now carry structured details instead of the old flat stringly metrics dictionary: nodes report one typed section per test type (traceroute hops with address/status/RTT each, HTTP phase timings with certificate, DNS record lists), the server persists them on the job, and the queue API exposes them as `details`. Breaking: results stored by earlier versions keep their text output but no longer show their metrics
 
+- Per-test settings beyond the traceroute ones: ping probes per run (default 4, range 1-100), per-probe timeout (default 2000 ms), and interval between probes (default 0); HTTP(S) request method (GET or HEAD) and a follow-redirects toggle (default on); and a DNS nameserver override to query a specific resolver instead of the system's — all settable on create, edit, and dry runs with server-side validation
 - Traceroute tests are configurable per test: maximum hops (default 30), probes per hop (default 3), per-probe timeout in ms (default 2000), and reverse hostname resolution per hop (default on) — settable on create, edit, and dry runs, validated server-side (1-64 hops, 1-10 probes, 100-60000 ms)
 
 ### Frontend
-- Traceroute settings fields on test create, edit, and dry runs; the hop table shows each probe's round trip and the resolved hostname
+- Settings fields on test create, edit, and dry runs for every test type: traceroute hops/probes/hostnames, ping probes/timeout/interval (the ping result renders a per-reply table with loss and min/avg/max), HTTP method and redirects, and the DNS nameserver override
 - Queue page and dry-run results render the structured details per test type — a hop table for traceroutes, phase timings and the certificate for HTTP(S), record lists for DNS — older results show only the text output
 
 ## [Node 0.4.0] - Unreleased
 
 - Traceroute runs honor the new per-test settings — hop limit, probes per hop, per-probe timeout, and best-effort reverse hostname resolution per hop — and each hop's details now carry every probe's round trip and the resolved hostname
+- Ping runs honor the new per-test settings (probe count, per-probe timeout, interval) and report every reply plus loss and min/avg/max round trip statistics; HTTP(S) runs support HEAD requests and disabling redirect following; DNS runs can target a specific nameserver
 - DNS tests log and report more data: the nameserver answer now includes each record's TTL and the DNS response status (e.g. `NXDOMAIN`), logged per nameserver and carried in the result details
 - Test runners report structured result details with every run — traceroute sends one record per hop (address, status, roundtrip, error) instead of only a text rendering, ping/TCP send their resolution and timing fields, HTTP(S) send phase timings, TLS certificate, and check outcomes, and DNS sends the queried nameservers and the returned A/AAAA records — in a `Details` section on the TestResult message, replacing the flat `Metrics` dictionary
 

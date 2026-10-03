@@ -51,7 +51,13 @@ public abstract partial class HttpTestRunnerBase : ITestRunner
             url = $"{url}{separator}_cb={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
         }
 
-        var httpDetails = new HttpDetails { Url = url, ProxyUrl = assignment.ProxyUrl };
+        var httpDetails = new HttpDetails
+        {
+            Url = url,
+            Method = string.Equals(assignment.HttpMethod, "HEAD", StringComparison.OrdinalIgnoreCase) ? "HEAD" : "GET",
+            ProxyUrl = assignment.ProxyUrl
+        };
+        var followRedirects = assignment.FollowRedirects ?? true;
         var host = new Uri(url).Host;
 
         X509Certificate2? serverCertificate = null;
@@ -64,7 +70,7 @@ public abstract partial class HttpTestRunnerBase : ITestRunner
             // timing ConnectCallback is skipped; the total duration still covers the whole run
             handler = new SocketsHttpHandler
             {
-                AllowAutoRedirect = true,
+                AllowAutoRedirect = followRedirects,
                 Proxy = new WebProxy(assignment.ProxyUrl),
                 UseProxy = true
             };
@@ -73,7 +79,7 @@ public abstract partial class HttpTestRunnerBase : ITestRunner
         {
             handler = new SocketsHttpHandler
             {
-                AllowAutoRedirect = true,
+                AllowAutoRedirect = followRedirects,
                 ConnectCallback = async (context, ct) =>
                 {
                     var dnsStopwatch = Stopwatch.StartNew();
@@ -136,7 +142,9 @@ public abstract partial class HttpTestRunnerBase : ITestRunner
         var totalStopwatch = Stopwatch.StartNew();
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var request = new HttpRequestMessage(
+                string.Equals(httpDetails.Method, "HEAD", StringComparison.OrdinalIgnoreCase) ? HttpMethod.Head : HttpMethod.Get,
+                url);
 
             // Custom headers from the test configuration, e.g. authentication headers
             if (assignment.Headers is { Count: > 0 } headers)

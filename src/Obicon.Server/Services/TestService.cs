@@ -132,6 +132,12 @@ public partial class TestService : ITestService
             test.TracerouteQueriesPerHop = request.TracerouteQueriesPerHop;
             test.TracerouteQueryTimeoutMs = request.TracerouteQueryTimeoutMs;
             test.TracerouteResolveHostnames = request.TracerouteResolveHostnames;
+            test.PingCount = request.PingCount;
+            test.PingTimeoutMs = request.PingTimeoutMs;
+            test.PingIntervalMs = request.PingIntervalMs;
+            test.HttpMethod = request.HttpMethod;
+            test.FollowRedirects = request.FollowRedirects;
+            test.DnsNameserver = request.DnsNameserver;
             test.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
@@ -438,7 +444,13 @@ public partial class TestService : ITestService
                     TracerouteMaxHops = request.TracerouteMaxHops,
                     TracerouteQueriesPerHop = request.TracerouteQueriesPerHop,
                     TracerouteQueryTimeoutMs = request.TracerouteQueryTimeoutMs,
-                    TracerouteResolveHostnames = request.TracerouteResolveHostnames
+                    TracerouteResolveHostnames = request.TracerouteResolveHostnames,
+                    PingCount = request.PingCount,
+                    PingTimeoutMs = request.PingTimeoutMs,
+                    PingIntervalMs = request.PingIntervalMs,
+                    HttpMethod = request.HttpMethod,
+                    FollowRedirects = request.FollowRedirects,
+                    DnsNameserver = request.DnsNameserver
                 }));
             }
             return created;
@@ -544,6 +556,12 @@ public partial class TestService : ITestService
         TracerouteQueriesPerHop = test.TracerouteQueriesPerHop,
         TracerouteQueryTimeoutMs = test.TracerouteQueryTimeoutMs,
         TracerouteResolveHostnames = test.TracerouteResolveHostnames,
+        PingCount = test.PingCount,
+        PingTimeoutMs = test.PingTimeoutMs,
+        PingIntervalMs = test.PingIntervalMs,
+        HttpMethod = test.HttpMethod,
+        FollowRedirects = test.FollowRedirects,
+        DnsNameserver = test.DnsNameserver,
         CreatedAt = test.CreatedAt,
         UpdatedAt = test.UpdatedAt
     };

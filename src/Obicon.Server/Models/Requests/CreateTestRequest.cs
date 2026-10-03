@@ -126,4 +126,43 @@ public class CreateTestRequest
     /// effort). Null uses the default (true). Default: null.
     /// </summary>
     public bool? TracerouteResolveHostnames { get; set; }
+    /// <summary>
+    /// Ping: probes sent per run, each with its own round trip time. Null uses the
+    /// default (4). Range: 1-100. Default: null.
+    /// </summary>
+    [Range(1, 100)]
+    public int? PingCount { get; set; }
+
+    /// <summary>
+    /// Ping: milliseconds to wait for each probe's reply. Null uses the default (2000).
+    /// Range: 100-60000. Default: null.
+    /// </summary>
+    [Range(100, 60_000)]
+    public int? PingTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Ping: milliseconds to wait between probes. Null uses the default (0, no wait).
+    /// Range: 0-10000. Default: null.
+    /// </summary>
+    [Range(0, 10_000)]
+    public int? PingIntervalMs { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: request method, "GET" or "HEAD". Null uses the default ("GET").
+    /// Default: null.
+    /// </summary>
+    [RegularExpression("^(GET|HEAD)$", ErrorMessage = "The HttpMethod field must be GET or HEAD.")]
+    public string? HttpMethod { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: when true, redirects are followed up to the handler's limit. Null
+    /// uses the default (true). Default: null.
+    /// </summary>
+    public bool? FollowRedirects { get; set; }
+
+    /// <summary>
+    /// DNS: address of the nameserver to query instead of the system's, e.g. "8.8.8.8".
+    /// Null uses the system nameservers. Default: null.
+    /// </summary>
+    public string? DnsNameserver { get; set; }
 }

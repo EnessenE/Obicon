@@ -114,6 +114,41 @@ public class TestResponse
     /// effort). Null uses the default (true). Default: null.
     /// </summary>
     public bool? TracerouteResolveHostnames { get; set; }
+    /// <summary>
+    /// Ping: probes sent per run, each with its own round trip time. Null uses the
+    /// default (4). Default: null.
+    /// </summary>
+    public int? PingCount { get; set; }
+
+    /// <summary>
+    /// Ping: milliseconds to wait for each probe's reply. Null uses the default
+    /// (2000). Default: null.
+    /// </summary>
+    public int? PingTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Ping: milliseconds to wait between probes. Null uses the default (0, no wait).
+    /// Default: null.
+    /// </summary>
+    public int? PingIntervalMs { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: request method, "GET" or "HEAD". Null uses the default ("GET").
+    /// Default: null.
+    /// </summary>
+    public string? HttpMethod { get; set; }
+
+    /// <summary>
+    /// HTTP/HTTPS: when true, redirects are followed up to the handler's limit. Null
+    /// uses the default (true). Default: null.
+    /// </summary>
+    public bool? FollowRedirects { get; set; }
+
+    /// <summary>
+    /// DNS: address of the nameserver to query instead of the system's, e.g. "8.8.8.8".
+    /// Null uses the system nameservers. Default: null.
+    /// </summary>
+    public string? DnsNameserver { get; set; }
 
     /// <summary>
     /// Timestamp when the test was created.

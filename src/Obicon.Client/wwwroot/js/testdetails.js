@@ -85,16 +85,37 @@ function renderTracerouteDetails(traceroute) {
 }
 
 function renderPingDetails(ping) {
-    return tdPairs([
+    const stats = tdPairs([
         tdPair('resolved', ping.resolvedAddress),
         tdPair('dns', tdMs(ping.dnsMs)),
         tdPair('reply from', ping.replyAddress),
         tdPair('status', ping.replyStatus),
-        tdPair('roundtrip', tdMs(ping.roundtripMs)),
+        tdPair('sent', ping.sent),
+        tdPair('received', ping.received),
+        tdPair('loss', ping.lossPercent != null ? ping.lossPercent + '%' : null),
+        tdPair('min/avg/max', ping.minRoundtripMs != null ? `${ping.minRoundtripMs}/${ping.avgRoundtripMs}/${ping.maxRoundtripMs} ms` : null),
         tdPair('ttl', ping.ttl),
         tdPair('wall clock', tdMs(ping.wallclockMs)),
         tdPair('error', ping.error)
     ]);
+
+    const rows = (ping.replies || []).map((reply, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td class="text-break">${tdEscapeHtml(reply.replyAddress || '*')}</td>
+            <td>${tdEscapeHtml(reply.replyStatus)}</td>
+            <td>${reply.roundtripMs != null ? tdEscapeHtml(tdMs(reply.roundtripMs)) : '-'}</td>
+            <td>${reply.ttl != null ? tdEscapeHtml(reply.ttl) : '-'}</td>
+        </tr>`).join('');
+
+    return `
+        <div class="mt-1">
+            ${stats}
+            ${rows ? `<table class="table table-sm table-striped small mb-0 mt-1">
+                <thead><tr><th>#</th><th>Reply from</th><th>Status</th><th>RTT</th><th>TTL</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>` : ''}
+        </div>`;
 }
 
 function renderTcpDetails(tcp) {
@@ -121,6 +142,7 @@ function renderHttpDetails(http) {
     return `
         <div class="mt-1">
             ${tdPairs([
+                tdPair('method', http.method),
                 tdPair('status', http.statusCode != null ? `${http.statusCode} ${http.reasonPhrase || ''}`.trim() : null),
                 tdPair('resolved', http.resolvedAddress),
                 tdPair('dns', tdMs(http.dnsMs)),

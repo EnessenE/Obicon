@@ -135,6 +135,35 @@
                                     <label class="form-check-label" for="tracerouteResolveHostnames" title="Resolves each hop's address to a hostname (best effort)">Resolve hop hostnames</label>
                                 </div>
                             </div>
+                            <div class="col-md-6 ping-expectation">
+                                <label class="form-label mb-1">Probes <span class="text-muted">(empty = 4)</span></label>
+                                <input id="pingCount" type="number" min="1" max="100" class="form-control" placeholder="4">
+                            </div>
+                            <div class="col-md-6 ping-expectation">
+                                <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                                <input id="pingTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                            </div>
+                            <div class="col-md-6 ping-expectation">
+                                <label class="form-label mb-1">Interval between probes (ms) <span class="text-muted">(empty = 0)</span></label>
+                                <input id="pingIntervalMs" type="number" min="0" max="10000" class="form-control" placeholder="0">
+                            </div>
+                            <div class="col-md-6 http-expectation">
+                                <label class="form-label mb-1">Method</label>
+                                <select id="httpMethod" class="form-select">
+                                    <option value="">GET (default)</option>
+                                    <option value="HEAD">HEAD</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 http-expectation d-flex align-items-end">
+                                <div class="form-check">
+                                    <input id="followRedirects" type="checkbox" class="form-check-input" checked>
+                                    <label class="form-check-label" for="followRedirects" title="When off, a redirect response itself is checked against the expected status codes">Follow redirects</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 dns-expectation">
+                                <label class="form-label mb-1">Nameserver <span class="text-muted">(empty = system resolvers)</span></label>
+                                <input id="dnsNameserver" class="form-control" placeholder="8.8.8.8">
+                            </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mt-3">
                             <button class="btn btn-primary" onclick="createTest()"><i class="bi bi-plus-lg me-1"></i>Create Test</button>
@@ -253,6 +282,26 @@
                             </div>
                         </div>
                     </div>
+                    <div class="row g-3 mb-2 ping-expectation">
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Probes <span class="text-muted">(empty = 4)</span></label>
+                            <input id="editPingCount" type="number" min="1" max="100" class="form-control" placeholder="4">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                            <input id="editPingTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Interval (ms) <span class="text-muted">(empty = 0)</span></label>
+                            <input id="editPingIntervalMs" type="number" min="0" max="10000" class="form-control" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-2 dns-expectation">
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Nameserver <span class="text-muted">(empty = system resolvers)</span></label>
+                            <input id="editDnsNameserver" class="form-control" placeholder="8.8.8.8">
+                        </div>
+                    </div>
                     <div class="row g-3 mb-2 http-expectation">
                         <div class="col-md-3">
                             <label class="form-label mb-1">Body must match regex</label>
@@ -270,6 +319,19 @@
                             <div class="form-check">
                                 <input id="editCacheBust" type="checkbox" class="form-check-input">
                                 <label class="form-check-label" for="editCacheBust">Cache busting</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Method</label>
+                            <select id="editHttpMethod" class="form-select">
+                                <option value="">GET (default)</option>
+                                <option value="HEAD">HEAD</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-center">
+                            <div class="form-check">
+                                <input id="editFollowRedirects" type="checkbox" class="form-check-input" checked>
+                                <label class="form-check-label" for="editFollowRedirects" title="When off, a redirect response itself is checked against the expected status codes">Follow redirects</label>
                             </div>
                         </div>
                     </div>
@@ -304,7 +366,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=4"></script>
-    <script src="js/testdetails.js?v=2"></script>
-    <script src="js/tests.js?v=14"></script>
+    <script src="js/testdetails.js?v=3"></script>
+    <script src="js/tests.js?v=15"></script>
 </body>
 </html>

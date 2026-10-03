@@ -13,6 +13,11 @@ public class HttpDetails
     public string Url { get; set; } = string.Empty;
 
     /// <summary>
+    /// Request method used, "GET" or "HEAD". Default: empty string.
+    /// </summary>
+    public string Method { get; set; } = string.Empty;
+
+    /// <summary>
     /// Final URL after redirects. Default: null.
     /// </summary>
     public string? FinalUrl { get; set; }

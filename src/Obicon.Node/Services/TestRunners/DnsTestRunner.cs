@@ -50,7 +50,7 @@ public partial class DnsTestRunner : ITestRunner
             };
         }
 
-        var nameservers = DnsQueryClient.GetSystemNameservers();
+        var nameservers = await ResolveNameserversAsync(assignment, cancellationToken);
         if (nameservers.Count > 0)
         {
             details.NameserversQueried = nameservers.Select(n => n.ToString()).ToList();
@@ -138,6 +138,27 @@ public partial class DnsTestRunner : ITestRunner
         }
     }
 
+    /// <summary>
+    /// The nameservers to query: the test's override when it names one, otherwise the
+    /// system's.
+    /// </summary>
+    private async Task<List<IPAddress>> ResolveNameserversAsync(TestAssignmentMessage assignment, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(assignment.DnsNameserver))
+        {
+            return DnsQueryClient.GetSystemNameservers();
+        }
+
+        LogUsingNameserverOverride(assignment.Target, assignment.DnsNameserver);
+        if (IPAddress.TryParse(assignment.DnsNameserver, out var literal))
+        {
+            return [literal];
+        }
+
+        var resolved = await HostResolver.ResolveAsync(assignment.DnsNameserver, IpVersion.Any, cancellationToken);
+        return resolved == null ? [] : [resolved];
+    }
+
     private static List<string> Filter(NameserverResult result, IpVersion ipVersion)
     {
         return ipVersion switch
@@ -200,6 +221,9 @@ public partial class DnsTestRunner : ITestRunner
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Querying {Count} nameserver(s) for {Host}: {Nameservers}")]
     private partial void LogQueryingNameservers(int count, string host, string nameservers);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Querying {Host} via the configured nameserver {Nameserver}")]
+    private partial void LogUsingNameserverOverride(string host, string nameserver);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Nameserver {Nameserver} failed: {Error}")]
     private partial void LogNameserverFailed(IPAddress nameserver, string? error);

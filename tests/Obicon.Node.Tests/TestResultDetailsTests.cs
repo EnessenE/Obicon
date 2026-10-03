@@ -62,7 +62,18 @@ public class TestResultDetailsTests
                     ReplyStatus = "Success",
                     RoundtripMs = 12,
                     Ttl = 57,
-                    WallclockMs = 13.5
+                    WallclockMs = 13.5,
+                    Sent = 4,
+                    Received = 3,
+                    LossPercent = 25,
+                    MinRoundtripMs = 10,
+                    MaxRoundtripMs = 14,
+                    AvgRoundtripMs = 12,
+                    Replies =
+                    [
+                        new PingReply { ReplyAddress = "93.184.216.34", ReplyStatus = "Success", RoundtripMs = 10, Ttl = 57 },
+                        new PingReply { ReplyStatus = "TimedOut" }
+                    ]
                 },
                 Tcp = new TcpDetails
                 {
@@ -76,6 +87,7 @@ public class TestResultDetailsTests
                 Http = new HttpDetails
                 {
                     Url = "https://example.com",
+                    Method = "HEAD",
                     FinalUrl = "https://example.com/",
                     StatusCode = 200,
                     ReasonPhrase = "OK",
@@ -145,12 +157,19 @@ public class TestResultDetailsTests
         var ping = Assert.IsType<PingDetails>(details.Ping);
         Assert.Equal("Success", ping.ReplyStatus);
         Assert.Equal(57, ping.Ttl);
+        Assert.Equal(4, ping.Sent);
+        Assert.Equal(3, ping.Received);
+        Assert.Equal(25, ping.LossPercent);
+        Assert.Equal(12, ping.AvgRoundtripMs);
+        Assert.Equal(2, ping.Replies.Count);
+        Assert.Null(Assert.Single(ping.Replies, r => r.ReplyStatus == "TimedOut").RoundtripMs);
 
         var tcp = Assert.IsType<TcpDetails>(details.Tcp);
         Assert.Equal(443, tcp.Port);
         Assert.Equal(30.25, tcp.ConnectMs);
 
         var http = Assert.IsType<HttpDetails>(details.Http);
+        Assert.Equal("HEAD", http.Method);
         Assert.Equal(200, http.StatusCode);
         Assert.True(http.BodyMatched);
         var certificate = Assert.IsType<CertificateDetails>(http.Certificate);

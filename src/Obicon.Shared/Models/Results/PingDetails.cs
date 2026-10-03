@@ -52,4 +52,68 @@ public class PingDetails
     /// Error text when resolution failed, e.g. the socket error code. Default: null.
     /// </summary>
     public string? Error { get; set; }
+
+    /// <summary>
+    /// One record per probe sent, in order. Default: empty list.
+    /// </summary>
+    public List<PingReply> Replies { get; set; } = [];
+
+    /// <summary>
+    /// Probes sent. Default: 0.
+    /// </summary>
+    public int Sent { get; set; }
+
+    /// <summary>
+    /// Probes that received a successful reply. Default: 0.
+    /// </summary>
+    public int Received { get; set; }
+
+    /// <summary>
+    /// Share of probes that got no reply, 0-100. Default: 0.
+    /// </summary>
+    public double LossPercent { get; set; }
+
+    /// <summary>
+    /// Shortest successful round trip in milliseconds. Null when nothing was
+    /// received. Default: null.
+    /// </summary>
+    public double? MinRoundtripMs { get; set; }
+
+    /// <summary>
+    /// Longest successful round trip in milliseconds. Null when nothing was
+    /// received. Default: null.
+    /// </summary>
+    public double? MaxRoundtripMs { get; set; }
+
+    /// <summary>
+    /// Average successful round trip in milliseconds. Null when nothing was
+    /// received. Default: null.
+    /// </summary>
+    public double? AvgRoundtripMs { get; set; }
+}
+
+/// <summary>
+/// One ping probe's reply.
+/// </summary>
+public class PingReply
+{
+    /// <summary>
+    /// Address the reply came from. Null when nothing was received. Default: null.
+    /// </summary>
+    public string? ReplyAddress { get; set; }
+
+    /// <summary>
+    /// Reply status, e.g. "Success" or "TimedOut". Default: empty string.
+    /// </summary>
+    public string ReplyStatus { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Roundtrip time in milliseconds. Null when nothing was received. Default: null.
+    /// </summary>
+    public double? RoundtripMs { get; set; }
+
+    /// <summary>
+    /// Time to live of the reply packet. Null when not reported. Default: null.
+    /// </summary>
+    public int? Ttl { get; set; }
 }

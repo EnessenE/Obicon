@@ -201,6 +201,8 @@ function updateExpectationVisibility() {
         el.style.display = (type === 5) ? '' : 'none');
     document.querySelectorAll('.traceroute-expectation').forEach(el =>
         el.style.display = (type === 1) ? '' : 'none');
+    document.querySelectorAll('.ping-expectation').forEach(el =>
+        el.style.display = (type === 0) ? '' : 'none');
 }
 
 // Same for the edit modal, driven by its own type select
@@ -210,6 +212,8 @@ function updateEditExpectationVisibility() {
         el.style.display = (type === 2 || type === 3) ? '' : 'none');
     document.querySelectorAll('#editTestModal .traceroute-expectation').forEach(el =>
         el.style.display = (type === 1) ? '' : 'none');
+    document.querySelectorAll('#editTestModal .ping-expectation').forEach(el =>
+        el.style.display = (type === 0) ? '' : 'none');
 }
 
 function getSelectedNodeIds() {
@@ -318,6 +322,26 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         tracerouteResolveHostnames = document.getElementById('tracerouteResolveHostnames').checked ? null : false;
     }
 
+    // Ping extras: empty inputs mean the node defaults
+    let pingCount = null;
+    let pingTimeoutMs = null;
+    let pingIntervalMs = null;
+    if (type === 0) {
+        pingCount = parseIntOrNull(document.getElementById('pingCount').value);
+        pingTimeoutMs = parseIntOrNull(document.getElementById('pingTimeoutMs').value);
+        pingIntervalMs = parseIntOrNull(document.getElementById('pingIntervalMs').value);
+    }
+
+    // HTTP method and redirect handling ride along with the HTTP extras
+    let httpMethod = null;
+    let followRedirects = null;
+    if (type === 2 || type === 3) {
+        httpMethod = document.getElementById('httpMethod').value || null;
+        followRedirects = document.getElementById('followRedirects').checked ? null : false;
+    }
+
+    const dnsNameserver = document.getElementById('dnsNameserver').value.trim() || null;
+
     return {
         name, target, type, frequency, isActive, nodeIds, poolIds, ipVersion, timeoutSeconds,
         expectedStatusCodes,
@@ -330,7 +354,13 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         tracerouteMaxHops,
         tracerouteQueriesPerHop,
         tracerouteQueryTimeoutMs,
-        tracerouteResolveHostnames
+        tracerouteResolveHostnames,
+        pingCount,
+        pingTimeoutMs,
+        pingIntervalMs,
+        httpMethod,
+        followRedirects,
+        dnsNameserver
     };
 }
 
@@ -435,7 +465,13 @@ async function createTest() {
             tracerouteMaxHops: values.tracerouteMaxHops,
             tracerouteQueriesPerHop: values.tracerouteQueriesPerHop,
             tracerouteQueryTimeoutMs: values.tracerouteQueryTimeoutMs,
-            tracerouteResolveHostnames: values.tracerouteResolveHostnames
+            tracerouteResolveHostnames: values.tracerouteResolveHostnames,
+            pingCount: values.pingCount,
+            pingTimeoutMs: values.pingTimeoutMs,
+            pingIntervalMs: values.pingIntervalMs,
+            httpMethod: values.httpMethod,
+            followRedirects: values.followRedirects,
+            dnsNameserver: values.dnsNameserver
         });
 
         // Reset form
@@ -456,6 +492,12 @@ async function createTest() {
         document.getElementById('tracerouteQueriesPerHop').value = '';
         document.getElementById('tracerouteQueryTimeoutMs').value = '';
         document.getElementById('tracerouteResolveHostnames').checked = true;
+        document.getElementById('pingCount').value = '';
+        document.getElementById('pingTimeoutMs').value = '';
+        document.getElementById('pingIntervalMs').value = '';
+        document.getElementById('httpMethod').value = '';
+        document.getElementById('followRedirects').checked = true;
+        document.getElementById('dnsNameserver').value = '';
         document.querySelectorAll('.node-checkbox:checked, .pool-checkbox:checked').forEach(cb => cb.checked = false);
         updateExpectationVisibility();
 
@@ -507,7 +549,13 @@ async function runOnRandomNode() {
             tracerouteMaxHops: values.tracerouteMaxHops,
             tracerouteQueriesPerHop: values.tracerouteQueriesPerHop,
             tracerouteQueryTimeoutMs: values.tracerouteQueryTimeoutMs,
-            tracerouteResolveHostnames: values.tracerouteResolveHostnames
+            tracerouteResolveHostnames: values.tracerouteResolveHostnames,
+            pingCount: values.pingCount,
+            pingTimeoutMs: values.pingTimeoutMs,
+            pingIntervalMs: values.pingIntervalMs,
+            httpMethod: values.httpMethod,
+            followRedirects: values.followRedirects,
+            dnsNameserver: values.dnsNameserver
         });
 
         // One job per selected node (direct picks plus the top pool members); poll all
@@ -584,6 +632,12 @@ function openTestEditModal(test) {
     document.getElementById('editTracerouteQueriesPerHop').value = test.tracerouteQueriesPerHop ?? '';
     document.getElementById('editTracerouteQueryTimeoutMs').value = test.tracerouteQueryTimeoutMs ?? '';
     document.getElementById('editTracerouteResolveHostnames').checked = test.tracerouteResolveHostnames !== false;
+    document.getElementById('editPingCount').value = test.pingCount ?? '';
+    document.getElementById('editPingTimeoutMs').value = test.pingTimeoutMs ?? '';
+    document.getElementById('editPingIntervalMs').value = test.pingIntervalMs ?? '';
+    document.getElementById('editHttpMethod').value = test.httpMethod || '';
+    document.getElementById('editFollowRedirects').checked = test.followRedirects !== false;
+    document.getElementById('editDnsNameserver').value = test.dnsNameserver || '';
     document.getElementById('editIsActive').checked = test.isActive;
     document.getElementById('editError').style.display = 'none';
     updateEditExpectationVisibility();
@@ -679,6 +733,26 @@ async function saveTestEdit() {
         tracerouteResolveHostnames = document.getElementById('editTracerouteResolveHostnames').checked ? null : false;
     }
 
+    // Ping extras, read from the modal's own fields
+    let pingCount = null;
+    let pingTimeoutMs = null;
+    let pingIntervalMs = null;
+    if (type === 0) {
+        pingCount = parseIntOrNull(document.getElementById('editPingCount').value);
+        pingTimeoutMs = parseIntOrNull(document.getElementById('editPingTimeoutMs').value);
+        pingIntervalMs = parseIntOrNull(document.getElementById('editPingIntervalMs').value);
+    }
+
+    // HTTP method and redirect handling, read from the modal's own fields
+    let httpMethod = null;
+    let followRedirects = null;
+    if (type === 2 || type === 3) {
+        httpMethod = document.getElementById('editHttpMethod').value || null;
+        followRedirects = document.getElementById('editFollowRedirects').checked ? null : false;
+    }
+
+    const dnsNameserver = document.getElementById('editDnsNameserver').value.trim() || null;
+
     try {
         await apiCall('PUT', `/v1/tests/${editingTest.id}`, {
             type,
@@ -701,7 +775,13 @@ async function saveTestEdit() {
             tracerouteMaxHops,
             tracerouteQueriesPerHop,
             tracerouteQueryTimeoutMs,
-            tracerouteResolveHostnames
+            tracerouteResolveHostnames,
+            pingCount,
+            pingTimeoutMs,
+            pingIntervalMs,
+            httpMethod,
+            followRedirects,
+            dnsNameserver
         });
 
         editTestModal.hide();

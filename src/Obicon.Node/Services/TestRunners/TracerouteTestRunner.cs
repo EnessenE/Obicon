@@ -63,7 +63,7 @@ public partial class TracerouteTestRunner : ITestRunner
             cancellationToken.ThrowIfCancellationRequested();
 
             // One hop = several probes; classic traceroute reports each probe's round trip
-            var replies = new List<PingReply>(queriesPerHop);
+            var replies = new List<System.Net.NetworkInformation.PingReply>(queriesPerHop);
             for (var query = 0; query < queriesPerHop; query++)
             {
                 var options = new PingOptions { Ttl = ttl, DontFragment = true };
@@ -110,7 +110,7 @@ public partial class TracerouteTestRunner : ITestRunner
     /// Builds the hop record from the probes: one entry per probe with its own
     /// round trip, and the average of the answered ones on the hop itself.
     /// </summary>
-    private static TracerouteHop BuildHop(int ttl, List<PingReply> replies)
+    private static TracerouteHop BuildHop(int ttl, List<System.Net.NetworkInformation.PingReply> replies)
     {
         var hop = new TracerouteHop
         {
