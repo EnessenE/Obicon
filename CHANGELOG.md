@@ -10,6 +10,19 @@ The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
 
+## [Server 0.3.1] - Unreleased
+
+### Server
+- Coding standard: the repo now adheres to the C# Coding Guidelines (csharpcodingguidelines.com) — enforced by a root `.editorconfig` (naming and style rules, warnings in CLI builds) and a new `coding-guidelines` CI job that verifies formatting (`dotnet format`) and builds with warnings-as-errors. The full codebase was cleaned up to pass it: every log call is a source-generated `[LoggerMessage]` partial method (145 sites), culture-sensitive conversions specify `CultureInfo.InvariantCulture`, shared state classes expose properties instead of public fields, and `SqliteWriteQueue` disposes correctly
+- The server's console sink moved from code to `appsettings.json` (`Serilog:WriteTo`, invariant culture), mirroring the node; when the section defines no sinks, the previous built-in default (plain console, invariant culture) takes over
+- The API auth key (`ServerSettings:AuthHeader`, now defaulting to `secureobiconkey` instead of the placeholder `uwu`) is no longer hardcoded outside its defaults: the Swagger auth description shows the configured value, and the web UI keeps its key in localStorage (prompted on the first 401) so a deployment with a changed key can still use the UI. A deployment that sets `AuthHeader` in its configuration is unaffected; one relying on the built-in default moves to the new key on upgrade
+
+## [Node 0.3.1] - Unreleased
+
+- Same guidelines cleanup as the server: source-generated `[LoggerMessage]` logging throughout, invariant culture on all conversions, the node's shared state classes (`NodeStatistics`, `NodeAddressState`, `NodeLoggingState`) encapsulated behind properties with thread-safe mutators, `TestExecutor` disposes its semaphore, and the node identity file reads use `nameof`
+- The `tls_cipher` metric now reports the negotiated TLS cipher suite (e.g. `Tls13Aes128GcmSha256`) instead of the legacy `SslStream.CipherAlgorithm` value, which is obsolete and returns `None` on TLS 1.3
+- The node's console log format moved from code to `appsettings.json`: the `Serilog:ConsoleSink` section defines the sink's level, output template, and invariant culture, read through `Serilog.Settings.Configuration`; the mute wrapper stays in code because the local-logging policy is runtime state, and a missing or empty section falls back to the built-in default (same template, level, and culture)
+
 ## [Server 0.3.0] - 2026-10-01
 
 ### Server

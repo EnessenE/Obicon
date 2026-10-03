@@ -1,0 +1,18 @@
+<Project>
+
+  <!--
+    Shared across all projects: surfaces the C# Coding Guidelines rules from
+    the root .editorconfig in CLI builds and enables the .NET analyzer rules
+    at recommended severity. The coding-guidelines CI job builds with
+    -warnaserror, so every warning listed here fails the pipeline.
+  -->
+  <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Required for IDE0005 (unnecessary usings) to fire in CLI builds; the
+         repo documents models/DTOs only, so missing docs elsewhere are fine -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

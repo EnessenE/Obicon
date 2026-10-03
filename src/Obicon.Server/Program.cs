@@ -1,9 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
-using OpenTelemetry;
-using OpenTelemetry.Metrics;
 using Obicon.Server.BackgroundServices;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
@@ -12,13 +11,21 @@ using Obicon.Server.Metrics;
 using Obicon.Server.Middleware;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
+using OpenTelemetry.Metrics;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, services, configuration) => configuration
-    .WriteTo.Console()
-    .ReadFrom.Configuration(context.Configuration));
+builder.Host.UseSerilog((context, services, configuration) =>
+{
+    configuration.ReadFrom.Configuration(context.Configuration);
+
+    // Default when appsettings.json defines no sinks: plain console, invariant culture
+    if (!context.Configuration.GetSection("Serilog:WriteTo").GetChildren().Any())
+    {
+        configuration.WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
+    }
+});
 
 builder.Services.AddOpenTelemetry()
     .WithMetrics(b => b
@@ -31,6 +38,7 @@ builder.Services.AddOpenTelemetry()
 builder.Services.AddCors();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddControllers();
+var authHeader = builder.Configuration["ServerSettings:AuthHeader"] ?? new ServerSettings().AuthHeader;
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Obicon API", Version = "v1" });
@@ -39,11 +47,11 @@ builder.Services.AddSwaggerGen(c =>
         Type = SecuritySchemeType.ApiKey,
         In = ParameterLocation.Header,
         Name = "Authorization",
-        Description = "Enter 'uwu' for authorization"
+        Description = $"Enter '{authHeader}' for authorization"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Authorization" } }, new string[] {} }
+        { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Authorization" } }, Array.Empty<string>() }
     });
 });
 builder.Services.AddSingleton<INodeService, NodeService>();
@@ -114,7 +122,7 @@ app.MapHealthChecks("/v1/health", new HealthCheckOptions
 });
 app.MapPrometheusScrapingEndpoint();
 
-app.Logger.LogInformation("Obicon Server v{Version} starting", ServerInfo.Version);
+ProgramLog.LogServerStarting(app.Logger, ServerInfo.Version);
 
 app.Run();
 

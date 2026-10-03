@@ -10,7 +10,7 @@ namespace Obicon.Server.Data;
 /// Each queued unit runs with its own DbContext, so a unit must perform its whole
 /// read-modify-write itself; entities must not cross the queue boundary.
 /// </summary>
-public class SqliteWriteQueue : IDisposable
+public partial class SqliteWriteQueue : IDisposable
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly ILogger<SqliteWriteQueue> _logger;
@@ -71,7 +71,7 @@ public class SqliteWriteQueue : IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Queued SQLite write failed");
+                LogWriteFailed(ex);
                 item.Completion.TrySetException(ex);
             }
         }
@@ -79,6 +79,7 @@ public class SqliteWriteQueue : IDisposable
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
         // Stop accepting writes and give the consumer time to finish what is queued
         _queue.CompleteAdding();
         try
@@ -87,7 +88,7 @@ public class SqliteWriteQueue : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "SQLite write queue did not drain cleanly within the shutdown window");
+            LogDrainFailed(ex);
         }
         _queue.Dispose();
     }
@@ -104,4 +105,10 @@ public class SqliteWriteQueue : IDisposable
         /// </summary>
         public TaskCompletionSource<object?> Completion = null!;
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Queued SQLite write failed")]
+    private partial void LogWriteFailed(System.Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "SQLite write queue did not drain cleanly within the shutdown window")]
+    private partial void LogDrainFailed(System.Exception exception);
 }

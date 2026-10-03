@@ -3,9 +3,9 @@ namespace Obicon.Server.Configuration;
 public class ServerSettings
 {
     /// <summary>
-    /// Authorization header value required for API access. Default: "uwu".
+    /// Authorization header value required for API access. Default: "secureobiconkey".
     /// </summary>
-    public string AuthHeader { get; set; } = "uwu";
+    public string AuthHeader { get; set; } = "secureobiconkey";
 
     /// <summary>
     /// Maximum timeout in seconds for test execution. Default: 60.

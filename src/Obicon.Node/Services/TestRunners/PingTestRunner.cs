@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -10,7 +11,7 @@ namespace Obicon.Node.Services.TestRunners;
 /// <summary>
 /// ICMP ping test.
 /// </summary>
-public class PingTestRunner : ITestRunner
+public partial class PingTestRunner : ITestRunner
 {
     private readonly ILogger<PingTestRunner> _logger;
 
@@ -38,7 +39,7 @@ public class PingTestRunner : ITestRunner
 
             if (address == null)
             {
-                _logger.LogWarning("{Target} has no {Family} address", assignment.Target, HostResolver.FamilyName(assignment.IpVersion));
+                LogNoAddress(assignment.Target, HostResolver.FamilyName(assignment.IpVersion));
                 return new TestOutcome
                 {
                     Success = false,
@@ -49,7 +50,7 @@ public class PingTestRunner : ITestRunner
 
             metrics["resolved"] = address.ToString();
             metrics["dns_ms"] = Math.Round(dnsStopwatch.Elapsed.TotalMilliseconds, 2);
-            _logger.LogInformation("Resolved {Target} to {Address} in {DnsMs:F1} ms", assignment.Target, address, dnsStopwatch.Elapsed.TotalMilliseconds);
+            LogResolved(assignment.Target, address, dnsStopwatch.Elapsed.TotalMilliseconds);
         }
         catch (SocketException ex)
         {
@@ -64,13 +65,21 @@ public class PingTestRunner : ITestRunner
         metrics["reply_from"] = reply.Address.ToString();
         metrics["reply_status"] = reply.Status.ToString();
         metrics["roundtrip_ms"] = reply.RoundtripTime;
-        metrics["ttl"] = reply.Options?.Ttl.ToString() ?? "";
+        metrics["ttl"] = reply.Options?.Ttl.ToString(CultureInfo.InvariantCulture) ?? "";
         metrics["wallclock_ms"] = Math.Round(pingStopwatch.Elapsed.TotalMilliseconds, 2);
-        _logger.LogInformation("Ping reply from {Address}: status={Status} roundtrip={Roundtrip}ms ttl={Ttl}",
-            reply.Address, reply.Status, reply.RoundtripTime, reply.Options?.Ttl);
+        LogPingReply(reply.Address, reply.Status, reply.RoundtripTime, reply.Options?.Ttl);
 
         return reply.Status == IPStatus.Success
             ? new TestOutcome { Success = true, Output = $"Reply from {reply.Address}: time={reply.RoundtripTime}ms ttl={reply.Options?.Ttl}", Metrics = metrics }
             : new TestOutcome { Success = false, Output = $"Ping failed: {reply.Status}", Metrics = metrics };
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Target} has no {Family} address")]
+    private partial void LogNoAddress(string target, string family);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resolved {Target} to {Address} in {DnsMs:F1} ms")]
+    private partial void LogResolved(string target, IPAddress address, double dnsMs);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Ping reply from {Address}: status={Status} roundtrip={Roundtrip}ms ttl={Ttl}")]
+    private partial void LogPingReply(IPAddress address, IPStatus status, long roundtrip, int? ttl);
 }

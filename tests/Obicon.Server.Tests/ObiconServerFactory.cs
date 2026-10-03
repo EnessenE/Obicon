@@ -11,6 +11,12 @@ namespace Obicon.Server.Tests;
 public class ObiconServerFactory : WebApplicationFactory<Program>
 {
     /// <summary>
+    /// The API auth header value forced onto the test server, so tests never depend
+    /// on the appsettings default.
+    /// </summary>
+    public const string AuthHeader = "obicon-test-auth";
+
+    /// <summary>
     /// Whether NodeAutoEnrollmentEnabled is forced to true via environment variable.
     /// </summary>
     protected virtual bool EnrollmentEnabled => false;
@@ -19,6 +25,7 @@ public class ObiconServerFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={TempDbPath()}");
+        builder.UseSetting("ServerSettings:AuthHeader", AuthHeader);
 
         Environment.SetEnvironmentVariable(
             "ServerSettings__NodeAutoEnrollmentEnabled",

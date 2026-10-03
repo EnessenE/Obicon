@@ -44,6 +44,10 @@ dotnet run --project src/Obicon.Node
 
 The node keeps track of four addresses of its own and reports them to the server: its **internal (LAN) IPv4 and IPv6 addresses** from its network interfaces, and its **external (public) IPv4 and IPv6 addresses** by asking the configured check services. All refresh on the `Node:IpCheckIntervalMinutes` interval; changes are logged and pushed to the server immediately as `NodeInfoUpdate` messages, and current values also travel with every registration. The external checks are best effort — a family the node cannot resolve (e.g. no IPv6 connectivity) is reported as unavailable, and offline nodes keep their last known addresses. All appear on the nodes page next to the connection-observed address.
 
+## Console output
+
+The console sink is defined in `appsettings.json`, not code: the `Serilog:MinimumLevel` section controls what reaches the pipeline, and `Serilog:ConsoleSink` configures the sink itself — its `restrictedToMinimumLevel`, `outputTemplate`, and `formatProvider` (default `CultureInfo::InvariantCulture`). When the section is missing or empty, the node falls back to a built-in default with the same shape. The local-logging policy still mutes test-related output on the console regardless of the template; see [log shipping](#log-shipping).
+
 ## Log shipping
 
 The node captures every log event flowing through its Serilog pipeline and ships the entries to the server as `NodeLog` WebSocket messages, including as much metadata as available: node name, version, UTC timestamp, level, rendered message, exception, and all structured properties (source context, scope properties like `JobId`, and named values).

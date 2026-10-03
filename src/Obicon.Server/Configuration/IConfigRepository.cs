@@ -1,5 +1,3 @@
-using Obicon.Server.Configuration;
-
 namespace Obicon.Server.Configuration;
 
 public interface IConfigRepository

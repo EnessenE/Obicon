@@ -1,10 +1,10 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Obicon.Node.Services.TestRunners;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 using Microsoft.Extensions.Options;
 using Obicon.Node.Configuration;
+using Obicon.Node.Services.TestRunners;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
@@ -15,7 +15,7 @@ namespace Obicon.Node.Services;
 /// MaxConcurrentTests concurrent executions. A test task destroys itself at
 /// most [test timeout] + 5 seconds after it starts running.
 /// </summary>
-public class TestExecutor : ITestExecutor
+public partial class TestExecutor : ITestExecutor, IDisposable
 {
     private const int HardKillGraceSeconds = 5;
 
@@ -68,23 +68,22 @@ public class TestExecutor : ITestExecutor
             ["Target"] = assignment.Target,
             ["IpVersion"] = assignment.IpVersion.ToString()
         });
-        _logger.LogInformation("Starting {TestType} test against {Target} (timeout {TimeoutSeconds}s)",
-            assignment.TestType, assignment.Target, assignment.TimeoutSeconds);
+        LogStarting(assignment.TestType, assignment.Target, assignment.TimeoutSeconds);
 
         var stats = Statistics;
-        Interlocked.Increment(ref stats.Pending);
+        stats.IncrementPending();
         try
         {
             await _slots.WaitAsync(_lifetime.ApplicationStopping);
         }
         catch (OperationCanceledException)
         {
-            Interlocked.Decrement(ref stats.Pending);
+            stats.DecrementPending();
             return;
         }
 
-        Interlocked.Decrement(ref stats.Pending);
-        Interlocked.Increment(ref stats.Running);
+        stats.DecrementPending();
+        stats.IncrementRunning();
         var stopwatch = Stopwatch.StartNew();
 
         CancellationTokenSource? hardKill = null;
@@ -107,7 +106,7 @@ public class TestExecutor : ITestExecutor
             var runner = _runners.GetValueOrDefault(assignment.TestType);
             if (runner == null)
             {
-                _logger.LogWarning("No runner registered for test type {TestType}", assignment.TestType);
+                LogNoRunnerRegistered(assignment.TestType);
                 await ReportAsync(assignment, success: false, stopwatch,
                     $"No runner for test type {assignment.TestType}", TestJobStatus.Failed);
                 return;
@@ -127,7 +126,7 @@ public class TestExecutor : ITestExecutor
         catch (OperationCanceledException) when (hardKill?.IsCancellationRequested == true
                                                 && !_lifetime.ApplicationStopping.IsCancellationRequested)
         {
-            _logger.LogWarning("Job {JobId} destroyed after exceeding its hard time limit", assignment.JobId);
+            LogHardKilled(assignment.JobId);
             await ReportAsync(assignment, success: false, stopwatch,
                 "Test task exceeded its hard time limit and was destroyed", TestJobStatus.Timeout);
         }
@@ -138,14 +137,14 @@ public class TestExecutor : ITestExecutor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Job {JobId} failed unexpectedly", assignment.JobId);
+            LogJobFailed(assignment.JobId, ex);
             await ReportAsync(assignment, success: false, stopwatch, $"Execution error: {ex.Message}", TestJobStatus.Failed);
         }
         finally
         {
             hardKill?.Dispose();
             testTimeout?.Dispose();
-            Interlocked.Decrement(ref stats.Running);
+            stats.DecrementRunning();
             _slots.Release();
         }
     }
@@ -163,13 +162,13 @@ public class TestExecutor : ITestExecutor
         switch (finalStatus)
         {
             case TestJobStatus.Completed:
-                Interlocked.Increment(ref stats.Completed);
+                stats.IncrementCompleted();
                 break;
             case TestJobStatus.Timeout:
-                Interlocked.Increment(ref stats.TimedOut);
+                stats.IncrementTimedOut();
                 break;
             default:
-                Interlocked.Increment(ref stats.Failed);
+                stats.IncrementFailed();
                 break;
         }
 
@@ -194,7 +193,7 @@ public class TestExecutor : ITestExecutor
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to report job {JobId} to server", assignment.JobId);
+            LogReportFailed(assignment.JobId, ex);
         }
     }
 
@@ -213,4 +212,26 @@ public class TestExecutor : ITestExecutor
             }
         });
     }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+        _slots.Dispose();
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting {TestType} test against {Target} (timeout {TimeoutSeconds}s)")]
+    private partial void LogStarting(TestType testType, string target, int timeoutSeconds);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No runner registered for test type {TestType}")]
+    private partial void LogNoRunnerRegistered(TestType testType);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} destroyed after exceeding its hard time limit")]
+    private partial void LogHardKilled(string jobId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Job {JobId} failed unexpectedly")]
+    private partial void LogJobFailed(string jobId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to report job {JobId} to server")]
+    private partial void LogReportFailed(string jobId, Exception exception);
 }

@@ -11,7 +11,7 @@ namespace Obicon.Node.Services.TestRunners;
 /// reports which server answered; falls back to the OS resolver when no
 /// nameservers can be discovered.
 /// </summary>
-public class DnsTestRunner : ITestRunner
+public partial class DnsTestRunner : ITestRunner
 {
     private readonly ILogger<DnsTestRunner> _logger;
 
@@ -46,8 +46,11 @@ public class DnsTestRunner : ITestRunner
         if (nameservers.Count > 0)
         {
             metrics["nameservers_queried"] = string.Join(",", nameservers);
-            _logger.LogInformation("Querying {Count} nameserver(s) for {Host}: {Nameservers}",
-                nameservers.Count, assignment.Target, string.Join(", ", nameservers));
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                var nameserversText = string.Join(", ", nameservers);
+                LogQueryingNameservers(nameservers.Count, assignment.Target, nameserversText);
+            }
 
             // Ask each nameserver; use the first one that answers with usable records
             var perServerTimeout = TimeSpan.FromMilliseconds(Math.Max(1000, timeout.TotalMilliseconds / nameservers.Count));
@@ -56,14 +59,18 @@ public class DnsTestRunner : ITestRunner
                 var result = await DnsQueryClient.QueryAsync(nameserver, assignment.Target, perServerTimeout, cancellationToken);
                 if (result.Error != null)
                 {
-                    _logger.LogWarning("Nameserver {Nameserver} failed: {Error}", nameserver, result.Error);
+                    LogNameserverFailed(nameserver, result.Error);
                     continue;
                 }
 
                 metrics["answering_nameserver"] = result.Nameserver;
                 metrics["nameserver_rtt_ms"] = Math.Round(result.RttMs, 2);
-                _logger.LogInformation("Nameserver {Nameserver} answered in {Rtt:F1} ms: A=[{A}] AAAA=[{Aaaa}]",
-                    result.Nameserver, result.RttMs, string.Join(", ", result.A), string.Join(", ", result.Aaaa));
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    var aRecords = string.Join(", ", result.A);
+                    var aaaaRecords = string.Join(", ", result.Aaaa);
+                    LogNameserverAnswered(result.Nameserver, result.RttMs, aRecords, aaaaRecords);
+                }
 
                 var resolved = Filter(result, assignment.IpVersion);
                 metrics["a_records"] = string.Join(",", result.A);
@@ -74,7 +81,7 @@ public class DnsTestRunner : ITestRunner
             }
 
             metrics["raw_query_error"] = "no nameserver responded";
-            _logger.LogWarning("No nameserver answered for {Host}; falling back to the OS resolver", assignment.Target);
+            LogNoNameserverAnswered(assignment.Target);
         }
         else
         {
@@ -82,7 +89,7 @@ public class DnsTestRunner : ITestRunner
         }
 
         // Fallback: the OS resolver, without visibility into which server answered
-        _logger.LogInformation("Resolving {Host} through the OS resolver", assignment.Target);
+        LogResolvingThroughOs(assignment.Target);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
         try
@@ -127,7 +134,7 @@ public class DnsTestRunner : ITestRunner
 
         if (string.IsNullOrWhiteSpace(assignment.ExpectedDnsResult))
         {
-            _logger.LogInformation("Resolved {Host} to {Resolved} ({Via})", assignment.Target, resolvedText, via);
+            LogResolved(assignment.Target, resolvedText, via);
             return new TestOutcome
             {
                 Success = true,
@@ -137,8 +144,7 @@ public class DnsTestRunner : ITestRunner
         }
 
         var matches = resolved.Any(r => string.Equals(r, assignment.ExpectedDnsResult, StringComparison.OrdinalIgnoreCase));
-        _logger.LogInformation("Resolved {Host} to {Resolved}, expected {Expected}: {Matches}",
-            assignment.Target, resolvedText, assignment.ExpectedDnsResult, matches ? "match" : "mismatch");
+        LogResolvedWithExpectation(assignment.Target, resolvedText, assignment.ExpectedDnsResult, matches ? "match" : "mismatch");
 
         return new TestOutcome
         {
@@ -149,4 +155,25 @@ public class DnsTestRunner : ITestRunner
             Metrics = metrics
         };
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Querying {Count} nameserver(s) for {Host}: {Nameservers}")]
+    private partial void LogQueryingNameservers(int count, string host, string nameservers);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Nameserver {Nameserver} failed: {Error}")]
+    private partial void LogNameserverFailed(IPAddress nameserver, string? error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Nameserver {Nameserver} answered in {Rtt:F1} ms: A=[{A}] AAAA=[{Aaaa}]")]
+    private partial void LogNameserverAnswered(string nameserver, double rtt, string a, string aaaa);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No nameserver answered for {Host}; falling back to the OS resolver")]
+    private partial void LogNoNameserverAnswered(string host);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resolving {Host} through the OS resolver")]
+    private partial void LogResolvingThroughOs(string host);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resolved {Host} to {Resolved} ({Via})")]
+    private partial void LogResolved(string host, string resolved, string via);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resolved {Host} to {Resolved}, expected {Expected}: {Matches}")]
+    private partial void LogResolvedWithExpectation(string host, string resolved, string? expected, string matches);
 }

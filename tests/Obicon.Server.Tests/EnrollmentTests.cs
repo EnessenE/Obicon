@@ -1,16 +1,20 @@
-using Xunit;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Xunit;
 
 namespace Obicon.Server.Tests;
 
 /// <summary>
 /// Integration tests for node self-enrollment, covering the settings gate and token validation.
 /// </summary>
-public class EnrollmentTests : IClassFixture<ObiconServerFactory>
+public class EnrollmentTests : IClassFixture<ObiconServerFactory>, IDisposable
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
+    private static readonly string[] LabLabels = ["lab", "fast"];
+    private static readonly string[] LabPools = ["lab-nodes"];
+    private static readonly string[] UserLabels = ["user-label"];
+    private static readonly string[] HomeLabPools = ["home-lab"];
 
     private readonly HttpClient _disabledClient;
     private readonly ObiconServerFactory _disabledFactory;
@@ -22,10 +26,17 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>
         _disabledClient = CreateClient(_disabledFactory);
     }
 
-    private HttpClient CreateClient(ObiconServerFactory factory)
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+        _disabledClient.Dispose();
+        _enabledFactory?.Dispose();
+    }
+
+    private static HttpClient CreateClient(ObiconServerFactory factory)
     {
         var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new("uwu");
+        client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
         return client;
     }
 
@@ -38,7 +49,7 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>
         return CreateClient(_enabledFactory);
     }
 
-    private async Task<string> CreateEnrollTokenAsync(HttpClient client, object? body = null)
+    private static async Task<string> CreateEnrollTokenAsync(HttpClient client, object? body = null)
     {
         var response = await client.PostAsJsonAsync("/v1/enroll-tokens", body ?? new { });
         response.EnsureSuccessStatusCode();
@@ -87,8 +98,8 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>
         {
             EnrollToken = token,
             NodeName = "test-pi",
-            Labels = new[] { "lab", "fast" },
-            Pools = new[] { "lab-nodes" }
+            Labels = LabLabels,
+            Pools = LabPools
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -108,7 +119,7 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>
         var put = await client.PutAsJsonAsync($"/v1/nodes/{nodeId}", new
         {
             Name = "hacked",
-            Labels = new[] { "user-label" },
+            Labels = UserLabels,
             RegenerateToken = false
         });
         Assert.Equal(HttpStatusCode.Conflict, put.StatusCode);
@@ -175,7 +186,7 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>
         {
             EnrollToken = token,
             NodeName = "pi-1",
-            Pools = new[] { "home-lab" }
+            Pools = HomeLabPools
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 

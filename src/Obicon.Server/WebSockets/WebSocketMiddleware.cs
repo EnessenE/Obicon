@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -5,14 +6,13 @@ using Obicon.Server.Configuration;
 using Obicon.Server.Metrics;
 using Obicon.Server.Models;
 using Obicon.Server.Services;
-using Obicon.Server.WebSockets;
 using Obicon.Shared;
 using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Server.WebSockets;
 
-public class WebSocketMiddleware
+public partial class WebSocketMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly NodeConnectionManager _connectionManager;
@@ -49,7 +49,7 @@ public class WebSocketMiddleware
             context.WebSockets.IsWebSocketRequest)
         {
             var token = context.Request.Query["token"].FirstOrDefault();
-            
+
             if (string.IsNullOrEmpty(token))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -76,7 +76,7 @@ public class WebSocketMiddleware
                 return;
             }
 
-            _logger.LogInformation("Node {NodeId} connected via WebSocket from {RemoteIp}", node.Id, remoteIp ?? "unknown");
+            LogNodeConnected(node.Id, remoteIp ?? "unknown");
 
             try
             {
@@ -88,7 +88,7 @@ public class WebSocketMiddleware
             {
                 // Always drop the connection, also when the socket aborted mid-close-handshake
                 _connectionManager.TryRemoveConnection(node.Id.ToString());
-                _logger.LogInformation("Node {NodeId} disconnected", node.Id);
+                LogNodeDisconnected(node.Id);
             }
 
             return;
@@ -125,7 +125,7 @@ public class WebSocketMiddleware
         while (!result.CloseStatus.HasValue)
         {
             var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-            _logger.LogDebug("Received from {NodeId}: {Message}", nodeId, message);
+            LogMessageReceived(nodeId, message);
 
             try
             {
@@ -141,7 +141,7 @@ public class WebSocketMiddleware
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing message from {NodeId}", nodeId);
+                LogMessageProcessingError(ex, nodeId);
             }
 
             result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
@@ -154,7 +154,7 @@ public class WebSocketMiddleware
         catch (Exception ex)
         {
             // The node may have dropped the socket before completing the close handshake
-            _logger.LogDebug(ex, "Close handshake with node {NodeId} aborted", nodeId);
+            LogCloseHandshakeAborted(ex, nodeId);
         }
     }
 
@@ -164,7 +164,7 @@ public class WebSocketMiddleware
     /// </summary>
     private async Task<bool> ProcessMessage(string nodeId, string? remoteIp, WebSocket webSocket, WebSocketMessage message)
     {
-        _logger.LogDebug("Processing message type: {MessageType} from {NodeId}", message.Type, nodeId);
+        LogProcessingMessage(message.Type, nodeId);
 
         switch (message.Type)
         {
@@ -189,7 +189,7 @@ public class WebSocketMiddleware
                 await HandleNodeInfoUpdate(nodeId, message);
                 return true;
             default:
-                _logger.LogWarning("Unknown message type: {MessageType}", message.Type);
+                LogUnknownMessageType(message.Type);
                 return true;
         }
     }
@@ -203,14 +203,14 @@ public class WebSocketMiddleware
     {
         if (!await _settingsService.GetAsync<bool>("NodeLogShippingEnabled"))
         {
-            _logger.LogDebug("Dropped log entry from node {NodeId}: log shipping is disabled", nodeId);
+            LogDroppedNodeLog(nodeId);
             return;
         }
 
         var entry = (message.Data as JsonElement?)?.Deserialize<NodeLogMessage>();
         if (entry == null || string.IsNullOrWhiteSpace(entry.Message))
         {
-            _logger.LogWarning("Received unusable log entry from node {NodeId}", nodeId);
+            LogUnusableNodeLog(nodeId);
             return;
         }
 
@@ -228,7 +228,7 @@ public class WebSocketMiddleware
 
         if (!await _settingsService.GetAsync<bool>("ShipNodeLogsToConsole"))
         {
-            _logger.LogDebug("Received log entry from node {NodeId}; ShipNodeLogsToConsole is off, not forwarding", nodeId);
+            LogNodeLogNotForwarded(nodeId);
             return;
         }
 
@@ -252,16 +252,16 @@ public class WebSocketMiddleware
         switch (entry.Level)
         {
             case "Error":
-                _logger.LogError("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
+                LogNodeLogError(timestamp, text);
                 break;
             case "Warning":
-                _logger.LogWarning("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
+                LogNodeLogWarning(timestamp, text);
                 break;
             case "Debug":
-                _logger.LogDebug("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
+                LogNodeLogDebug(timestamp, text);
                 break;
             default:
-                _logger.LogInformation("[node log {Timestamp:HH:mm:ss}] {Text}", timestamp, text);
+                LogNodeLogInformation(timestamp, text);
                 break;
         }
     }
@@ -282,20 +282,18 @@ public class WebSocketMiddleware
         {
             if (await _settingsService.GetAsync<bool>("AllowUnsupportedNodeVersions"))
             {
-                _logger.LogWarning("Node {NodeId} runs version {NodeVersion}, which is outside the supported range (server {ServerVersion}); AllowUnsupportedNodeVersions is enabled, accepting anyway",
-                    nodeId, nodeVersion, ServerInfo.Version);
+                LogUnsupportedNodeAccepted(nodeId, nodeVersion, ServerInfo.Version);
             }
             else
             {
-                _logger.LogWarning("Disconnecting node {NodeId}: version {NodeVersion} is outside the supported range (server {ServerVersion}, same major.minor required)",
-                    nodeId, nodeVersion, ServerInfo.Version);
+                LogUnsupportedNodeDisconnected(nodeId, nodeVersion, ServerInfo.Version);
                 Metrics.ServerMetrics.Action("node_rejected_version");
                 await CloseUnsupportedNodeAsync(nodeId);
                 return false;
             }
         }
 
-        _logger.LogInformation("Node {NodeId} registered (version {NodeVersion})", nodeId, nodeVersion ?? "unknown");
+        LogNodeRegistered(nodeId, nodeVersion ?? "unknown");
         _connectionManager.UpdateLastSeen(nodeId);
         await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
         await _nodeService.UpdateNodeConnectionInfoAsync(Guid.Parse(nodeId), nodeVersion, remoteIp, CollectReportedSettings(registration));
@@ -313,7 +311,7 @@ public class WebSocketMiddleware
         var update = (message.Data as JsonElement?)?.Deserialize<NodeInfoUpdateMessage>();
         if (update == null)
         {
-            _logger.LogWarning("Received unusable address update from node {NodeId}", nodeId);
+            LogUnusableAddressUpdate(nodeId);
             return;
         }
 
@@ -335,23 +333,23 @@ public class WebSocketMiddleware
 
         if (registration.MaxConcurrentTests is { } maxConcurrentTests)
         {
-            settings["MaxConcurrentTests"] = maxConcurrentTests.ToString();
+            settings["MaxConcurrentTests"] = maxConcurrentTests.ToString(CultureInfo.InvariantCulture);
         }
         if (registration.HeartbeatIntervalSeconds is { } heartbeatInterval)
         {
-            settings["HeartbeatIntervalSeconds"] = heartbeatInterval.ToString();
+            settings["HeartbeatIntervalSeconds"] = heartbeatInterval.ToString(CultureInfo.InvariantCulture);
         }
         if (registration.DefaultTestTimeoutSeconds is { } defaultTimeout)
         {
-            settings["DefaultTestTimeoutSeconds"] = defaultTimeout.ToString();
+            settings["DefaultTestTimeoutSeconds"] = defaultTimeout.ToString(CultureInfo.InvariantCulture);
         }
         if (registration.MaxTestTimeoutSeconds is { } maxTimeout)
         {
-            settings["MaxTestTimeoutSeconds"] = maxTimeout.ToString();
+            settings["MaxTestTimeoutSeconds"] = maxTimeout.ToString(CultureInfo.InvariantCulture);
         }
         if (registration.ReconnectDelaySeconds is { } reconnectDelay)
         {
-            settings["ReconnectDelaySeconds"] = reconnectDelay.ToString();
+            settings["ReconnectDelaySeconds"] = reconnectDelay.ToString(CultureInfo.InvariantCulture);
         }
         return settings;
     }
@@ -377,7 +375,7 @@ public class WebSocketMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Close handshake with unsupported node {NodeId} aborted", nodeId);
+            LogCloseUnsupportedNodeAborted(ex, nodeId);
         }
     }
 
@@ -389,7 +387,7 @@ public class WebSocketMiddleware
 
     private async Task HandleNodeHeartbeat(string nodeId)
     {
-        _logger.LogDebug("Heartbeat from {NodeId}", nodeId);
+        LogHeartbeat(nodeId);
         _connectionManager.UpdateLastSeen(nodeId);
         await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
     }
@@ -399,7 +397,7 @@ public class WebSocketMiddleware
         var result = (message.Data as JsonElement?)?.Deserialize<TestResultMessage>();
         if (result == null || !Guid.TryParse(result.JobId, out var jobId))
         {
-            _logger.LogWarning("Received test result from {NodeId} without a valid job ID", nodeId);
+            LogTestResultWithoutJobId(nodeId);
             return;
         }
 
@@ -420,8 +418,7 @@ public class WebSocketMiddleware
 
         await _testMetricsEmitter.EmitAsync(job, test, node, status, result.DurationMs);
 
-        _logger.LogInformation("Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms",
-            jobId, nodeId, result.Success, result.DurationMs);
+        LogJobFinished(jobId, nodeId, result.Success, result.DurationMs);
     }
 
     private async Task HandleTestStatusUpdate(string nodeId, WebSocketMessage message)
@@ -429,7 +426,7 @@ public class WebSocketMiddleware
         var update = (message.Data as JsonElement?)?.Deserialize<TestStatusUpdateMessage>();
         if (update == null || !Guid.TryParse(update.JobId, out var jobId))
         {
-            _logger.LogWarning("Received status update from {NodeId} without a valid job ID", nodeId);
+            LogStatusUpdateWithoutJobId(nodeId);
             return;
         }
 
@@ -442,12 +439,87 @@ public class WebSocketMiddleware
         else if (update.Status == TestJobStatus.Assigned)
         {
             await _queueService.MarkJobAcknowledgedAsync(jobId);
-            _logger.LogInformation("Node {NodeId} acknowledged job {JobId}", nodeId, jobId);
+            LogJobAcknowledged(nodeId, jobId);
         }
     }
 
     private void HandleErrorReport(string nodeId, WebSocketMessage message)
     {
-        _logger.LogError("Error report from {NodeId}", nodeId);
+        LogErrorReport(nodeId);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} connected via WebSocket from {RemoteIp}")]
+    private partial void LogNodeConnected(Guid nodeId, string remoteIp);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} disconnected")]
+    private partial void LogNodeDisconnected(Guid nodeId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Received from {NodeId}: {Message}")]
+    private partial void LogMessageReceived(string nodeId, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error processing message from {NodeId}")]
+    private partial void LogMessageProcessingError(Exception exception, string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Close handshake with node {NodeId} aborted")]
+    private partial void LogCloseHandshakeAborted(Exception exception, string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Processing message type: {MessageType} from {NodeId}")]
+    private partial void LogProcessingMessage(MessageType messageType, string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Unknown message type: {MessageType}")]
+    private partial void LogUnknownMessageType(MessageType messageType);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Dropped log entry from node {NodeId}: log shipping is disabled")]
+    private partial void LogDroppedNodeLog(string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Received unusable log entry from node {NodeId}")]
+    private partial void LogUnusableNodeLog(string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Received log entry from node {NodeId}; ShipNodeLogsToConsole is off, not forwarding")]
+    private partial void LogNodeLogNotForwarded(string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[node log {Timestamp:HH:mm:ss}] {Text}")]
+    private partial void LogNodeLogError(DateTime timestamp, string text);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[node log {Timestamp:HH:mm:ss}] {Text}")]
+    private partial void LogNodeLogWarning(DateTime timestamp, string text);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[node log {Timestamp:HH:mm:ss}] {Text}")]
+    private partial void LogNodeLogDebug(DateTime timestamp, string text);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[node log {Timestamp:HH:mm:ss}] {Text}")]
+    private partial void LogNodeLogInformation(DateTime timestamp, string text);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Node {NodeId} runs version {NodeVersion}, which is outside the supported range (server {ServerVersion}); AllowUnsupportedNodeVersions is enabled, accepting anyway")]
+    private partial void LogUnsupportedNodeAccepted(string nodeId, string? nodeVersion, string serverVersion);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Disconnecting node {NodeId}: version {NodeVersion} is outside the supported range (server {ServerVersion}, same major.minor required)")]
+    private partial void LogUnsupportedNodeDisconnected(string nodeId, string? nodeVersion, string serverVersion);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} registered (version {NodeVersion})")]
+    private partial void LogNodeRegistered(string nodeId, string nodeVersion);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Received unusable address update from node {NodeId}")]
+    private partial void LogUnusableAddressUpdate(string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Close handshake with unsupported node {NodeId} aborted")]
+    private partial void LogCloseUnsupportedNodeAborted(Exception exception, string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Heartbeat from {NodeId}")]
+    private partial void LogHeartbeat(string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Received test result from {NodeId} without a valid job ID")]
+    private partial void LogTestResultWithoutJobId(string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms")]
+    private partial void LogJobFinished(Guid jobId, string nodeId, bool success, long durationMs);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Received status update from {NodeId} without a valid job ID")]
+    private partial void LogStatusUpdateWithoutJobId(string nodeId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} acknowledged job {JobId}")]
+    private partial void LogJobAcknowledged(string nodeId, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error report from {NodeId}")]
+    private partial void LogErrorReport(string nodeId);
 }

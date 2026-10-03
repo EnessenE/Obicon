@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,6 +9,7 @@ using Obicon.Node.Services;
 using Obicon.Node.Services.TestRunners;
 using OpenTelemetry.Metrics;
 using Serilog;
+using Serilog.Settings.Configuration;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -27,17 +30,31 @@ builder.Services.AddSerilog((services, loggerConfiguration) =>
     loggerConfiguration
         .ReadFrom.Configuration(builder.Configuration)
         // Debug as the pipeline minimum so the capture sink sees everything;
-        // the console sink keeps Information and drops test output while it is muted
+        // the console sink's own level comes from its appsettings section
         .MinimumLevel.Debug()
-        // The console drops test-related output while the local logging policy has it muted;
-        // connection lifecycle and policy changes always appear
+        // The console sink is defined in appsettings (Serilog:ConsoleSink) but wrapped
+        // in a conditional so the local logging policy can drop test-related output
+        // per event; connection lifecycle and policy changes always appear. When the
+        // section defines no sinks, the built-in default below takes over
         .WriteTo.Conditional(
             e => !loggingState.ShouldMuteLocally(e),
             sinkConfig =>
             {
+                if (builder.Configuration.GetSection("Serilog:ConsoleSink:WriteTo").GetChildren().Any())
+                {
+                    sinkConfig.Logger(consoleConfig => consoleConfig
+                        .MinimumLevel.Verbose()
+                        .ReadFrom.Configuration(
+                            builder.Configuration,
+                            new ConfigurationReaderOptions { SectionName = "Serilog:ConsoleSink" }));
+                    return;
+                }
+
+                // Mirrors the Serilog:ConsoleSink section in appsettings.json
                 sinkConfig.Console(
                     restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
-                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}");
+                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}",
+                    formatProvider: CultureInfo.InvariantCulture);
             })
         .WriteTo.Sink(services.GetRequiredService<NodeLogSink>());
 });
@@ -79,6 +96,6 @@ builder.Services.AddHostedService<HealthService>();
 builder.Services.AddHostedService<MonitoringService>();
 
 var host = builder.Build();
-host.Services.GetRequiredService<ILogger<Program>>().LogInformation(
-    "Obicon Node v{Version} starting; metrics on http://{MetricsHost}:{MetricsPort}/metrics", NodeInfo.Version, metricsHost, metricsPort);
+var logger = host.Services.GetRequiredService<ILogger<Program>>();
+ProgramLog.LogStarting(logger, NodeInfo.Version, metricsHost, metricsPort);
 await host.RunAsync();

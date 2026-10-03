@@ -1,17 +1,16 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
-using Obicon.Server.WebSockets;
 using Obicon.Server.Models;
-using Obicon.Shared.Models.Enums;
 using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
+using Obicon.Server.WebSockets;
+using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Server.Services;
 
-public class TestService : ITestService
+public partial class TestService : ITestService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly SqliteWriteQueue _writeQueue;
@@ -77,7 +76,7 @@ public class TestService : ITestService
             await db.SaveChangesAsync();
         });
 
-        _logger.LogInformation("Created test {TestId} ({TestName}, type {TestType}, target {Target})", test.Id, test.Name, test.Type, test.Target);
+        LogCreatedTest(test.Id, test.Name, test.Type, test.Target);
         Metrics.ServerMetrics.Action("created_test");
         return ToResponse(test);
     }
@@ -148,7 +147,7 @@ public class TestService : ITestService
             test.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Test {TestId} ({TestName}) is now {State}", test.Id, test.Name, test.IsActive ? "active" : "inactive");
+            LogTestToggled(test.Id, test.Name, test.IsActive ? "active" : "inactive");
             return test;
         });
 
@@ -168,7 +167,7 @@ public class TestService : ITestService
             db.Tests.Remove(test);
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Deleted test {TestId} ({TestName})", test.Id, test.Name);
+            LogDeletedTest(test.Id, test.Name);
             Metrics.ServerMetrics.Action("deleted_test");
             return true;
         });
@@ -186,7 +185,7 @@ public class TestService : ITestService
             }
 
             await EnqueueJobsForTestAsync(db, test);
-            _logger.LogInformation("Manual run triggered for test {TestId} ({TestName})", test.Id, test.Name);
+            LogManualRunTriggered(test.Id, test.Name);
             return true;
         });
     }
@@ -231,7 +230,7 @@ public class TestService : ITestService
                 await db.SaveChangesAsync();
 
                 await EnqueueJobsForTestAsync(db, test);
-                _logger.LogInformation("Scheduler enqueued test {TestId} ({TestName})", test.Id, test.Name);
+                LogSchedulerEnqueuedTest(test.Id, test.Name);
                 return true;
             });
 
@@ -433,8 +432,7 @@ public class TestService : ITestService
             return created;
         });
 
-        _logger.LogInformation("Run-once enqueued {Count} job(s) on selected nodes ({TestType} {Target})",
-            jobs.Count, request.Type, request.Target);
+        LogRunOnceEnqueued(jobs.Count, request.Type, request.Target);
         return jobs;
     }
 
@@ -533,4 +531,22 @@ public class TestService : ITestService
         CreatedAt = test.CreatedAt,
         UpdatedAt = test.UpdatedAt
     };
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created test {TestId} ({TestName}, type {TestType}, target {Target})")]
+    private partial void LogCreatedTest(Guid testId, string testName, TestType testType, string target);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Test {TestId} ({TestName}) is now {State}")]
+    private partial void LogTestToggled(Guid testId, string testName, string state);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted test {TestId} ({TestName})")]
+    private partial void LogDeletedTest(Guid testId, string testName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Manual run triggered for test {TestId} ({TestName})")]
+    private partial void LogManualRunTriggered(Guid testId, string testName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Scheduler enqueued test {TestId} ({TestName})")]
+    private partial void LogSchedulerEnqueuedTest(Guid testId, string testName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Run-once enqueued {Count} job(s) on selected nodes ({TestType} {Target})")]
+    private partial void LogRunOnceEnqueued(int count, TestType testType, string target);
 }

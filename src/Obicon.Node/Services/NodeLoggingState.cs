@@ -20,28 +20,49 @@ public class NodeLoggingState
     /// </summary>
     public const string TestActivityProperty = "TestActivity";
 
+    private volatile bool _serverAllowsLogShipping;
+    private volatile bool _serverLocalLoggingEnabled = true;
+    private volatile bool _lastAppliedLocalLogging = true;
+    private volatile bool _testsMuted;
+
     /// <summary>
     /// Whether the server currently accepts shipped log entries.
     /// Set from the server hello; default false until the first hello arrives.
     /// </summary>
-    public volatile bool ServerAllowsLogShipping;
+    public bool ServerAllowsLogShipping
+    {
+        get => _serverAllowsLogShipping;
+        set => _serverAllowsLogShipping = value;
+    }
 
     /// <summary>
     /// The server's default policy for local node logging, from the server hello. Default true.
     /// </summary>
-    public volatile bool ServerLocalLoggingEnabled = true;
+    public bool ServerLocalLoggingEnabled
+    {
+        get => _serverLocalLoggingEnabled;
+        set => _serverLocalLoggingEnabled = value;
+    }
 
     /// <summary>
     /// The local logging policy most recently applied (node override resolved against the
     /// server default), used to detect and log changes. Default true.
     /// </summary>
-    public volatile bool LastAppliedLocalLogging = true;
+    public bool LastAppliedLocalLogging
+    {
+        get => _lastAppliedLocalLogging;
+        set => _lastAppliedLocalLogging = value;
+    }
 
     /// <summary>
     /// Whether test-related log entries are currently muted on the node's own console.
     /// Set from the local logging policy; shipping is unaffected.
     /// </summary>
-    public volatile bool TestsMuted;
+    public bool TestsMuted
+    {
+        get => _testsMuted;
+        set => _testsMuted = value;
+    }
 
     /// <summary>
     /// Applies the local logging policy: the node's own override wins over the server's

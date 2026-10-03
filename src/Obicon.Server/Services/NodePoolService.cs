@@ -6,7 +6,7 @@ using Obicon.Server.Models.Responses;
 
 namespace Obicon.Server.Services;
 
-public class NodePoolService : INodePoolService
+public partial class NodePoolService : INodePoolService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly SqliteWriteQueue _writeQueue;
@@ -36,7 +36,7 @@ public class NodePoolService : INodePoolService
             await db.SaveChangesAsync();
         });
 
-        _logger.LogInformation("Created pool {PoolId} with name {PoolName}", pool.Id, pool.Name);
+        LogCreatedPool(pool.Id, pool.Name);
         Metrics.ServerMetrics.Action("created_pool");
         return PoolResponse.From(pool);
     }
@@ -69,7 +69,7 @@ public class NodePoolService : INodePoolService
             pool.Description = request.Description ?? string.Empty;
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Updated pool {PoolId}: name {PoolName}", id, pool.Name);
+            LogUpdatedPool(id, pool.Name);
             return pool;
         });
 
@@ -99,7 +99,7 @@ public class NodePoolService : INodePoolService
             pool.NodeIds = request.NodeIds.Distinct().ToList();
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Pool {PoolId} now has {Count} members", id, pool.NodeIds.Count);
+            LogPoolMembersSet(id, pool.NodeIds.Count);
             return pool;
         });
 
@@ -123,7 +123,7 @@ public class NodePoolService : INodePoolService
 
         if (deleted)
         {
-            _logger.LogInformation("Deleted pool {PoolId}", id);
+            LogDeletedPool(id);
             Metrics.ServerMetrics.Action("deleted_pool");
         }
         return deleted;
@@ -136,4 +136,16 @@ public class NodePoolService : INodePoolService
         var pools = await db.NodePools.OrderBy(p => p.CreatedAt).ToListAsync();
         return pools.Where(p => p.NodeIds.Contains(nodeId)).Select(PoolResponse.From);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created pool {PoolId} with name {PoolName}")]
+    private partial void LogCreatedPool(Guid poolId, string poolName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updated pool {PoolId}: name {PoolName}")]
+    private partial void LogUpdatedPool(Guid poolId, string poolName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Pool {PoolId} now has {Count} members")]
+    private partial void LogPoolMembersSet(Guid poolId, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted pool {PoolId}")]
+    private partial void LogDeletedPool(Guid poolId);
 }

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Obicon.Shared.Models.Enums;
 using Obicon.Shared.Models.Messages;
 
 namespace Obicon.Node.Services;
@@ -11,7 +10,7 @@ namespace Obicon.Node.Services;
 /// connected and the server announced LogShippingEnabled in its hello; everything
 /// else is dropped, so the queue never fills with stale entries.
 /// </summary>
-public class NodeLogShipper : BackgroundService
+public partial class NodeLogShipper : BackgroundService
 {
     private const int BatchSize = 20;
     private static readonly TimeSpan IdleDelay = TimeSpan.FromMilliseconds(250);
@@ -31,7 +30,7 @@ public class NodeLogShipper : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogDebug("Log shipper started");
+        LogStarted();
 
         var reader = _sink.Queue.Reader;
         while (!stoppingToken.IsCancellationRequested)
@@ -68,12 +67,12 @@ public class NodeLogShipper : BackgroundService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogDebug(ex, "Could not ship log entries to the server");
+                LogShipFailed(ex);
             }
 
             if (shipped > 0)
             {
-                _logger.LogDebug("Shipped {Count} log entries to the server", shipped);
+                LogShipped(shipped);
             }
 
             // Give the queue a moment to accumulate before reading again
@@ -112,4 +111,13 @@ public class NodeLogShipper : BackgroundService
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Log shipper started")]
+    private partial void LogStarted();
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Could not ship log entries to the server")]
+    private partial void LogShipFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Shipped {Count} log entries to the server")]
+    private partial void LogShipped(int count);
 }

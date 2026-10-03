@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Obicon.Server.Services;
 
 namespace Obicon.Server.Metrics;
@@ -10,7 +8,7 @@ namespace Obicon.Server.Metrics;
 /// result of every created test (<c>obicon.tests.current_result</c>), so both can
 /// be tracked in Prometheus over time.
 /// </summary>
-public class MetricsSampler : BackgroundService
+public partial class MetricsSampler : BackgroundService
 {
     private readonly ITestQueueService _queueService;
     private readonly ILogger<MetricsSampler> _logger;
@@ -34,7 +32,7 @@ public class MetricsSampler : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Queue metrics sampling failed; retrying on the next interval");
+                LogQueueSamplingFailed(ex);
             }
 
             try
@@ -46,7 +44,7 @@ public class MetricsSampler : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Test result sampling failed; retrying on the next interval");
+                LogResultSamplingFailed(ex);
             }
 
             try
@@ -67,4 +65,10 @@ public class MetricsSampler : BackgroundService
     {
         return status?.ToString() ?? "NeverRun";
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Queue metrics sampling failed; retrying on the next interval")]
+    private partial void LogQueueSamplingFailed(System.Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Test result sampling failed; retrying on the next interval")]
+    private partial void LogResultSamplingFailed(System.Exception exception);
 }

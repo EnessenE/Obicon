@@ -24,7 +24,7 @@ public class TestMetricsTests : IClassFixture<ObiconServerFactory>
     {
         _factory = factory;
         _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Authorization = new("uwu");
+        _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
         _emitter = factory.Services.GetRequiredService<ITestMetricsEmitter>();
     }
 
@@ -59,7 +59,7 @@ public class TestMetricsTests : IClassFixture<ObiconServerFactory>
             }
             await Task.Delay(50);
         }
-        throw new Xunit.Sdk.XunitException($"Expected series never appeared on /metrics. Body:\n{string.Join("\n", last.Split("\n").Where(l => l.StartsWith("obicon")).Take(40))}");
+        throw new Xunit.Sdk.XunitException($"Expected series never appeared on /metrics. Body:\n{string.Join("\n", last.Split("\n").Where(l => l.StartsWith("obicon", StringComparison.Ordinal)).Take(40))}");
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class TestMetricsTests : IClassFixture<ObiconServerFactory>
         await _emitter.EmitAsync(job: null, test: null, node, TestJobStatus.Completed, 123);
 
         var scrape = await ScrapeUntilAsync(b => b.Contains($"node_id=\"{node.Id}\"") && b.Contains("obicon_tests_runs_total"));
-        var series = scrape.Split("\n").First(l => l.Contains($"node_id=\"{node.Id}\"") && l.StartsWith("obicon_tests_runs_total"));
+        var series = scrape.Split("\n").First(l => l.Contains($"node_id=\"{node.Id}\"") && l.StartsWith("obicon_tests_runs_total", StringComparison.Ordinal));
         Assert.Contains("node_labels=\"edge,home\"", series);
     }
 
@@ -94,7 +94,7 @@ public class TestMetricsTests : IClassFixture<ObiconServerFactory>
             await _emitter.EmitAsync(job: null, test: null, node, TestJobStatus.Completed, 123);
 
             var scrape = await ScrapeUntilAsync(b => b.Contains($"node_id=\"{node.Id}\"") && b.Contains("obicon_tests_runs_total"));
-            var series = scrape.Split("\n").First(l => l.Contains($"node_id=\"{node.Id}\"") && l.StartsWith("obicon_tests_runs_total"));
+            var series = scrape.Split("\n").First(l => l.Contains($"node_id=\"{node.Id}\"") && l.StartsWith("obicon_tests_runs_total", StringComparison.Ordinal));
             Assert.DoesNotContain("node_labels", series);
         }
         finally
@@ -122,7 +122,7 @@ public class TestMetricsTests : IClassFixture<ObiconServerFactory>
             var scrape = await _client.GetStringAsync("/metrics");
             Assert.DoesNotContain($"node_id=\"{after.Id}\"", scrape);
 
-            var beforeSeries = scrape.Split("\n").First(l => l.Contains($"node_id=\"{before.Id}\"") && l.StartsWith("obicon_tests_runs_total"));
+            var beforeSeries = scrape.Split("\n").First(l => l.Contains($"node_id=\"{before.Id}\"") && l.StartsWith("obicon_tests_runs_total", StringComparison.Ordinal));
             Assert.EndsWith(" 1", beforeSeries.TrimEnd());
         }
         finally

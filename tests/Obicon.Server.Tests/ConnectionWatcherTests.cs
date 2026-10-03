@@ -22,7 +22,7 @@ public class ConnectionWatcherTests : IClassFixture<ObiconServerFactory>
     {
         _factory = factory;
         _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Authorization = new("uwu");
+        _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
     }
 
     [Fact]

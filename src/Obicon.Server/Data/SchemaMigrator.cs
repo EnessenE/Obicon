@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -71,7 +72,8 @@ public static class SchemaMigrator
     /// One-time data conversions for values whose meaning changed between versions.
     /// Applied fixups are recorded in the SchemaMigrations table so they run exactly once.
     /// </summary>
-    private static void ApplyDataMigrations(ObiconDbContext db)    {
+    private static void ApplyDataMigrations(ObiconDbContext db)
+    {
         ExecuteSql(db, "CREATE TABLE IF NOT EXISTS \"SchemaMigrations\" (\"MigrationId\" TEXT NOT NULL CONSTRAINT \"PK_SchemaMigrations\" PRIMARY KEY)");
 
         // Test.Frequency changed from the TestFrequency enum (0-6) to plain seconds
@@ -104,7 +106,7 @@ public static class SchemaMigrator
         db.Database.OpenConnection();
         try
         {
-            return Convert.ToInt64(command.ExecuteScalar()) > 0;
+            return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) > 0;
         }
         finally
         {

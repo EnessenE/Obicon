@@ -22,7 +22,7 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 - **Build everything:** `dotnet build Obicon.slnx`
 - **Tests:** `dotnet test tests/Obicon.Server.Tests` (xUnit with `WebApplicationFactory<Program>` integration tests, each factory instance gets an isolated temp SQLite database, plus unit tests) and `dotnet test tests/Obicon.Node.Tests` (unit tests for the node: log capture sink, logging policy, identity store). Add a test for every security-relevant behavior (e.g. enrollment disabled, forced settings, token expiry)
 - **Server:** `dotnet run --project src/Obicon.Server` → http://localhost:5000, Swagger at `/swagger`
-  - API auth: header `Authorization: uwu`. `/ws`, `/metrics`, and `/swagger` are exempt (WebSocket authenticates with the node token instead)
+  - API auth: header `Authorization: <ServerSettings:AuthHeader>` (default `secureobiconkey`; the Swagger description shows the configured value and the web UI stores its key in localStorage, prompted on the first 401). `/ws`, `/metrics`, and `/swagger` are exempt (WebSocket authenticates with the node token instead)
   - Data: SQLite file `obicon.db` in the project directory, schema created on startup. `Data/SchemaMigrator.cs` then adds any missing tables/columns with sensible defaults and applies one-time data conversions (recorded in its `SchemaMigrations` table, e.g. enum frequencies to seconds), so upgrades keep the existing `obicon.db` — no need to delete it. Only *changing* an existing column (type, rename) still requires manual migration
 - **Node:** `Node__Token="<token>" dotnet run --project src/Obicon.Node`
   - Every setting in `appsettings.json` (`Node` section) can be overridden by env vars: `Node__ServerUrl`, `Node__MaxConcurrentTests`, etc.
@@ -64,6 +64,10 @@ Rules:
 
 ## Logging Standard
 
+Logging calls are written as `[LoggerMessage]` partial methods (CA1848): make the containing class `partial`, add the private partial method with `[LoggerMessage(Level = ..., Message = "...")]` at the bottom of the class, and call it instead of the `ILogger` extension. Top-level statements log through the project's `ProgramLog` class
+
+The node's console sink is configured in `appsettings.json` (`Serilog:ConsoleSink`: level, template, invariant culture) rather than in code — change it there, not in `Program.cs`. The sink is attached through a `WriteTo.Conditional` wrapper in `Program.cs` because the local-logging mute policy is runtime state, and a missing or empty section falls back to the built-in default mirrored in code; the capture sink (`NodeLogSink`) always sees the full Debug pipeline
+
 **Every basic action gets an `LogInformation` entry in the service that performs it** — created/updated/deleted for nodes, pools, and tests; token regeneration; test runs triggered; jobs enqueued, dispatched, and finished; connections opened and closed. Someone tailing the log should see the full lifecycle without debug logging enabled.
 
 - Log **what** and **identify it**: `"Created pool {PoolId} with name {PoolName}"`, `"Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms"`
@@ -73,6 +77,8 @@ Rules:
 - Cross-reference: meaningful server actions also increment the `Obicon.Server` metrics counter (`ServerMetrics.Action("created_pool")`), finished test runs go to `ServerMetrics.TestRun(...)`
 
 ## Conventions
+
+- **C# Coding Guidelines:** we adhere to [csharpcodingguidelines.com](https://csharpcodingguidelines.com/). Enforcement lives in the root `.editorconfig` (naming, style, and formatting rules) plus the recommended .NET analyzer rules (`Directory.Build.props`); every rule fires as a build warning. The `coding-guidelines` CI job builds with `-warnaserror`, so any violation fails the pipeline. The codebase is clean: keep it that way — when writing or touching C# code, do not add new violations. Suppressions (`#pragma warning disable` or `[SuppressMessage]`) require a justification naming why the rule does not apply. Test method names keep the xUnit underscore convention (CA1707 is scoped off under `tests/`); private fields are `_camelCase`
 
 - **SQLite writes are serialized** (`Data/SqliteWriteQueue`): every mutating database operation is enqueued as a read-modify-write unit and executed one by one by a single background consumer; reads go directly to the database. Rules:
   - New write paths go through `_writeQueue.EnqueueAsync(async db => ...)` and must do their whole read-modify-write inside the unit — entities never cross the queue boundary

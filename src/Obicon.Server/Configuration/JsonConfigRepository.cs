@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Configuration;
-using Obicon.Server.Configuration;
-
 namespace Obicon.Server.Configuration;
 
 public class JsonConfigRepository : IConfigRepository

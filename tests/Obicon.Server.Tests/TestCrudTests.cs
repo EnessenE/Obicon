@@ -15,7 +15,7 @@ public class TestCrudTests : IClassFixture<ObiconServerFactory>
     public TestCrudTests(ObiconServerFactory factory)
     {
         _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Authorization = new("uwu");
+        _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
     }
 
     private async Task<Guid> CreateNodeAsync()

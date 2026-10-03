@@ -15,7 +15,7 @@ public interface INodeEnrollmentService
 /// Registers nodes that enroll themselves with a valid enroll token.
 /// Enrolled nodes manage their own name, labels, and pools.
 /// </summary>
-public class NodeEnrollmentService : INodeEnrollmentService
+public partial class NodeEnrollmentService : INodeEnrollmentService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly SqliteWriteQueue _writeQueue;
@@ -54,61 +54,60 @@ public class NodeEnrollmentService : INodeEnrollmentService
             var labels = request.Labels.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
             var poolIds = await ResolveOrCreatePoolsAsync(db, request.Pools);
 
-        // A pool-scoped token always puts the enrolled node into its pool,
-        // on top of the pools the node asked for itself
-        if (enrollToken.PoolId is { } tokenPoolId && !poolIds.Contains(tokenPoolId))
-        {
-            poolIds.Add(tokenPoolId);
-        }
-
-        Node? node;
-        string? plainToken = null;
-        if (request.NodeId is { } nodeId)
-        {
-            node = await db.Nodes.FindAsync(nodeId);
-            if (node == null)
+            // A pool-scoped token always puts the enrolled node into its pool,
+            // on top of the pools the node asked for itself
+            if (enrollToken.PoolId is { } tokenPoolId && !poolIds.Contains(tokenPoolId))
             {
-                throw new ArgumentException($"Unknown node ID: {nodeId}");
-            }
-            if (node.EnrollmentType != NodeEnrollmentType.AutoEnrollment)
-            {
-                throw new InvalidOperationException("Only nodes that enrolled themselves can update via enrollment");
+                poolIds.Add(tokenPoolId);
             }
 
-            node.Name = request.NodeName;
-            node.Labels = labels;
-        }
-        else
-        {
-            plainToken = Guid.NewGuid().ToString();
-            node = new Node
+            Node? node;
+            string? plainToken = null;
+            if (request.NodeId is { } nodeId)
             {
-                Id = Guid.NewGuid(),
-                Name = request.NodeName,
-                AuthToken = TokenHasher.Hash(plainToken),
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                Labels = labels,
-                EnrollmentType = NodeEnrollmentType.AutoEnrollment
-            };
-            db.Nodes.Add(node);
-        }
+                node = await db.Nodes.FindAsync(nodeId);
+                if (node == null)
+                {
+                    throw new ArgumentException($"Unknown node ID: {nodeId}");
+                }
+                if (node.EnrollmentType != NodeEnrollmentType.AutoEnrollment)
+                {
+                    throw new InvalidOperationException("Only nodes that enrolled themselves can update via enrollment");
+                }
 
-        foreach (var poolId in poolIds)
-        {
-            var pool = await db.NodePools.FindAsync(poolId);
-            if (pool != null && !pool.NodeIds.Contains(node.Id))
-            {
-                pool.NodeIds = pool.NodeIds.Append(node.Id).ToList();
+                node.Name = request.NodeName;
+                node.Labels = labels;
             }
-        }
+            else
+            {
+                plainToken = Guid.NewGuid().ToString();
+                node = new Node
+                {
+                    Id = Guid.NewGuid(),
+                    Name = request.NodeName,
+                    AuthToken = TokenHasher.Hash(plainToken),
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    Labels = labels,
+                    EnrollmentType = NodeEnrollmentType.AutoEnrollment
+                };
+                db.Nodes.Add(node);
+            }
+
+            foreach (var poolId in poolIds)
+            {
+                var pool = await db.NodePools.FindAsync(poolId);
+                if (pool != null && !pool.NodeIds.Contains(node.Id))
+                {
+                    pool.NodeIds = pool.NodeIds.Append(node.Id).ToList();
+                }
+            }
 
             await db.SaveChangesAsync();
             return (node, plainToken, poolIds);
         });
 
-        _logger.LogInformation("Node {NodeId} ({NodeName}) enrolled via token {TokenName} ({PoolCount} pool(s))",
-            node.Id, node.Name, enrollToken.Name, poolIds.Count);
+        LogNodeEnrolled(node.Id, node.Name, enrollToken.Name, poolIds.Count);
         Metrics.ServerMetrics.Action("node_enrolled");
 
         return new EnrollResponse
@@ -152,4 +151,7 @@ public class NodeEnrollmentService : INodeEnrollmentService
 
         return result;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} ({NodeName}) enrolled via token {TokenName} ({PoolCount} pool(s))")]
+    private partial void LogNodeEnrolled(Guid nodeId, string nodeName, string tokenName, int poolCount);
 }

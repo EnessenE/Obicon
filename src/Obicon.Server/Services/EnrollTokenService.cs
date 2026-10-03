@@ -20,7 +20,7 @@ public interface IEnrollTokenService
 /// Manages enroll tokens. Only the SHA-256 hash of a token is stored; the plain
 /// value is returned exactly once, at creation.
 /// </summary>
-public class EnrollTokenService : IEnrollTokenService
+public partial class EnrollTokenService : IEnrollTokenService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
     private readonly SqliteWriteQueue _writeQueue;
@@ -60,8 +60,8 @@ public class EnrollTokenService : IEnrollTokenService
             await db.SaveChangesAsync();
         });
 
-        _logger.LogInformation("Created enroll token {TokenId} ({TokenName}){Scope}",
-            token.Id, token.Name, token.PoolId is { } pid ? $" scoped to pool {pid}" : string.Empty);
+        LogCreatedEnrollToken(token.Id, token.Name,
+            token.PoolId is { } pid ? $" scoped to pool {pid}" : string.Empty);
         Metrics.ServerMetrics.Action("created_enroll_token");
 
         var response = EnrollTokenResponse.From(token);
@@ -89,7 +89,7 @@ public class EnrollTokenService : IEnrollTokenService
             token.RevokedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Revoked enroll token {TokenId} ({TokenName})", token.Id, token.Name);
+            LogRevokedEnrollToken(token.Id, token.Name);
             Metrics.ServerMetrics.Action("revoked_enroll_token");
             return true;
         });
@@ -109,7 +109,7 @@ public class EnrollTokenService : IEnrollTokenService
             db.EnrollTokens.Remove(token);
             await db.SaveChangesAsync();
 
-            _logger.LogInformation("Deleted enroll token {TokenId} ({TokenName})", token.Id, token.Name);
+            LogDeletedEnrollToken(token.Id, token.Name);
             Metrics.ServerMetrics.Action("deleted_enroll_token");
             return true;
         });
@@ -143,4 +143,13 @@ public class EnrollTokenService : IEnrollTokenService
         var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(plainToken));
         return Convert.ToHexString(hash);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created enroll token {TokenId} ({TokenName}){Scope}")]
+    private partial void LogCreatedEnrollToken(Guid tokenId, string tokenName, string scope);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Revoked enroll token {TokenId} ({TokenName})")]
+    private partial void LogRevokedEnrollToken(Guid tokenId, string tokenName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted enroll token {TokenId} ({TokenName})")]
+    private partial void LogDeletedEnrollToken(Guid tokenId, string tokenName);
 }

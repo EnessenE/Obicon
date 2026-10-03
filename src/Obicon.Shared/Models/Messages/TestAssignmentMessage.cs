@@ -1,5 +1,5 @@
-using Obicon.Shared.Models.Enums;
 using System.Text.Json.Serialization;
+using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Shared.Models.Messages;
 
