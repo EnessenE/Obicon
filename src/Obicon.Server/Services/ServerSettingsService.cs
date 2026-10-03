@@ -10,7 +10,7 @@ namespace Obicon.Server.Services;
 
 /// <summary>
 /// Resolves server settings: values pinned by appsettings or environment variables are forced
-/// and read-only; everything else can be overridden at runtime (stored in SQLite).
+/// and read-only; everything else can be overridden at runtime (stored in the database).
 /// Effective values are cached and the cache is invalidated on change.
 /// </summary>
 public partial class ServerSettingsService : IServerSettingsService
@@ -18,7 +18,7 @@ public partial class ServerSettingsService : IServerSettingsService
     private const string ConfigSection = "ServerSettings";
 
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly IConfiguration _configuration;
     private readonly NodePolicyBroadcaster _policyBroadcaster;
     private readonly ILogger<ServerSettingsService> _logger;
@@ -27,13 +27,12 @@ public partial class ServerSettingsService : IServerSettingsService
 
     public ServerSettingsService(
         IDbContextFactory<ObiconDbContext> dbFactory,
-        SqliteWriteQueue writeQueue,
         IConfiguration configuration,
         NodePolicyBroadcaster policyBroadcaster,
         ILogger<ServerSettingsService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _configuration = configuration;
         _policyBroadcaster = policyBroadcaster;
         _logger = logger;
@@ -103,7 +102,7 @@ public partial class ServerSettingsService : IServerSettingsService
             throw new ArgumentException($"Setting {key} expects a {definition.ValueType.Name} value");
         }
 
-        await _writeQueue.EnqueueAsync(async db =>
+        await _dbFactory.ExecuteAsync(async db =>
         {
             var stored = await db.ServerSettingValues.FindAsync(key);
             if (stored == null)

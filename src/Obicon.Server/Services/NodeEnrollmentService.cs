@@ -18,20 +18,19 @@ public interface INodeEnrollmentService
 public partial class NodeEnrollmentService : INodeEnrollmentService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly IEnrollTokenService _enrollTokenService;
     private readonly IServerSettingsService _settingsService;
     private readonly ILogger<NodeEnrollmentService> _logger;
 
     public NodeEnrollmentService(
         IDbContextFactory<ObiconDbContext> dbFactory,
-        SqliteWriteQueue writeQueue,
         IEnrollTokenService enrollTokenService,
         IServerSettingsService settingsService,
         ILogger<NodeEnrollmentService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _enrollTokenService = enrollTokenService;
         _settingsService = settingsService;
         _logger = logger;
@@ -47,9 +46,9 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
         var enrollToken = await _enrollTokenService.FindValidAsync(request.EnrollToken)
             ?? throw new UnauthorizedAccessException("Invalid, revoked, or expired enroll token");
 
-        // The whole enrollment runs as one queued write unit: node creation/update and
-        // pool membership must be written together, one by one like every other write
-        var (node, plainToken, poolIds) = await _writeQueue.EnqueueAsync(async db =>
+        // The whole enrollment runs as one unit of work: node creation/update and
+        // pool membership must be written together
+        var (node, plainToken, poolIds) = await _dbFactory.ExecuteAsync(async db =>
         {
             var labels = request.Labels.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
             var poolIds = await ResolveOrCreatePoolsAsync(db, request.Pools);

@@ -12,14 +12,14 @@ namespace Obicon.Server.Services;
 public partial class NodeService : INodeService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly NodeConnectionManager _connectionManager;
     private readonly ILogger<NodeService> _logger;
 
-    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, NodeConnectionManager connectionManager, ILogger<NodeService> logger)
+    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, NodeConnectionManager connectionManager, ILogger<NodeService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _connectionManager = connectionManager;
         _logger = logger;
     }
@@ -40,7 +40,7 @@ public partial class NodeService : INodeService
             LastSeenAt = null
         };
 
-        var response = await _writeQueue.EnqueueAsync(async db =>
+        var response = await _dbFactory.ExecuteAsync(async db =>
         {
             db.Nodes.Add(node);
             await db.SaveChangesAsync();
@@ -75,7 +75,7 @@ public partial class NodeService : INodeService
 
     public async Task<NodeResponse?> UpdateNodeAsync(Guid id, UpdateNodeRequest request)
     {
-        var (response, plainToken) = await _writeQueue.EnqueueAsync(async db =>
+        var (response, plainToken) = await _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(id);
             if (node == null)
@@ -121,7 +121,7 @@ public partial class NodeService : INodeService
 
     public async Task<bool> DeleteNodeAsync(Guid id)
     {
-        var deleted = await _writeQueue.EnqueueAsync(async db =>
+        var deleted = await _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(id);
             if (node == null)
@@ -172,7 +172,7 @@ public partial class NodeService : INodeService
 
     public Task UpdateNodeLastSeenAsync(Guid nodeId)
     {
-        return _writeQueue.EnqueueAsync(async db =>
+        return _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(nodeId);
             if (node != null)
@@ -185,7 +185,7 @@ public partial class NodeService : INodeService
 
     public Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, string? ipAddress, Dictionary<string, string>? settings)
     {
-        return _writeQueue.EnqueueAsync(async db =>
+        return _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(nodeId);
             if (node == null)
@@ -213,7 +213,7 @@ public partial class NodeService : INodeService
 
     public Task UpdateNodeReportedAddressesAsync(Guid nodeId, string? internalIpv4, string? internalIpv6, string? externalIpv4, string? externalIpv6)
     {
-        return _writeQueue.EnqueueAsync(async db =>
+        return _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(nodeId);
             if (node == null ||

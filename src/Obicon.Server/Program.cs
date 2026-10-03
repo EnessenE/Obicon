@@ -11,6 +11,7 @@ using Obicon.Server.Metrics;
 using Obicon.Server.Middleware;
 using Obicon.Server.Services;
 using Obicon.Server.WebSockets;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using Serilog;
 
@@ -27,13 +28,35 @@ builder.Host.UseSerilog((context, services, configuration) =>
     }
 });
 
+// Optional OTLP egress for metrics and logs: absent or empty means scrape-only.
+// Set "Otlp:Endpoint" (e.g. "http:// collector:4317") to push both streams to the
+// user's observability backend; the Prometheus scrape endpoint stays up either way.
+var otlpEndpoint = builder.Configuration["Otlp:Endpoint"];
+var hasOtlpEndpoint = !string.IsNullOrWhiteSpace(otlpEndpoint);
+
 builder.Services.AddOpenTelemetry()
-    .WithMetrics(b => b
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddMeter(ServerMetrics.ServerMeterName)
-        .AddMeter(ServerMetrics.TestsMeterName)
-        .AddPrometheusExporter());
+    .WithMetrics(b =>
+    {
+        b.AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddMeter(ServerMetrics.ServerMeterName)
+            .AddMeter(ServerMetrics.TestsMeterName)
+            .AddPrometheusExporter();
+
+        if (hasOtlpEndpoint)
+        {
+            b.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint!));
+        }
+    })
+    .WithLogging(b =>
+    {
+        // The node log funnel writes through the OTel logger provider, so shipped node
+        // entries leave through the same endpoint as the metrics
+        if (hasOtlpEndpoint)
+        {
+            b.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint!));
+        }
+    });
 
 builder.Services.AddCors();
 builder.Services.AddEndpointsApiExplorer();
@@ -59,16 +82,16 @@ builder.Services.AddSingleton<INodePoolService, NodePoolService>();
 builder.Services.AddSingleton<ITestService, TestService>();
 builder.Services.AddSingleton<ITestQueueService, TestQueueService>();
 builder.Services.AddSingleton<NodeConnectionManager>();
-builder.Services.AddSingleton<Obicon.Server.Data.SqliteWriteQueue>();
 builder.Services.AddSingleton<IConfigRepository, JsonConfigRepository>();
 builder.Services.AddDbContextFactory<ObiconDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 // The ServerSettings section is the configuration layer of the settings system:
 // values present there (or as ServerSettings__* environment variables) are forced and read-only
 builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
 builder.Services.AddSingleton<IServerSettingsService, ServerSettingsService>();
 builder.Services.AddSingleton<Obicon.Server.Metrics.ITestMetricsEmitter, Obicon.Server.Metrics.TestMetricsEmitter>();
+builder.Services.AddSingleton<Obicon.Server.Services.INodeLogFunnel, Obicon.Server.Services.NodeLogFunnel>();
 builder.Services.AddSingleton<NodePolicyBroadcaster>();
 builder.Services.AddSingleton<IEnrollTokenService, EnrollTokenService>();
 builder.Services.AddSingleton<INodeEnrollmentService, NodeEnrollmentService>();
@@ -81,14 +104,13 @@ builder.Services.AddHostedService<Obicon.Server.WebSockets.ConnectionWatcher>();
 
 var app = builder.Build();
 
-// Create the SQLite schema on startup if the database does not exist yet
+// Apply EF Core migrations on startup: a fresh database is created, and an existing
+// one is brought up to the current schema. There is no upgrade path from the
+// pre-0.5.0 SQLite database - the 0.5.0 release is a clean, breaking cut.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ObiconDbContext>();
-    await db.Database.EnsureCreatedAsync();
-
-    // EnsureCreated only builds an empty database; reconcile older schemas in place
-    SchemaMigrator.Migrate(db);
+    await db.Database.MigrateAsync();
 }
 
 // Enable CORS for frontend on port 5003

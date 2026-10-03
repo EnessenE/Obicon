@@ -15,7 +15,7 @@ namespace Obicon.Server.Services;
 public partial class TestService : ITestService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly INodeService _nodeService;
     private readonly INodePoolService _poolService;
     private readonly ITestQueueService _queueService;
@@ -25,7 +25,6 @@ public partial class TestService : ITestService
 
     public TestService(
         IDbContextFactory<ObiconDbContext> dbFactory,
-        SqliteWriteQueue writeQueue,
         INodeService nodeService,
         INodePoolService poolService,
         ITestQueueService queueService,
@@ -35,7 +34,7 @@ public partial class TestService : ITestService
     {
         _logger = logger;
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _nodeService = nodeService;
         _poolService = poolService;
         _queueService = queueService;
@@ -77,7 +76,7 @@ public partial class TestService : ITestService
             UpdatedAt = null
         };
 
-        await _writeQueue.EnqueueAsync(async db =>
+        await _dbFactory.ExecuteAsync(async db =>
         {
             db.Tests.Add(test);
             await db.SaveChangesAsync();
@@ -109,7 +108,7 @@ public partial class TestService : ITestService
         await ValidateTestTypeEnabledAsync(request.Type);
         ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
-        var updated = await _writeQueue.EnqueueAsync(async db =>
+        var updated = await _dbFactory.ExecuteAsync(async db =>
         {
             var test = await db.Tests.FindAsync(id);
             if (test == null)
@@ -154,7 +153,7 @@ public partial class TestService : ITestService
 
     public async Task<TestResponse?> ToggleTestAsync(Guid id)
     {
-        var toggled = await _writeQueue.EnqueueAsync(async db =>
+        var toggled = await _dbFactory.ExecuteAsync(async db =>
         {
             var test = await db.Tests.FindAsync(id);
             if (test == null)
@@ -175,7 +174,7 @@ public partial class TestService : ITestService
 
     public async Task<bool> DeleteTestAsync(Guid id)
     {
-        var deleted = await _writeQueue.EnqueueAsync(async db =>
+        var deleted = await _dbFactory.ExecuteAsync(async db =>
         {
             var test = await db.Tests.FindAsync(id);
             if (test == null)
@@ -195,7 +194,7 @@ public partial class TestService : ITestService
 
     public async Task<bool> TriggerTestRunAsync(Guid testId)
     {
-        return await _writeQueue.EnqueueAsync(async db =>
+        return await _dbFactory.ExecuteAsync(async db =>
         {
             var test = await db.Tests.FirstOrDefaultAsync(t => t.Id == testId && t.IsActive);
             if (test == null)
@@ -229,9 +228,9 @@ public partial class TestService : ITestService
                 continue;
             }
 
-            // One queued unit per due test: re-check and persist LastScheduledAt before
+            // One unit per due test: re-check and persist LastScheduledAt before
             // enqueuing, so a row that cannot be updated does not create jobs either
-            var enqueued = await _writeQueue.EnqueueAsync(async db =>
+            var enqueued = await _dbFactory.ExecuteAsync(async db =>
             {
                 var test = await db.Tests.FindAsync(due.Id);
                 if (test == null || !test.IsActive)
@@ -398,9 +397,8 @@ public partial class TestService : ITestService
     }
 
     /// <summary>
-    /// Creates the test's jobs with the given context. Only called from inside queued
-    /// write units: the job creation must not re-enter the queue (deadlock), and the
-    /// single consumer is already the only writer.
+    /// Creates the test's jobs with the given context, so callers that already hold a
+    /// context for their own read-modify-write unit reuse it instead of opening another.
     /// </summary>
     private async Task EnqueueJobsForTestAsync(ObiconDbContext db, Test test)
     {
@@ -465,10 +463,9 @@ public partial class TestService : ITestService
             throw new ArgumentException("At least one node ID or pool ID is required for a run-once");
         }
 
-        // One queued write unit: node and pool existence, selection, and job creation
-        // happen together, so the selection sees a consistent database state and the
-        // created jobs are written by the single consumer
-        var jobs = await _writeQueue.EnqueueAsync(async db =>
+        // One unit of work: node and pool existence, selection, and job creation
+        // happen together, so the selection sees a consistent database state
+        var jobs = await _dbFactory.ExecuteAsync(async db =>
         {
             // Directly selected nodes must all exist
             var nodes = await db.Nodes

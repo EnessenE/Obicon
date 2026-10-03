@@ -6,7 +6,7 @@ using Obicon.Server.Models;
 namespace Obicon.Server.Data;
 
 /// <summary>
-/// SQLite persistence for nodes, tests, and test jobs.
+/// PostgreSQL persistence for nodes, tests, and test jobs.
 /// </summary>
 public class ObiconDbContext : DbContext
 {
@@ -78,11 +78,17 @@ public class ObiconDbContext : DbContext
             v => v == null ? string.Empty : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
             v => string.IsNullOrEmpty(v) ? null : JsonSerializer.Deserialize<TestResult>(v, (JsonSerializerOptions?)null));
 
-        // SQLite stores datetimes as TEXT without timezone info; re-mark them as UTC on read
+        // Npgsql maps DateTime to timestamp with time zone, which only accepts UTC values:
+        // mark every persisted datetime as UTC on both write and read
         var utcConverter = new ValueConverter<DateTime, DateTime>(
-            v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+            v => DateTime.SpecifyKind(v, DateTimeKind.Utc), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
         var nullableUtcConverter = new ValueConverter<DateTime?, DateTime?>(
-            v => v, v => v == null ? v : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc));
+            v => v == null ? v : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc),
+            v => v == null ? v : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc));
+
+        // JSON-serialized values are stored as jsonb: queryable and not re-parsed as text
+        void Jsonb<T>(Microsoft.EntityFrameworkCore.Metadata.Builders.PropertyBuilder<T> property)
+            => property.HasColumnType("jsonb");
 
         modelBuilder.Entity<Node>()
             .HasIndex(n => n.AuthToken);
@@ -125,6 +131,15 @@ public class ObiconDbContext : DbContext
             .Property(n => n.Settings)
             .HasConversion(stringDictionaryConverter);
 
+        Jsonb(modelBuilder.Entity<Node>().Property(n => n.Labels));
+        Jsonb(modelBuilder.Entity<Node>().Property(n => n.Settings));
+        Jsonb(modelBuilder.Entity<NodePool>().Property(p => p.NodeIds));
+        Jsonb(modelBuilder.Entity<Test>().Property(t => t.NodeIds));
+        Jsonb(modelBuilder.Entity<Test>().Property(t => t.PoolIds));
+        Jsonb(modelBuilder.Entity<Test>().Property(t => t.Headers));
+        Jsonb(modelBuilder.Entity<TestJob>().Property(j => j.Headers));
+        Jsonb(modelBuilder.Entity<TestJob>().Property(j => j.Result));
+
         modelBuilder.Entity<Node>().Property(n => n.CreatedAt).HasConversion(utcConverter);
         modelBuilder.Entity<Node>().Property(n => n.LastSeenAt).HasConversion(nullableUtcConverter);
 
@@ -135,5 +150,15 @@ public class ObiconDbContext : DbContext
         modelBuilder.Entity<TestJob>().Property(j => j.StartedAt).HasConversion(nullableUtcConverter);
         modelBuilder.Entity<TestJob>().Property(j => j.AcknowledgedAt).HasConversion(nullableUtcConverter);
         modelBuilder.Entity<TestJob>().Property(j => j.CompletedAt).HasConversion(nullableUtcConverter);
+
+        modelBuilder.Entity<TestJob>()
+            .HasIndex(j => new { j.Status, j.CompletedAt });
+
+        modelBuilder.Entity<EnrollToken>().Property(t => t.CreatedAt).HasConversion(utcConverter);
+        modelBuilder.Entity<EnrollToken>().Property(t => t.ExpiresAt).HasConversion(nullableUtcConverter);
+        modelBuilder.Entity<EnrollToken>().Property(t => t.RevokedAt).HasConversion(nullableUtcConverter);
+
+        modelBuilder.Entity<ServerSettingValue>().Property(s => s.UpdatedAt).HasConversion(utcConverter);
+        modelBuilder.Entity<Test>().Property(t => t.LastScheduledAt).HasConversion(nullableUtcConverter);
     }
 }

@@ -9,13 +9,13 @@ namespace Obicon.Server.Services;
 public partial class NodePoolService : INodePoolService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly ILogger<NodePoolService> _logger;
 
-    public NodePoolService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<NodePoolService> logger)
+    public NodePoolService(IDbContextFactory<ObiconDbContext> dbFactory, ILogger<NodePoolService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _logger = logger;
     }
 
@@ -30,7 +30,7 @@ public partial class NodePoolService : INodePoolService
             CreatedAt = DateTime.UtcNow
         };
 
-        await _writeQueue.EnqueueAsync(async db =>
+        await _dbFactory.ExecuteAsync(async db =>
         {
             db.NodePools.Add(pool);
             await db.SaveChangesAsync();
@@ -57,7 +57,7 @@ public partial class NodePoolService : INodePoolService
 
     public async Task<PoolResponse?> UpdatePoolAsync(Guid id, UpdatePoolRequest request)
     {
-        var updated = await _writeQueue.EnqueueAsync(async db =>
+        var updated = await _dbFactory.ExecuteAsync(async db =>
         {
             var pool = await db.NodePools.FindAsync(id);
             if (pool == null)
@@ -78,7 +78,7 @@ public partial class NodePoolService : INodePoolService
 
     public async Task<PoolResponse?> SetPoolMembersAsync(Guid id, PoolMembersRequest request)
     {
-        var updated = await _writeQueue.EnqueueAsync(async db =>
+        var updated = await _dbFactory.ExecuteAsync(async db =>
         {
             // NodeIds is a JSON column, so validate membership against the Nodes table first
             var existingIds = await db.Nodes
@@ -108,7 +108,7 @@ public partial class NodePoolService : INodePoolService
 
     public async Task<bool> DeletePoolAsync(Guid id)
     {
-        var deleted = await _writeQueue.EnqueueAsync(async db =>
+        var deleted = await _dbFactory.ExecuteAsync(async db =>
         {
             var pool = await db.NodePools.FindAsync(id);
             if (pool == null)
