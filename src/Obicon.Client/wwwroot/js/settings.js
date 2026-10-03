@@ -7,6 +7,10 @@ let pools = [];
 let testTypes = null;
 let testTypesError = null;
 
+// Labels selectable through TestMetricsLabels; test_id and the counter's status are
+// always attached and not offered as choices
+const metricLabels = ['test_type', 'test_name', 'node_id', 'node_name', 'node_labels'];
+
 // DOM elements
 const settingsList = document.getElementById('settingsList');
 const settingsError = document.getElementById('settingsError');
@@ -78,6 +82,12 @@ function renderSettings() {
 function renderSettingRow(setting) {
     if (setting.key === 'EnabledTestTypes' && testTypes) {
         return renderTestTypesRow(setting);
+    }
+    if (setting.key === 'TestMetricsLabels') {
+        return renderMetricLabelsRow(setting);
+    }
+    if (setting.key === 'TestResultStorageMode') {
+        return renderStorageModeRow(setting);
     }
 
     const locked = setting.isForced || setting.isReadOnly;
@@ -170,6 +180,135 @@ async function toggleTestType(name, checked, input) {
         settingsError.style.display = 'block';
         setTimeout(() => { settingsError.style.display = 'none'; }, 8000);
     }
+}
+
+// One row of per-label switches for TestMetricsLabels, plus the permanently disabled
+// job_id switch that documents why it can never be a metric label
+function renderMetricLabelsRow(setting) {
+    const locked = setting.isForced || setting.isReadOnly;
+    let selected;
+    try {
+        selected = JSON.parse(setting.value);
+    } catch (error) {
+        // An unparseable value falls back to the raw text input, like a broken setting
+        return renderRawSettingRow(setting);
+    }
+
+    const switches = metricLabels.map(label => `
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input metric-label-switch" type="checkbox" role="switch"
+                   id="metric-label-${escapeHtml(label)}" ${selected.includes(label) ? 'checked' : ''}
+                   ${locked ? 'disabled' : ''}
+                   onchange="toggleMetricLabel('${escapeHtml(label)}', this.checked, this)">
+            <label class="form-check-label" for="metric-label-${escapeHtml(label)}">${escapeHtml(label)}</label>
+        </div>`).join('') + `
+        <div class="form-check form-switch mb-0" title="High cardinality: one series per run - not supported">
+            <input class="form-check-input" type="checkbox" role="switch" disabled>
+            <label class="form-check-label text-muted">job_id</label>
+        </div>
+        <div class="small text-muted w-100 mt-1">test_id and status are always attached</div>`;
+
+    const badge = setting.isForced
+        ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>'
+        : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`;
+
+    return `
+        <div class="row align-items-center mb-3 pb-3 border-bottom">
+            <div class="col-md-5">
+                <strong>${escapeHtml(setting.key)}</strong>
+                ${badge}
+                <div class="small text-muted">${escapeHtml(setting.description)}</div>
+            </div>
+            <div class="col-md-7">
+                <div class="d-flex flex-wrap gap-3">${switches}</div>
+            </div>
+        </div>
+    `;
+}
+
+async function toggleMetricLabel(label, checked, input) {
+    // The switches are the source of truth: collect every checked label name
+    const selected = metricLabels
+        .filter(l => document.getElementById(`metric-label-${l}`).checked);
+
+    try {
+        await apiCall('PUT', '/v1/settings/TestMetricsLabels', { value: JSON.stringify(selected) });
+    } catch (error) {
+        input.checked = !checked;
+        settingsError.textContent = error.message;
+        settingsError.style.display = 'block';
+        setTimeout(() => { settingsError.style.display = 'none'; }, 8000);
+    }
+}
+
+// A select for TestResultStorageMode: how finished jobs are stored in the database
+function renderStorageModeRow(setting) {
+    const locked = setting.isForced || setting.isReadOnly;
+    const modes = [
+        ['Full', 'Full - keep the complete result payload'],
+        ['MetadataOnly', 'MetadataOnly - keep the row, drop the payload'],
+        ['None', 'None - delete the row on completion']
+    ];
+    const control = `
+        <select id="setting-input-${escapeHtml(setting.key)}"
+                class="form-select${locked ? ' bg-body-tertiary text-secondary' : ''}"
+                ${locked ? 'disabled' : ''}
+                onchange="saveStorageMode('${escapeHtml(setting.key)}', this.value, this)">
+            ${modes.map(([value, text]) =>
+                `<option value="${value}" ${setting.value === value ? 'selected' : ''}>${text}</option>`).join('')}
+        </select>`;
+
+    const badge = setting.isForced
+        ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>'
+        : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`;
+
+    return `
+        <div class="row align-items-center mb-3 pb-3 border-bottom">
+            <div class="col-md-5">
+                <strong>${escapeHtml(setting.key)}</strong>
+                ${badge}
+                <div class="small text-muted">${escapeHtml(setting.description)}</div>
+            </div>
+            <div class="col-md-4">${control}</div>
+            <div class="col-md-3 text-end">
+                ${locked ? '<span class="text-muted small">Read-only</span>' : ''}
+            </div>
+        </div>
+    `;
+}
+
+async function saveStorageMode(key, value, select) {
+    try {
+        await apiCall('PUT', `/v1/settings/${key}`, { value });
+    } catch (error) {
+        settingsError.textContent = error.message;
+        settingsError.style.display = 'block';
+        setTimeout(() => { settingsError.style.display = 'none'; }, 8000);
+        await loadSettings();
+    }
+}
+
+// Renders a setting as its plain text input, used as the fallback for special rows
+// whose value cannot be rendered as switches
+function renderRawSettingRow(setting) {
+    const locked = setting.isForced || setting.isReadOnly;
+    return `
+        <div class="row align-items-center mb-3 pb-3 border-bottom">
+            <div class="col-md-5">
+                <strong>${escapeHtml(setting.key)}</strong>
+                <div class="small text-muted">${escapeHtml(setting.description)}</div>
+            </div>
+            <div class="col-md-4">
+                <input id="setting-input-${escapeHtml(setting.key)}"
+                       class="form-control${locked ? ' bg-body-tertiary text-secondary' : ''}"
+                       value="${escapeHtml(setting.value)}"
+                       ${locked ? 'readonly' : ''}>
+            </div>
+            <div class="col-md-3 text-end">
+                ${locked ? '<span class="text-muted small">Read-only</span>' : `<button class="btn btn-sm btn-primary" onclick="saveSetting('${escapeHtml(setting.key)}')">Save</button>`}
+            </div>
+        </div>
+    `;
 }
 
 function isBoolean(setting) {
