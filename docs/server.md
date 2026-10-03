@@ -40,6 +40,8 @@ Server configuration lives in `appsettings.json` (override with `ServerSettings_
 | `ServerSettings:NodeConnectionTimeoutSeconds` | `30` | Node WebSocket connection timeout |
 | `ServerSettings:WebSocketPath` | `/ws/nodes` | Path nodes connect to |
 
+The `Serilog` section configures logging: `MinimumLevel` (per-source overrides) and the `WriteTo` console sink, which uses the invariant culture for all value formatting. When `WriteTo` defines no sinks, a built-in default console sink (same culture, standard template) takes over.
+
 ## Server settings (runtime, editable)
 
 Separate from the static config above, the server has runtime settings editable from the UI's Settings page or `PUT /v1/settings/{key}`. They resolve in three layers:

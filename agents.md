@@ -66,6 +66,8 @@ Rules:
 
 Logging calls are written as `[LoggerMessage]` partial methods (CA1848): make the containing class `partial`, add the private partial method with `[LoggerMessage(Level = ..., Message = "...")]` at the bottom of the class, and call it instead of the `ILogger` extension. Top-level statements log through the project's `ProgramLog` class
 
+The node's console sink is configured in `appsettings.json` (`Serilog:ConsoleSink`: level, template, invariant culture) rather than in code — change it there, not in `Program.cs`. The sink is attached through a `WriteTo.Conditional` wrapper in `Program.cs` because the local-logging mute policy is runtime state, and a missing or empty section falls back to the built-in default mirrored in code; the capture sink (`NodeLogSink`) always sees the full Debug pipeline
+
 **Every basic action gets an `LogInformation` entry in the service that performs it** — created/updated/deleted for nodes, pools, and tests; token regeneration; test runs triggered; jobs enqueued, dispatched, and finished; connections opened and closed. Someone tailing the log should see the full lifecycle without debug logging enabled.
 
 - Log **what** and **identify it**: `"Created pool {PoolId} with name {PoolName}"`, `"Job {JobId} finished on node {NodeId}: success={Success} duration={DurationMs}ms"`

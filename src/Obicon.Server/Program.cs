@@ -16,9 +16,16 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, services, configuration) => configuration
-    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
-    .ReadFrom.Configuration(context.Configuration));
+builder.Host.UseSerilog((context, services, configuration) =>
+{
+    configuration.ReadFrom.Configuration(context.Configuration);
+
+    // Default when appsettings.json defines no sinks: plain console, invariant culture
+    if (!context.Configuration.GetSection("Serilog:WriteTo").GetChildren().Any())
+    {
+        configuration.WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
+    }
+});
 
 builder.Services.AddOpenTelemetry()
     .WithMetrics(b => b
