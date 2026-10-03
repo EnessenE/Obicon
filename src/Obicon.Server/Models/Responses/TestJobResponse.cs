@@ -1,4 +1,5 @@
 using Obicon.Shared.Models.Enums;
+using Obicon.Shared.Models.Results;
 
 namespace Obicon.Server.Models.Responses;
 
@@ -36,6 +37,12 @@ public class TestJobResponse
     /// Maximum execution time for this job in seconds. Default: 60.
     /// </summary>
     public int TimeoutSeconds { get; set; }
+
+    /// <summary>
+    /// IP family this job runs against. A test with Both is scheduled as one IPv4 and
+    /// one IPv6 job per node.
+    /// </summary>
+    public IpVersion IpVersion { get; set; }
 
     /// <summary>
     /// Current status of the job. See <see cref="TestJobStatus"/> for available statuses.
@@ -83,10 +90,11 @@ public class TestJobResponse
     public string? ErrorMessage { get; set; }
 
     /// <summary>
-    /// Detailed measurements of the run: resolved addresses, phase timings, nameservers,
-    /// certificate details. Null if not yet completed. Default: null.
+    /// Structured details of the run, one populated section per test type (e.g.
+    /// Traceroute with one record per hop). Null for old results or when not yet
+    /// completed. Default: null.
     /// </summary>
-    public Dictionary<string, object>? Metrics { get; set; }
+    public TestResultDetails? Details { get; set; }
 
     /// <summary>
     /// Maps a TestJob entity to its API response.
@@ -100,6 +108,7 @@ public class TestJobResponse
         TestType = job.TestType,
         Target = job.Target,
         TimeoutSeconds = job.TimeoutSeconds,
+        IpVersion = job.IpVersion,
         Status = job.Status,
         CreatedAt = job.CreatedAt,
         StartedAt = job.StartedAt,
@@ -109,6 +118,6 @@ public class TestJobResponse
         DurationMs = job.Result?.DurationMs,
         Output = job.Result?.Output,
         ErrorMessage = job.ErrorMessage,
-        Metrics = job.Result?.Metrics
+        Details = job.Result?.Details
     };
 }

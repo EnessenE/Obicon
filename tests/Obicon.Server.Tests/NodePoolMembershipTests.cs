@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
@@ -9,11 +10,12 @@ namespace Obicon.Server.Tests;
 /// Tests pool membership cleanup: deleting a node removes its ID from every
 /// pool it belongs to, so no stale ID keeps targeting a missing node.
 /// </summary>
-public class NodePoolMembershipTests : IClassFixture<ObiconServerFactory>
+public class NodePoolMembershipTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly HttpClient _client;
 
-    public NodePoolMembershipTests(ObiconServerFactory factory)
+    public NodePoolMembershipTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _client = factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);

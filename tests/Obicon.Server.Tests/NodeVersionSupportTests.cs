@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
@@ -13,12 +14,13 @@ namespace Obicon.Server.Tests;
 /// versionSupported per node (same major.minor as the server), so the UI only
 /// renders what the server already decided on the node's connection.
 /// </summary>
-public class NodeVersionSupportTests : IClassFixture<ObiconServerFactory>
+public class NodeVersionSupportTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly ObiconServerFactory _factory;
     private readonly HttpClient _client;
 
-    public NodeVersionSupportTests(ObiconServerFactory factory)
+    public NodeVersionSupportTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _factory = factory;
         _client = factory.CreateClient();

@@ -110,7 +110,8 @@ public partial class WebSocketMiddleware
             {
                 ServerVersion = ServerInfo.Version,
                 LogShippingEnabled = await _settingsService.GetAsync<bool>("NodeLogShippingEnabled"),
-                NodeLocalLoggingEnabled = await _settingsService.GetAsync<bool>("NodeLocalLoggingEnabled")
+                NodeLocalLoggingEnabled = await _settingsService.GetAsync<bool>("NodeLocalLoggingEnabled"),
+                ExternalIpResolvingEnabled = await _settingsService.GetAsync<bool>("NodeExternalIpResolvingEnabled")
             }
         };
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(hello));
@@ -407,7 +408,7 @@ public partial class WebSocketMiddleware
             Success = result.Success,
             DurationMs = result.DurationMs,
             Output = result.Output,
-            Metrics = result.Metrics
+            Details = result.Details
         };
 
         await _queueService.UpdateJobStatusAsync(jobId, status, testResult);

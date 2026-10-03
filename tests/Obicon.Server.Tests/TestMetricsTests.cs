@@ -5,6 +5,7 @@ using Obicon.Server.Metrics;
 using Obicon.Server.Models.Responses;
 using Obicon.Shared.Models.Enums;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
@@ -14,13 +15,14 @@ namespace Obicon.Server.Tests;
 /// executing node's labels as the node_labels label. Settings changed here are
 /// restored, because the fixture database is shared by every test in the class.
 /// </summary>
-public class TestMetricsTests : IClassFixture<ObiconServerFactory>
+public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly ObiconServerFactory _factory;
     private readonly HttpClient _client;
     private readonly ITestMetricsEmitter _emitter;
 
-    public TestMetricsTests(ObiconServerFactory factory)
+    public TestMetricsTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _factory = factory;
         _client = factory.CreateClient();

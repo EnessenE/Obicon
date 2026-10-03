@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using Obicon.Shared.Models.Results;
 
 namespace Obicon.Node.Services.TestRunners;
 
@@ -20,14 +22,14 @@ public class NameserverResult
     public double RttMs { get; init; } = -1;
 
     /// <summary>
-    /// A records returned by this nameserver. Default: empty list.
+    /// Records of every queried type the answer contained. Default: empty list.
     /// </summary>
-    public List<string> A { get; init; } = new();
+    public List<DnsRecord> Records { get; init; } = [];
 
     /// <summary>
-    /// AAAA records returned by this nameserver. Default: empty list.
+    /// Response status per queried type, e.g. "A" => "NOERROR". Default: empty dictionary.
     /// </summary>
-    public List<string> Aaaa { get; init; } = new();
+    public Dictionary<string, string> Statuses { get; init; } = [];
 
     /// <summary>
     /// Error description when the query failed. Null on success.
@@ -37,10 +39,24 @@ public class NameserverResult
 
 /// <summary>
 /// Minimal DNS-over-UDP client. Queries the system's nameservers directly so the result
-/// can report which server answered and how long it took.
+/// can report which server answered and how long it took. Supports the address records
+/// plus CNAME, TXT, MX, and CAA.
 /// </summary>
 public static class DnsQueryClient
 {
+    /// <summary>
+    /// The supported query types by name and DNS type number. Default: empty.
+    /// </summary>
+    public static readonly (string Name, ushort Value)[] SupportedQueryTypes =
+    [
+        ("A", 1),
+        ("AAAA", 28),
+        ("CNAME", 5),
+        ("TXT", 16),
+        ("MX", 15),
+        ("CAA", 257)
+    ];
+
     /// <summary>
     /// Reads the system's nameservers, e.g. from /etc/resolv.conf. Default: empty list.
     /// </summary>
@@ -72,9 +88,10 @@ public static class DnsQueryClient
     }
 
     /// <summary>
-    /// Queries one nameserver for A and AAAA records of a host, sequentially on one socket.
+    /// Queries one nameserver for the given record types of a host, sequentially on one
+    /// socket. Every answer's records are combined into the result.
     /// </summary>
-    public static async Task<NameserverResult> QueryAsync(IPAddress nameserver, string host, TimeSpan timeout, CancellationToken cancellationToken)
+    public static async Task<NameserverResult> QueryAsync(IPAddress nameserver, string host, IReadOnlyList<(string Name, ushort Value)> queryTypes, TimeSpan timeout, CancellationToken cancellationToken)
     {
         using var udp = new UdpClient(new IPEndPoint(
             nameserver.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0));
@@ -84,16 +101,22 @@ public static class DnsQueryClient
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var aResponse = await QueryOnceAsync(udp, host, 1, timeoutCts.Token);
-            var aaaaResponse = await QueryOnceAsync(udp, host, 28, timeoutCts.Token);
+            var records = new List<DnsRecord>();
+            var statuses = new Dictionary<string, string>();
+            foreach (var (name, value) in queryTypes)
+            {
+                var response = await QueryOnceAsync(udp, host, value, timeoutCts.Token);
+                records.AddRange(ParseRecords(response));
+                statuses[name] = ParseStatus(response);
+            }
             stopwatch.Stop();
 
             return new NameserverResult
             {
                 Nameserver = nameserver.ToString(),
                 RttMs = stopwatch.Elapsed.TotalMilliseconds,
-                A = ParseRecords(aResponse, 1),
-                Aaaa = ParseRecords(aaaaResponse, 28)
+                Records = records,
+                Statuses = statuses
             };
         }
         catch (Exception ex)
@@ -146,47 +169,66 @@ public static class DnsQueryClient
     }
 
     /// <summary>
-    /// Parses A (1) or AAAA (28) records from a DNS response.
+    /// Parses the response code of a DNS response into its mnemonic, e.g. "NOERROR".
     /// </summary>
-    private static List<string> ParseRecords(byte[] response, ushort wantedType)
+    private static string ParseStatus(byte[] response)
     {
-        var records = new List<string>();
+        if (response.Length < 12)
+        {
+            return string.Empty;
+        }
+
+        return (response[3] & 0x0F) switch
+        {
+            0 => "NOERROR",
+            1 => "FORMERR",
+            2 => "SERVFAIL",
+            3 => "NXDOMAIN",
+            4 => "NOTIMP",
+            5 => "REFUSED",
+            var code => $"RCODE{code}"
+        };
+    }
+
+    /// <summary>
+    /// Parses every answer record of a DNS response, of any supported type.
+    /// </summary>
+    private static List<DnsRecord> ParseRecords(byte[] response)
+    {
+        var records = new List<DnsRecord>();
         if (response.Length < 12)
         {
             return records;
         }
 
-        var offset = 12;
-        while (offset < response.Length && response[offset] != 0)
-        {
-            offset += response[offset] + 1;
-        }
-        offset += 5; // null label + qtype + qclass
+        // Skip the question section
+        var (_, offset) = ReadName(response, 12);
+        offset += 4; // qtype + qclass
 
         var answerCount = (response[6] << 8) | response[7];
-        for (var i = 0; i < answerCount && offset + 12 <= response.Length; i++)
+        for (var i = 0; i < answerCount && offset < response.Length; i++)
         {
-            offset = SkipName(response, offset);
+            (_, offset) = ReadName(response, offset);
             if (offset + 10 > response.Length)
             {
                 break;
             }
 
             var type = (ushort)((response[offset] << 8) | response[offset + 1]);
+            var ttl = ((long)response[offset + 4] << 24) | ((long)response[offset + 5] << 16)
+                | ((long)response[offset + 6] << 8) | response[offset + 7];
             var dataLength = (response[offset + 8] << 8) | response[offset + 9];
             offset += 10;
 
-            if (type == wantedType && dataLength > 0 && offset + dataLength <= response.Length)
+            if (dataLength <= 0 || offset + dataLength > response.Length)
             {
-                var data = response[offset..(offset + dataLength)];
-                if (wantedType == 1 && dataLength == 4)
-                {
-                    records.Add(new IPAddress(data).ToString());
-                }
-                else if (wantedType == 28 && dataLength == 16)
-                {
-                    records.Add(new IPAddress(data).ToString());
-                }
+                break;
+            }
+
+            var value = ParseRecordValue(response, offset, dataLength, type);
+            if (value != null)
+            {
+                records.Add(new DnsRecord { RecordType = TypeName(type), Value = value, TtlSeconds = ttl });
             }
 
             offset += dataLength;
@@ -194,21 +236,119 @@ public static class DnsQueryClient
         return records;
     }
 
-    private static int SkipName(byte[] message, int offset)
+    /// <summary>
+    /// Parses one record's value by its type. Null when the type is not supported.
+    /// </summary>
+    private static string? ParseRecordValue(byte[] response, int offset, int dataLength, ushort type)
     {
-        while (offset < message.Length)
+        switch (type)
+        {
+            case 1 when dataLength == 4:
+            case 28 when dataLength == 16:
+                return new IPAddress(response[offset..(offset + dataLength)]).ToString();
+
+            case 5: // CNAME: a compressed name
+            case 2: // NS: same shape, rendered for free
+                return ReadName(response, offset).Name;
+
+            case 15 when dataLength >= 3: // MX: 2-byte preference plus the exchange name
+                var preference = (response[offset] << 8) | response[offset + 1];
+                var (exchange, _) = ReadName(response, offset + 2);
+                return $"{preference} {exchange}";
+
+            case 16: // TXT: one or more length-prefixed character-strings
+                var text = new StringBuilder();
+                var position = offset;
+                var end = offset + dataLength;
+                while (position < end)
+                {
+                    var length = response[position];
+                    if (position + 1 + length > end)
+                    {
+                        break;
+                    }
+                    text.Append(Encoding.ASCII.GetString(response, position + 1, length));
+                    position += 1 + length;
+                }
+                return text.ToString();
+
+            case 257 when dataLength >= 2: // CAA: flags byte, length-prefixed tag, value
+                var flags = response[offset];
+                var tagLength = response[offset + 1];
+                if (offset + 2 + tagLength > offset + dataLength)
+                {
+                    return null;
+                }
+                var tag = Encoding.ASCII.GetString(response, offset + 2, tagLength);
+                var caaValue = Encoding.ASCII.GetString(response[(offset + 2 + tagLength)..(offset + dataLength)]);
+                return $"{flags} {tag} {caaValue}";
+
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// Maps a DNS type number to its name, e.g. 15 to "MX".
+    /// </summary>
+    private static string TypeName(ushort type)
+    {
+        return type switch
+        {
+            1 => "A",
+            28 => "AAAA",
+            5 => "CNAME",
+            16 => "TXT",
+            15 => "MX",
+            257 => "CAA",
+            var other => $"TYPE{other}"
+        };
+    }
+
+    /// <summary>
+    /// Reads a (possibly compressed) domain name and the offset right after it in the
+    /// original stream. Compression pointers are followed with a loop guard.
+    /// </summary>
+    private static (string Name, int NextOffset) ReadName(byte[] message, int offset)
+    {
+        var labels = new List<string>();
+        var nextOffset = -1;
+        var jumps = 0;
+        while (offset >= 0 && offset < message.Length)
         {
             var length = message[offset];
-            if ((length & 0xC0) == 0xC0)
-            {
-                return offset + 2;
-            }
             if (length == 0)
             {
-                return offset + 1;
+                if (nextOffset < 0)
+                {
+                    nextOffset = offset + 1;
+                }
+                break;
             }
+
+            if ((length & 0xC0) == 0xC0 && offset + 1 < message.Length)
+            {
+                if (nextOffset < 0)
+                {
+                    nextOffset = offset + 2;
+                }
+                if (++jumps > 16)
+                {
+                    break;
+                }
+                offset = ((length & 0x3F) << 8) | message[offset + 1];
+                continue;
+            }
+
+            if (offset + 1 + length > message.Length)
+            {
+                break;
+            }
+
+            labels.Add(Encoding.ASCII.GetString(message, offset + 1, length));
             offset += length + 1;
         }
-        return offset;
+
+        return (string.Join(".", labels), nextOffset < 0 ? offset : nextOffset);
     }
 }

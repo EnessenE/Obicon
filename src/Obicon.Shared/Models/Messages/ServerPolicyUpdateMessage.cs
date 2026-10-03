@@ -19,4 +19,11 @@ public class ServerPolicyUpdateMessage
     /// Default: true.
     /// </summary>
     public bool NodeLocalLoggingEnabled { get; set; } = true;
+
+    /// <summary>
+    /// The server's NodeExternalIpResolvingEnabled setting: whether nodes may resolve
+    /// their external (public) addresses via the configured check services. Nodes keep
+    /// the addresses unavailable while false. Default: false.
+    /// </summary>
+    public bool ExternalIpResolvingEnabled { get; set; }
 }

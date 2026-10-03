@@ -293,7 +293,7 @@ public partial class ServerConnection : BackgroundService, IServerConnection
         // Observability policy from the server: log shipping gate and the
         // local logging default, which this node may override in its own config
         var policy = hello!;
-        ApplyObservabilityPolicy(policy.LogShippingEnabled, policy.NodeLocalLoggingEnabled);
+        ApplyObservabilityPolicy(policy.LogShippingEnabled, policy.NodeLocalLoggingEnabled, policy.ExternalIpResolvingEnabled);
 
         // Supported servers are within the same major.minor version as this node
         if (ObiconVersions.IsSupported(serverVersion, NodeInfo.Version))
@@ -333,7 +333,7 @@ public partial class ServerConnection : BackgroundService, IServerConnection
     /// LocalLoggingEnabled override wins over the server's default; a disabled local
     /// logging policy mutes only test-related output, not lifecycle logs.
     /// </summary>
-    private void ApplyObservabilityPolicy(bool logShippingEnabled, bool nodeLocalLoggingEnabled)
+    private void ApplyObservabilityPolicy(bool logShippingEnabled, bool nodeLocalLoggingEnabled, bool externalIpResolvingEnabled)
     {
         var shippingChanged = _loggingState.ServerAllowsLogShipping != logShippingEnabled;
         if (shippingChanged)
@@ -358,6 +358,18 @@ public partial class ServerConnection : BackgroundService, IServerConnection
         }
 
         _loggingState.ApplyLocalLoggingPolicy(_settings.LocalLoggingEnabled, nodeLocalLoggingEnabled);
+
+        // External IP resolving is the server's call alone: when the policy flips, the
+        // monitor refreshes promptly, resolving on a newly enabled policy or clearing
+        // the addresses on a newly disabled one
+        if (_addressState.ServerAllowsExternalIpResolving != externalIpResolvingEnabled)
+        {
+            LogExternalIpResolvingSettingChanged(
+                externalIpResolvingEnabled ? "enabled" : "disabled",
+                _addressState.ServerAllowsExternalIpResolving ? "enabled" : "disabled");
+            _addressState.ServerAllowsExternalIpResolving = externalIpResolvingEnabled;
+            _addressState.RequestExternalRefresh();
+        }
     }
 
     private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
@@ -438,8 +450,8 @@ public partial class ServerConnection : BackgroundService, IServerConnection
                 var update = policyElement.Deserialize<ServerPolicyUpdateMessage>();
                 if (update != null)
                 {
-                    ApplyObservabilityPolicy(update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
-                    LogPolicyUpdatedOnTheFly(update.LogShippingEnabled, update.NodeLocalLoggingEnabled);
+                    ApplyObservabilityPolicy(update.LogShippingEnabled, update.NodeLocalLoggingEnabled, update.ExternalIpResolvingEnabled);
+                    LogPolicyUpdatedOnTheFly(update.LogShippingEnabled, update.NodeLocalLoggingEnabled, update.ExternalIpResolvingEnabled);
                 }
                 break;
 
@@ -541,8 +553,11 @@ public partial class ServerConnection : BackgroundService, IServerConnection
     [LoggerMessage(Level = LogLevel.Debug, Message = "Received {MessageType} from server")]
     private partial void LogReceivedMessage(MessageType messageType);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Server updated its policy on the fly: logShipping={LogShipping} localLogging={LocalLogging}")]
-    private partial void LogPolicyUpdatedOnTheFly(bool logShipping, bool localLogging);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server updated its policy on the fly: logShipping={LogShipping} localLogging={LocalLogging} externalIpResolving={ExternalIpResolving}")]
+    private partial void LogPolicyUpdatedOnTheFly(bool logShipping, bool localLogging, bool externalIpResolving);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Setting changed: external IP resolving is now {New} (was {Old})")]
+    private partial void LogExternalIpResolvingSettingChanged(string @new, string old);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Test assignment could not be parsed: {Json}")]
     private partial void LogUnparseableAssignment(string json);

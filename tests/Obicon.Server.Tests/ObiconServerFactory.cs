@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace Obicon.Server.Tests;
 
@@ -26,6 +27,17 @@ public class ObiconServerFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={TempDbPath()}");
         builder.UseSetting("ServerSettings:AuthHeader", AuthHeader);
+
+        // Server logs go to the running test's output through the "Xunit" sink
+        // (XunitLoggingSinkExtensions, discovered in this assembly via Using) when
+        // the test derives from LoggedTest; without an active scope the sink is silent.
+        // Added through an in-memory source: UseSetting's flat keys leave an empty
+        // intermediate value at WriteTo:1, which Serilog would read as a nameless sink
+        builder.ConfigureAppConfiguration((context, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Serilog:Using:0"] = "Obicon.Server.Tests",
+            ["Serilog:WriteTo:1:Name"] = "Xunit",
+        }));
 
         Environment.SetEnvironmentVariable(
             "ServerSettings__NodeAutoEnrollmentEnabled",

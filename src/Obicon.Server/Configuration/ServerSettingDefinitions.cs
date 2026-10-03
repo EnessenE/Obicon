@@ -93,6 +93,14 @@ public static class ServerSettingDefinitions
         },
         new ServerSettingDefinition
         {
+            Key = "EnabledTestTypes",
+            Group = "General",
+            Description = "JSON array of the test types this server offers, e.g. [\"Ping\",\"Http\",\"Dns\"]. Values: Ping, Traceroute, Http, Https, Tcp, Dns, Tls. An empty array or missing setting enables all types; creating, editing, or dry-running a disabled type is rejected.",
+            ValueType = typeof(string),
+            Default = ""
+        },
+        new ServerSettingDefinition
+        {
             Key = "FrequencyPresetsSeconds",
             Description = "Comma-separated list of test frequencies in seconds, offered in the UI and required when creating or editing a test. Any positive seconds are allowed; e.g. \"15,45,3600\".",
             ValueType = typeof(string),
@@ -128,6 +136,14 @@ public static class ServerSettingDefinitions
             ValueType = typeof(bool),
             Default = "true",
             Group = "Observability"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "NodeExternalIpResolvingEnabled",
+            Group = "Observability",
+            Description = "If enabled, nodes may resolve their external (public) addresses by asking the configured check services. While disabled, nodes report their external addresses as unavailable and do not contact any check service. Announced to every node in the server hello.",
+            ValueType = typeof(bool),
+            Default = "false"
         },
         new ServerSettingDefinition
         {

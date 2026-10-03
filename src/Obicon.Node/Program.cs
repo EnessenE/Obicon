@@ -88,6 +88,7 @@ builder.Services.AddSingleton<ITestRunner, HttpTestRunner>();
 builder.Services.AddSingleton<ITestRunner, HttpsTestRunner>();
 builder.Services.AddSingleton<ITestRunner, TcpTestRunner>();
 builder.Services.AddSingleton<ITestRunner, DnsTestRunner>();
+builder.Services.AddSingleton<ITestRunner, TlsTestRunner>();
 builder.Services.AddSingleton<ITestExecutor, TestExecutor>();
 builder.Services.AddSingleton<NodeIdentityStore>();
 builder.Services.AddSingleton<EnrollmentClient>();

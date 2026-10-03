@@ -10,14 +10,44 @@ The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
 
-## [Server 0.3.1] - Unreleased
+## [Server 0.4.0] - Unreleased
+
+### Server
+- Tests can run over both IP families: the `ipVersion` field gains a `Both` value that schedules one job pinned to IPv4 and one pinned to IPv6 per targeted node (create, edit, run-once), so dual-stack coverage needs a single test; the queue API now reports each job's `ipVersion` and the queue page badges family-pinned runs
+- HTTP(S) tests accept all standard request methods (GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, TRACE); headers stay a plain dictionary end to end, and the web UI edits them as key/value rows instead of a free-text blob
+- New TLS test type: handshake against a host:port, reporting the negotiated protocol and cipher plus the full certificate (subject, issuer, validity window, SANs), with the existing certificate-expiry threshold applying
+- DNS tests can query specific record types: A, AAAA, CNAME, TXT, MX, or CAA (default remains both address families), with every returned record reported as a typed value with its TTL
+- New `EnabledTestTypes` setting (default empty = all types): a JSON array of the test type names this server offers, e.g. `["Ping","Http","Dns"]`; creating, editing, or dry-running a disabled type is rejected with 400, the web UI hides disabled types from the dropdowns, and a new `GET /v1/tests/types` endpoint reports every type's enabled state — the settings page renders one toggle per type instead of the raw JSON
+- New `NodeExternalIpResolvingEnabled` setting (default off): while disabled, nodes do not resolve their external (public) addresses via check services and report them as unavailable; enabling it propagates live to connected nodes and takes effect within a second
+- Test results now carry structured details instead of the old flat stringly metrics dictionary: nodes report one typed section per test type (traceroute hops with address/status/RTT each, HTTP phase timings with certificate, DNS record lists), the server persists them on the job, and the queue API exposes them as `details`. Breaking: results stored by earlier versions keep their text output but no longer show their metrics
+- New integration test suite (`tests/Obicon.Integration.Tests`, Testcontainers): builds the server and node images from the repo Dockerfiles, boots them on a shared docker network, and verifies the whole stack end to end — auto-enrollment over the WebSocket, HTTP/ping/DNS tests run by the node against the live server, and the metrics endpoint. It runs in CI as its own `integration-tests` job and needs a Docker engine locally
+- Test logs land in the test console: server tests derive from `LoggedTest` and show the in-memory app's log trail per test (for failed tests and with detailed console verbosity), the node test suite gets a `TestOutputLogger` that writes a service's `ILogger` entries to the test output, and a failed integration stack start carries the server and node container logs in its failure message
+
+- Per-test settings beyond the traceroute ones: ping probes per run (default 4, range 1-100), per-probe timeout (default 2000 ms), and interval between probes (default 0); HTTP(S) request method (GET or HEAD) and a follow-redirects toggle (default on); and a DNS nameserver override to query a specific resolver instead of the system's — all settable on create, edit, and dry runs with server-side validation
+- Traceroute tests are configurable per test: maximum hops (default 30), probes per hop (default 3), per-probe timeout in ms (default 2000), and reverse hostname resolution per hop (default on) — settable on create, edit, and dry runs, validated server-side (1-64 hops, 1-10 probes, 100-60000 ms)
+
+### Frontend
+- Settings fields on test create, edit, and dry runs for every test type: traceroute hops/probes/hostnames, ping probes/timeout/interval (the ping result renders a per-reply table with loss and min/avg/max), HTTP method and redirects, and the DNS nameserver override
+- Queue page and dry-run results render the structured details per test type — a hop table for traceroutes, phase timings and the certificate for HTTP(S), record lists for DNS — older results show only the text output
+
+## [Node 0.4.0] - Unreleased
+
+- New TLS runner: connects, handshakes, and reports the certificate chain details (including SANs), protocol, cipher, and per-phase timings; supports the certificate expiry threshold
+- The DNS runner queries the requested record type (A, AAAA, CNAME, TXT, MX, CAA) and reports typed records with TTLs; the raw DNS client gained name decompression and the new record parsers
+- External (public) address resolving is now gated by the server's `NodeExternalIpResolvingEnabled` policy (announced in the server hello and pushed live): while disabled the node contacts no check service and reports the addresses as unavailable, and a runtime change refreshes the addresses promptly
+- Traceroute runs honor the new per-test settings — hop limit, probes per hop, per-probe timeout, and best-effort reverse hostname resolution per hop — and each hop's details now carry every probe's round trip and the resolved hostname
+- Ping runs honor the new per-test settings (probe count, per-probe timeout, interval) and report every reply plus loss and min/avg/max round trip statistics; HTTP(S) runs support HEAD requests and disabling redirect following; DNS runs can target a specific nameserver
+- DNS tests log and report more data: the nameserver answer now includes each record's TTL and the DNS response status (e.g. `NXDOMAIN`), logged per nameserver and carried in the result details
+- Test runners report structured result details with every run — traceroute sends one record per hop (address, status, roundtrip, error) instead of only a text rendering, ping/TCP send their resolution and timing fields, HTTP(S) send phase timings, TLS certificate, and check outcomes, and DNS sends the queried nameservers and the returned A/AAAA records — in a `Details` section on the TestResult message, replacing the flat `Metrics` dictionary
+
+## [Server 0.3.1] - 2026-10-03
 
 ### Server
 - Coding standard: the repo now adheres to the C# Coding Guidelines (csharpcodingguidelines.com) — enforced by a root `.editorconfig` (naming and style rules, warnings in CLI builds) and a new `coding-guidelines` CI job that verifies formatting (`dotnet format`) and builds with warnings-as-errors. The full codebase was cleaned up to pass it: every log call is a source-generated `[LoggerMessage]` partial method (145 sites), culture-sensitive conversions specify `CultureInfo.InvariantCulture`, shared state classes expose properties instead of public fields, and `SqliteWriteQueue` disposes correctly
 - The server's console sink moved from code to `appsettings.json` (`Serilog:WriteTo`, invariant culture), mirroring the node; when the section defines no sinks, the previous built-in default (plain console, invariant culture) takes over
 - The API auth key (`ServerSettings:AuthHeader`, now defaulting to `secureobiconkey` instead of the placeholder `uwu`) is no longer hardcoded outside its defaults: the Swagger auth description shows the configured value, and the web UI keeps its key in localStorage (prompted on the first 401) so a deployment with a changed key can still use the UI. A deployment that sets `AuthHeader` in its configuration is unaffected; one relying on the built-in default moves to the new key on upgrade
 
-## [Node 0.3.1] - Unreleased
+## [Node 0.3.1] - 2026-10-03
 
 - Same guidelines cleanup as the server: source-generated `[LoggerMessage]` logging throughout, invariant culture on all conversions, the node's shared state classes (`NodeStatistics`, `NodeAddressState`, `NodeLoggingState`) encapsulated behind properties with thread-safe mutators, `TestExecutor` disposes its semaphore, and the node identity file reads use `nameof`
 - The `tls_cipher` metric now reports the negotiated TLS cipher suite (e.g. `Tls13Aes128GcmSha256`) instead of the legacy `SslStream.CipherAlgorithm` value, which is obsolete and returns `None` on TLS 1.3

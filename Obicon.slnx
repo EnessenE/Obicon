@@ -5,4 +5,5 @@
   <Project Path="src/Obicon.Client/Obicon.Client.csproj" />
   <Project Path="tests/Obicon.Server.Tests/Obicon.Server.Tests.csproj" />
   <Project Path="tests/Obicon.Node.Tests/Obicon.Node.Tests.csproj" />
+  <Project Path="tests/Obicon.Integration.Tests/Obicon.Integration.Tests.csproj" />
 </Solution>

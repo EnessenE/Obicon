@@ -282,6 +282,21 @@ Deletes the pool. Nodes are not affected.
 
 ### Tests
 
+#### Test Types
+```
+GET /v1/tests/types
+```
+Returns every test type with whether the server currently offers it, resolved from the `EnabledTestTypes` setting. Used by the settings UI to render one toggle per type.
+
+**Response:** 200 OK
+```json
+[
+  { "type": 0, "name": "Ping", "enabled": true },
+  { "type": 1, "name": "Traceroute", "enabled": false }
+]
+```
+**Errors:** 400 Bad Request when `EnabledTestTypes` holds something other than a JSON array of type names.
+
 #### Create Test
 ```
 POST /v1/tests
@@ -306,11 +321,22 @@ Creates a new test.
   "expectedBodyPattern": null,  // HTTP/HTTPS: body must match this regex; null = no check
   "headers": {},  // HTTP/HTTPS: custom request headers
   "proxyUrl": null,  // HTTP/HTTPS: http(s) proxy URL; null = direct
-  "cacheBust": false  // HTTP/HTTPS: append a unique query parameter to bypass caches
+  "cacheBust": false,  // HTTP/HTTPS: append a unique query parameter to bypass caches
+  "tracerouteMaxHops": null,  // Traceroute: hop limit; null = 30, range 1-64
+  "tracerouteQueriesPerHop": null,  // Traceroute: probes per hop; null = 3, range 1-10
+  "tracerouteQueryTimeoutMs": null,  // Traceroute: per-probe wait; null = 2000, range 100-60000
+  "tracerouteResolveHostnames": null,  // Traceroute: resolve each hop to a hostname; null = true
+  "pingCount": null,  // Ping: probes per run; null = 4, range 1-100
+  "pingTimeoutMs": null,  // Ping: per-probe wait; null = 2000, range 100-60000
+  "pingIntervalMs": null,  // Ping: wait between probes; null = 0, range 0-10000
+  "httpMethod": null,  // HTTP/HTTPS: GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, or TRACE; null = GET
+  "followRedirects": null,  // HTTP/HTTPS: follow redirects; null = true
+  "dnsNameserver": null,  // DNS: nameserver to query instead of the system's; null = system
+  "dnsQueryType": null  // DNS: A, AAAA, CNAME, TXT, MX, or CAA; null = A + AAAA
 }
 ```
 
-Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL.
+Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL, and the traceroute settings must be in range (max hops 1-64, queries per hop 1-10, query timeout 100-60000 ms), as must the ping settings (count 1-100, probe timeout 100-60000 ms, interval 0-10000 ms), `httpMethod` must be one of GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, TRACE, and `dnsQueryType` must be A, AAAA, CNAME, TXT, MX, CAA, or ANY. The test type must also be enabled on this server: the `EnabledTestTypes` setting — a JSON array of test type names, e.g. `["Ping","Http","Dns"]` (default empty = all types) — rejects create, edit, and run-once requests for disabled types with 400.
 
 Targeting: the test runs on the union of `nodeIds` and all members of `poolIds` (deduplicated).
 
@@ -454,12 +480,23 @@ Runs a single test immediately on a selection of nodes without creating a test f
   "expectedBodyPattern": null,
   "headers": null,
   "proxyUrl": null,
-  "cacheBust": false
+  "cacheBust": false,
+  "tracerouteMaxHops": null,
+  "tracerouteQueriesPerHop": null,
+  "tracerouteQueryTimeoutMs": null,
+  "tracerouteResolveHostnames": null,
+  "pingCount": null,
+  "pingTimeoutMs": null,
+  "pingIntervalMs": null,
+  "httpMethod": null,
+  "followRedirects": null,
+  "dnsNameserver": null,
+  "dnsQueryType": null
 }
 ```
-`timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`). At least one node ID or pool ID is required.
+`timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`) and the same traceroute, ping, HTTP, and DNS settings. At least one node ID or pool ID is required.
 
-**Response:** 200 OK - one job per selected node, in the order of the request; poll each at `GET /v1/queue/{id}` until `status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
+**Response:** 200 OK - one job per selected node and IP family (a request with `ipVersion` 3 schedules two jobs per node), in the order of the request; poll each at `GET /v1/queue/{id}` until `status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
 
 **Errors:** 400 Bad Request for invalid expectations, unknown node or pool IDs, an empty selection, or when none of the selected nodes are connected.
 
@@ -629,6 +666,7 @@ Returns all test jobs in the queue, newest first.
     "testType": 5,
     "target": "example.com",
     "timeoutSeconds": 60,
+    "ipVersion": 3,
     "status": 0,
     "createdAt": "2024-01-01T00:00:00Z",
     "acknowledgedAt": null,
@@ -638,11 +676,11 @@ Returns all test jobs in the queue, newest first.
     "durationMs": null,
     "output": null,
     "errorMessage": null,
-    "metrics": null
+    "details": null
   }
 ]
 ```
-For one-off runs (from `POST /v1/tests/run-once`), `testId` is `00000000-0000-0000-0000-000000000000`.
+For one-off runs (from `POST /v1/tests/run-once`), `testId` is `00000000-0000-0000-0000-000000000000`. `details` carries the structured result sections described under the TestResult message; it is null for results reported by nodes older than 0.4.0 (which also lose their old flat metrics).
 
 #### Get Job
 ```
@@ -674,6 +712,7 @@ Returns a single test job.
 | 3 | Https |
 | 4 | Tcp |
 | 5 | Dns |
+| 6 | Tls - handshake against host:port (default 443), reporting the certificate and negotiated parameters; `checkCertificateExpiryDays` applies |
 
 ## Test Frequency
 
@@ -689,6 +728,7 @@ Databases from before this change stored `Frequency` as the old `TestFrequency` 
 | 0 | Any - use whatever the host resolves to |
 | 1 | Ipv4 - force IPv4, fail if no A record |
 | 2 | Ipv6 - force IPv6, fail if no AAAA record |
+| 3 | Both - the server schedules one job pinned to IPv4 and one pinned to IPv6 for every targeted node, so both families are tested independently |
 
 ---
 
@@ -712,14 +752,15 @@ ws://localhost:5000/ws/nodes?token={authToken}
 #### ServerHello
 Sent by server immediately after accepting a node's WebSocket connection. The node logs the server version and checks compatibility: a server outside the node's supported range (same major.minor) closes the connection, unless the node's `AllowUnsupportedServerVersion` setting is enabled. Mirrored on the server: a node reporting an unsupported version is disconnected unless the `AllowUnsupportedNodeVersions` server setting is enabled.
 
-The message also carries the server's observability policy: `LogShippingEnabled` mirrors the `NodeLogShippingEnabled` setting (nodes may ship log entries only while it is true) and `NodeLocalLoggingEnabled` mirrors the `NodeLocalLoggingEnabled` default for whether nodes log locally — a node's own configuration takes precedence.
+The message also carries the server's observability policy: `LogShippingEnabled` mirrors the `NodeLogShippingEnabled` setting (nodes may ship log entries only while it is true), `NodeLocalLoggingEnabled` mirrors the `NodeLocalLoggingEnabled` default for whether nodes log locally — a node's own configuration takes precedence — and `ExternalIpResolvingEnabled` mirrors the `NodeExternalIpResolvingEnabled` setting (default false): while it is false, nodes do not contact any external-IP check service and report those addresses as unavailable.
 ```json
 {
   "type": "ServerHello",
   "data": {
     "ServerVersion": "0.2.0",
     "LogShippingEnabled": false,
-    "NodeLocalLoggingEnabled": true
+    "NodeLocalLoggingEnabled": true,
+    "ExternalIpResolvingEnabled": false
   }
 }
 ```
@@ -773,7 +814,18 @@ Sent by server to assign a test to a node.
     "ExpectedBodyPattern": null,  // HTTP/HTTPS: body regex; null = no check
     "Headers": null,  // HTTP/HTTPS: custom request headers
     "ProxyUrl": null,  // HTTP/HTTPS: proxy URL; null = direct
-    "CacheBust": false  // HTTP/HTTPS: append a cache-busting query parameter
+    "CacheBust": false,  // HTTP/HTTPS: append a cache-busting query parameter
+    "TracerouteMaxHops": null,  // Traceroute: hop limit; null = 30
+    "TracerouteQueriesPerHop": null,  // Traceroute: probes per hop; null = 3
+    "TracerouteQueryTimeoutMs": null,  // Traceroute: per-probe wait in ms; null = 2000
+    "TracerouteResolveHostnames": null,  // Traceroute: resolve each hop to a hostname; null = true
+    "PingCount": null,  // Ping: probes per run; null = 4
+    "PingTimeoutMs": null,  // Ping: per-probe wait in ms; null = 2000
+    "PingIntervalMs": null,  // Ping: wait between probes in ms; null = 0
+    "HttpMethod": null,  // HTTP/HTTPS: GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, or TRACE; null = GET
+    "FollowRedirects": null,  // HTTP/HTTPS: follow redirects; null = true
+    "DnsNameserver": null,  // DNS: nameserver to query instead of the system's; null = system
+    "DnsQueryType": null  // DNS: A, AAAA, CNAME, TXT, MX, or CAA; null = A + AAAA
   }
 }
 ```
@@ -790,12 +842,19 @@ Sent by node to report test results.
     "Success": true/false,
     "DurationMs": 1234,
     "Output": "string",
-    "Metrics": { "dns_resolved": "93.184.216.34", "dns_ms": 12.5, "connect_ms": 3.2, "tls_ms": 41.0, "ttfb_ms": 120.7, "transfer_ms": 8.1, "bytes_read": 1256 }
+    "Details": { "Traceroute": { "ResolvedAddress": "93.184.216.34", "TargetReached": true, "HopCount": 2, "Hops": [ { "Hop": 1, "Address": "10.0.0.1", "Status": "TtlExpired", "RoundtripMs": 5.0, "Error": null } ] } }
   }
 }
 ```
 
-The `Metrics` dictionary carries detailed measurements: HTTP/HTTPS runs report DNS resolution, TCP connect, TLS handshake (including protocol and cipher), time to first byte, transfer timings plus certificate details, and `body_matched` when a body pattern is set (the proxy URL is reported for proxied runs); DNS runs report the nameservers queried, which one answered, its round-trip time, and the A/AAAA records; ping, TCP, and traceroute report the resolved address and phase timings.
+`Details` carries the structured measurements of the run — exactly one populated section matching the test type, with HTTP and HTTPS both using `Http`. It is persisted on the job and exposed by the queue API as `details` (camelCased there, like every HTTP response, while the WebSocket payload uses the PascalCase names shown here); the web UI renders it. Sections:
+
+- **Traceroute** — `ResolvedAddress`, `TargetReached`, `HopCount`, and `Hops`: one record per hop with `Hop` (number), `Address` (null when nothing responded), `Hostname` (best-effort reverse lookup, null when unresolved or disabled), `Status` (`TtlExpired`, `Success`, `TimedOut`, ...), `RoundtripMs` (average of the answered probes), `Probes` (one record per probe with `Status` and `RoundtripMs`), and `Error` when the hop ended the trace
+- **Ping** — `Target`, `ResolvedAddress`, `DnsMs`, `ReplyAddress`, `ReplyStatus`, `RoundtripMs` (average of the answered probes), `Ttl`, `WallclockMs`, `Sent`, `Received`, `LossPercent`, `MinRoundtripMs`/`AvgRoundtripMs`/`MaxRoundtripMs` (null when nothing was received), `Replies` (one record per probe with `ReplyAddress`, `ReplyStatus`, `RoundtripMs`, `Ttl`), `Error`. The run succeeds when at least one probe got a reply, classic ping semantics
+- **Tcp** — `Host`, `Port`, `ResolvedAddress`, `Family`, `DnsMs`, `ConnectMs`, `Error`
+- **Http** (HTTP and HTTPS) — `Url`, `Method`, `FinalUrl`, `StatusCode`, `ReasonPhrase`, `ResolvedAddress`, the phase timings `DnsMs`/`ConnectMs`/`TlsMs`/`TtfbMs`/`TransferMs` (`DnsMs`, `ConnectMs`, and `TlsMs` are null for proxied requests), `TlsProtocol`, `TlsCipher`, `BytesRead`, `BytesTruncated`, `ProxyUrl`, `BodyMatched` (null when no pattern was set), `Certificate` (`Subject`, `Issuer`, `NotBefore`, `NotAfter`, `DaysRemaining`, `SubjectAlternativeNames`), `Error`
+- **Dns** — `Host`, `QueryType` (the queried record type), `NameserversQueried`, `AnsweringNameserver`, `NameserverRttMs`, `Records` (one per returned record with `RecordType`, `Value`, and `TtlSeconds`), `Resolved` (record values after the IP version filter, which applies to address records only), `ResponseStatus` (the answering nameserver's DNS status, e.g. `NOERROR` or `NXDOMAIN`), `Via` (`nameserver`, `os-resolver`, or `literal`), `ExpectedAddress`, `ExpectedMatched`, `Error`
+- **Tls** — `Host`, `Port`, `ResolvedAddress`, `Family`, `DnsMs`, `ConnectMs`, `HandshakeMs`, `Protocol`, `Cipher`, `Certificate` (same shape as the HTTP certificate), `Error`. The run succeeds when the handshake completes and the certificate is within the expiry threshold
 
 #### TestStatusUpdate
 Sent by node to report in-progress job status: `Assigned` (1) when it accepts a job and `Running` (2) when execution starts. Final outcomes (Completed, Failed, Timeout) are reported via `TestResult` instead; `Queued` and `NoRun` are server-side only.
@@ -850,13 +909,14 @@ Sent by node to ship one of its log entries to the server. Accepted only while t
 Node-side controls: `Node:LogShippingEnabled` (opt the node out), `Node:LogShippingMinLevel` (minimum shipped level, default `Information`), and `Node:LocalLoggingEnabled` (override of the server's local-logging policy).
 
 #### ServerPolicyUpdate
-Sent by server to every connected node when a node-facing setting changes at runtime (`NodeLogShippingEnabled` or `NodeLocalLoggingEnabled`), so nodes apply the new policy on the fly without reconnecting. A node's `Node:LocalLoggingEnabled` override still wins over the announced local logging default.
+Sent by server to every connected node when a node-facing setting changes at runtime (`NodeLogShippingEnabled`, `NodeLocalLoggingEnabled`, or `NodeExternalIpResolvingEnabled`), so nodes apply the new policy on the fly without reconnecting. A node's `Node:LocalLoggingEnabled` override still wins over the announced local logging default, and a change to the external IP policy triggers a prompt address refresh on the node.
 ```json
 {
   "type": "ServerPolicyUpdate",
   "data": {
     "LogShippingEnabled": true,
-    "NodeLocalLoggingEnabled": true
+    "NodeLocalLoggingEnabled": true,
+    "ExternalIpResolvingEnabled": true
   }
 }
 ```

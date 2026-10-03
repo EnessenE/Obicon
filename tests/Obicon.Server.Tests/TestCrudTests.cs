@@ -2,17 +2,19 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
 /// <summary>
 /// Integration tests for test CRUD: creation, editing all settings, and validation.
 /// </summary>
-public class TestCrudTests : IClassFixture<ObiconServerFactory>
+public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly HttpClient _client;
 
-    public TestCrudTests(ObiconServerFactory factory)
+    public TestCrudTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _client = factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);
@@ -24,6 +26,37 @@ public class TestCrudTests : IClassFixture<ObiconServerFactory>
         response.EnsureSuccessStatusCode();
         var node = await response.Content.ReadFromJsonAsync<JsonElement>();
         return node.GetProperty("id").GetGuid();
+    }
+
+    [Fact]
+    public async Task Test_WithBothIpVersions_SchedulesOneJobPerFamily()
+    {
+        var nodeId = await CreateNodeAsync();
+        var created = await _client.PostAsJsonAsync("/v1/tests", new
+        {
+            Name = "dual-stack",
+            Type = 4,
+            Target = "example.com",
+            Frequency = 60,
+            IpVersion = 3, // Both
+            NodeIds = new[] { nodeId }
+        });
+        created.EnsureSuccessStatusCode();
+        var test = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var testId = test.GetProperty("id").GetGuid();
+
+        var run = await _client.PostAsync($"/v1/tests/{testId}/run", null);
+        run.EnsureSuccessStatusCode();
+
+        var jobs = await _client.GetFromJsonAsync<JsonElement>("/v1/queue");
+        var forTest = jobs.EnumerateArray()
+            .Where(j => j.GetProperty("testId").GetGuid() == testId)
+            .ToList();
+
+        // One IPv4 job and one IPv6 job for the single targeted node
+        Assert.Equal(2, forTest.Count);
+        Assert.Equal(1, forTest.Count(j => j.GetProperty("ipVersion").GetInt32() == 1));
+        Assert.Equal(1, forTest.Count(j => j.GetProperty("ipVersion").GetInt32() == 2));
     }
 
     [Fact]

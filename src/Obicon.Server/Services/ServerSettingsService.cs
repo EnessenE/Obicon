@@ -124,11 +124,12 @@ public partial class ServerSettingsService : IServerSettingsService
         Metrics.ServerMetrics.Action("setting_changed");
 
         // Node-facing settings propagate to connected nodes immediately
-        if (key is "NodeLogShippingEnabled" or "NodeLocalLoggingEnabled")
+        if (key is "NodeLogShippingEnabled" or "NodeLocalLoggingEnabled" or "NodeExternalIpResolvingEnabled")
         {
             await _policyBroadcaster.BroadcastAsync(
                 await GetAsync<bool>("NodeLogShippingEnabled"),
-                await GetAsync<bool>("NodeLocalLoggingEnabled"));
+                await GetAsync<bool>("NodeLocalLoggingEnabled"),
+                await GetAsync<bool>("NodeExternalIpResolvingEnabled"));
         }
 
         return new ServerSettingResponse

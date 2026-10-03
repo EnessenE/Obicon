@@ -1,4 +1,5 @@
-using System.Text.Json.Serialization;
+using Obicon.Shared.Models.Results;
+
 namespace Obicon.Shared.Models.Messages;
 
 /// <summary>
@@ -37,9 +38,9 @@ public class TestResultMessage
     public string? Output { get; set; }
 
     /// <summary>
-    /// Detailed measurements of the test run: resolved addresses, phase timings,
-    /// nameservers, certificate details. Default: null.
+    /// Structured details of the run, one populated section per test type (e.g.
+    /// Traceroute with one record per hop). Null for nodes older than 0.4.0.
+    /// Default: null.
     /// </summary>
-    [JsonPropertyName("Metrics")]
-    public Dictionary<string, object>? Metrics { get; set; }
+    public TestResultDetails? Details { get; set; }
 }

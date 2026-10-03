@@ -18,5 +18,11 @@ public enum IpVersion
     /// <summary>
     /// Force IPv6; fails if the target has no AAAA record.
     /// </summary>
-    Ipv6
+    Ipv6,
+
+    /// <summary>
+    /// Run the test once per family: the server schedules one job pinned to IPv4 and
+    /// one pinned to IPv6 for every targeted node.
+    /// </summary>
+    Both
 }

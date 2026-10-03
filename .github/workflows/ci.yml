@@ -33,9 +33,27 @@ jobs:
       - name: Test node
         run: dotnet test tests/Obicon.Node.Tests --configuration Release --no-build
 
+  # Full-stack integration tests: Testcontainers builds the server and node images
+  # from the repo Dockerfiles and runs them against each other over a real network.
+  # Needs Docker, which the ubuntu-latest runner provides out of the box.
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run integration tests
+        run: dotnet test tests/Obicon.Integration.Tests --configuration Release
+
   # Validates adherence to the C# Coding Guidelines (https://csharpcodingguidelines.com/):
   # the root .editorconfig plus the recommended .NET analyzer rules, with all
-  # warnings elevated to errors. Expected to fail until the codebase is cleaned up.
+  # warnings elevated to errors.
   coding-guidelines:
     name: C# coding guidelines
     runs-on: ubuntu-latest

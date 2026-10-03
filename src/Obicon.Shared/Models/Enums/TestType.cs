@@ -33,5 +33,10 @@ public enum TestType
     /// <summary>
     /// DNS resolution test to verify domain resolution.
     /// </summary>
-    Dns
+    Dns,
+
+    /// <summary>
+    /// TLS handshake test reporting the certificate and negotiated parameters.
+    /// </summary>
+    Tls
 }

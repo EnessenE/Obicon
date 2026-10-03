@@ -40,6 +40,7 @@
                             <option value="3">HTTPS</option>
                             <option value="4">TCP</option>
                             <option value="5">DNS</option>
+                            <option value="6">TLS</option>
                             <option value="1">Traceroute</option>
                         </select>
                     </div>
@@ -65,6 +66,7 @@
                             <option value="0">IPv4 or IPv6</option>
                             <option value="1">IPv4 only</option>
                             <option value="2">IPv6 only</option>
+                            <option value="3">IPv4 and IPv6 (two runs)</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -108,14 +110,80 @@
                                 <input id="proxyUrl" class="form-control" placeholder="http://proxy:8080">
                             </div>
                             <div class="col-md-6 http-expectation">
-                                <label class="form-label mb-1">Headers <span class="text-muted">(one per line, "Name: Value")</span></label>
-                                <textarea id="testHeaders" class="form-control" rows="2" placeholder="Authorization: Bearer ..."></textarea>
+                                <label class="form-label mb-1">Headers</label>
+                                <div id="headerRows"></div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addHeaderRow('headerRows')">+ Add header</button>
                             </div>
                             <div class="col-md-6 http-expectation d-flex align-items-end">
                                 <div class="form-check">
                                     <input id="cacheBust" type="checkbox" class="form-check-input">
                                     <label class="form-check-label" for="cacheBust" title="Appends a unique query parameter so caches serve a fresh response">Cache busting</label>
                                 </div>
+                            </div>
+                            <div class="col-md-6 traceroute-expectation">
+                                <label class="form-label mb-1">Max hops <span class="text-muted">(empty = 30)</span></label>
+                                <input id="tracerouteMaxHops" type="number" min="1" max="64" class="form-control" placeholder="30">
+                            </div>
+                            <div class="col-md-6 traceroute-expectation">
+                                <label class="form-label mb-1">Probes per hop <span class="text-muted">(empty = 3)</span></label>
+                                <input id="tracerouteQueriesPerHop" type="number" min="1" max="10" class="form-control" placeholder="3">
+                            </div>
+                            <div class="col-md-6 traceroute-expectation">
+                                <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                                <input id="tracerouteQueryTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                            </div>
+                            <div class="col-md-6 traceroute-expectation d-flex align-items-end">
+                                <div class="form-check">
+                                    <input id="tracerouteResolveHostnames" type="checkbox" class="form-check-input" checked>
+                                    <label class="form-check-label" for="tracerouteResolveHostnames" title="Resolves each hop's address to a hostname (best effort)">Resolve hop hostnames</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 ping-expectation">
+                                <label class="form-label mb-1">Probes <span class="text-muted">(empty = 4)</span></label>
+                                <input id="pingCount" type="number" min="1" max="100" class="form-control" placeholder="4">
+                            </div>
+                            <div class="col-md-6 ping-expectation">
+                                <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                                <input id="pingTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                            </div>
+                            <div class="col-md-6 ping-expectation">
+                                <label class="form-label mb-1">Interval between probes (ms) <span class="text-muted">(empty = 0)</span></label>
+                                <input id="pingIntervalMs" type="number" min="0" max="10000" class="form-control" placeholder="0">
+                            </div>
+                            <div class="col-md-6 http-expectation">
+                                <label class="form-label mb-1">Method</label>
+                                <select id="httpMethod" class="form-select">
+                                    <option value="">GET (default)</option>
+                                    <option value="HEAD">HEAD</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                    <option value="PATCH">PATCH</option>
+                                    <option value="OPTIONS">OPTIONS</option>
+                                    <option value="TRACE">TRACE</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 http-expectation d-flex align-items-end">
+                                <div class="form-check">
+                                    <input id="followRedirects" type="checkbox" class="form-check-input" checked>
+                                    <label class="form-check-label" for="followRedirects" title="When off, a redirect response itself is checked against the expected status codes">Follow redirects</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 dns-expectation">
+                                <label class="form-label mb-1">Nameserver <span class="text-muted">(empty = system resolvers)</span></label>
+                                <input id="dnsNameserver" class="form-control" placeholder="8.8.8.8">
+                            </div>
+                            <div class="col-md-6 dns-expectation">
+                                <label class="form-label mb-1">Record type <span class="text-muted">(empty = A + AAAA)</span></label>
+                                <select id="dnsQueryType" class="form-select">
+                                    <option value="">A + AAAA (default)</option>
+                                    <option value="A">A</option>
+                                    <option value="AAAA">AAAA</option>
+                                    <option value="CNAME">CNAME</option>
+                                    <option value="TXT">TXT</option>
+                                    <option value="MX">MX</option>
+                                    <option value="CAA">CAA</option>
+                                </select>
                             </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mt-3">
@@ -164,6 +232,7 @@
                         <div class="col-md-2">
                             <label class="form-label mb-1">Type</label>
                             <select id="editType" class="form-select">
+                                <option value="6">TLS</option>
                                 <option value="0">Ping</option>
                                 <option value="2">HTTP</option>
                                 <option value="3">HTTPS</option>
@@ -200,6 +269,7 @@
                                 <option value="0">IPv4 or IPv6</option>
                                 <option value="1">IPv4 only</option>
                                 <option value="2">IPv6 only</option>
+                                <option value="3">IPv4 and IPv6 (two runs)</option>
                             </select>
                         </div>
                         <div class="col-md-3">
@@ -215,6 +285,46 @@
                             <input id="editExpectedDnsResult" class="form-control" placeholder="anything">
                         </div>
                     </div>
+                    <div class="row g-3 mb-2 traceroute-expectation">
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Max hops <span class="text-muted">(empty = 30)</span></label>
+                            <input id="editTracerouteMaxHops" type="number" min="1" max="64" class="form-control" placeholder="30">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Probes per hop <span class="text-muted">(empty = 3)</span></label>
+                            <input id="editTracerouteQueriesPerHop" type="number" min="1" max="10" class="form-control" placeholder="3">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                            <input id="editTracerouteQueryTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-center">
+                            <div class="form-check">
+                                <input id="editTracerouteResolveHostnames" type="checkbox" class="form-check-input" checked>
+                                <label class="form-check-label" for="editTracerouteResolveHostnames">Resolve hop hostnames</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-2 ping-expectation">
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Probes <span class="text-muted">(empty = 4)</span></label>
+                            <input id="editPingCount" type="number" min="1" max="100" class="form-control" placeholder="4">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                            <input id="editPingTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Interval (ms) <span class="text-muted">(empty = 0)</span></label>
+                            <input id="editPingIntervalMs" type="number" min="0" max="10000" class="form-control" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-2 dns-expectation">
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Nameserver <span class="text-muted">(empty = system resolvers)</span></label>
+                            <input id="editDnsNameserver" class="form-control" placeholder="8.8.8.8">
+                        </div>
+                    </div>
                     <div class="row g-3 mb-2 http-expectation">
                         <div class="col-md-3">
                             <label class="form-label mb-1">Body must match regex</label>
@@ -225,13 +335,33 @@
                             <input id="editProxyUrl" class="form-control" placeholder="http://proxy:8080">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label mb-1">Headers <span class="text-muted">(one per line, "Name: Value")</span></label>
-                            <textarea id="editTestHeaders" class="form-control" rows="2"></textarea>
+                            <label class="form-label mb-1">Headers</label>
+                            <div id="editHeaderRows"></div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addHeaderRow('editHeaderRows')">+ Add header</button>
                         </div>
                         <div class="col-md-2 d-flex align-items-center">
                             <div class="form-check">
                                 <input id="editCacheBust" type="checkbox" class="form-check-input">
                                 <label class="form-check-label" for="editCacheBust">Cache busting</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Method</label>
+                            <select id="editHttpMethod" class="form-select">
+                                <option value="">GET (default)</option>
+                                <option value="HEAD">HEAD</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                                <option value="PATCH">PATCH</option>
+                                <option value="OPTIONS">OPTIONS</option>
+                                <option value="TRACE">TRACE</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-center">
+                            <div class="form-check">
+                                <input id="editFollowRedirects" type="checkbox" class="form-check-input" checked>
+                                <label class="form-check-label" for="editFollowRedirects" title="When off, a redirect response itself is checked against the expected status codes">Follow redirects</label>
                             </div>
                         </div>
                     </div>
@@ -266,6 +396,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=4"></script>
-    <script src="js/tests.js?v=12"></script>
+    <script src="js/testdetails.js?v=4"></script>
+    <script src="js/tests.js?v=16"></script>
 </body>
 </html>

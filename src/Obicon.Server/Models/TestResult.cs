@@ -1,3 +1,5 @@
+using Obicon.Shared.Models.Results;
+
 namespace Obicon.Server.Models;
 
 /// <summary>
@@ -21,7 +23,8 @@ public class TestResult
     public string? Output { get; set; }
 
     /// <summary>
-    /// Metrics collected during test execution. Default: null.
+    /// Structured details of the run, one populated section per test type. Null for
+    /// results reported by nodes older than 0.4.0. Default: null.
     /// </summary>
-    public Dictionary<string, object>? Metrics { get; set; }
+    public TestResultDetails? Details { get; set; }
 }
