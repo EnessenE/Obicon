@@ -116,7 +116,7 @@ public static class ServerSettingDefinitions
         new ServerSettingDefinition
         {
             Key = "SchedulerLoopIntervalSeconds",
-            Description = "Read-only, derived from the lowest FrequencyPresetsSeconds preset. The test scheduler wakes this often to scan for due tests. Each wake is one SQLite query plus an in-memory scan, after which the loop sleeps (Task.Delay), so the CPU cost is one short database burst per wake - a lower interval means proportionally more wakes per hour (e.g. 10 seconds = 360 scans/hour). Adjust FrequencyPresetsSeconds to change it.",
+            Description = "Read-only, derived from the lowest FrequencyPresetsSeconds preset. The test scheduler wakes this often to scan for due tests. Each wake is one database query plus an in-memory scan, after which the loop sleeps (Task.Delay), so the CPU cost is one short database burst per wake - a lower interval means proportionally more wakes per hour (e.g. 10 seconds = 360 scans/hour). Adjust FrequencyPresetsSeconds to change it.",
             ValueType = typeof(int),
             Default = "10",
             IsReadOnly = true
@@ -156,18 +156,34 @@ public static class ServerSettingDefinitions
         new ServerSettingDefinition
         {
             Key = "TestMetricsEnabled",
-            Description = "If enabled, finished test runs are exported on /metrics as obicon.tests.runs and obicon.tests.duration_ms. When disabled, new runs are not recorded; already exported series persist until the server restarts.",
+            Description = "If enabled, finished test runs are exported as obicon.tests.runs and obicon.tests.duration_ms on /metrics or via OTLP. When disabled, new runs are not recorded; already exported series persist until the server restarts.",
             ValueType = typeof(bool),
             Default = "true",
             Group = "Observability"
         },
         new ServerSettingDefinition
         {
-            Key = "TestMetricsIncludeNodeLabels",
-            Description = "If enabled, the executing node's labels are attached to the exported test metrics as the comma-separated node_labels label. Changing it starts new series for subsequent runs. Requires TestMetricsEnabled.",
-            ValueType = typeof(bool),
-            Default = "true",
-            Group = "Observability"
+            Key = "TestMetricsLabels",
+            Group = "Observability",
+            Description = "JSON array of the labels attached to the exported test metrics, e.g. [\"test_type\",\"node_name\",\"node_labels\"]. test_type (few values), test_name and node_name (human-readable, but fork series on renames), node_id (rename-stable), and node_labels (churniest: any label change on any node starts new series). \"test_id\" and the counter's \"status\" are always attached. Changing the set starts new series for subsequent runs. Requires TestMetricsEnabled.",
+            ValueType = typeof(string),
+            Default = "[\"test_type\",\"test_name\",\"node_name\",\"node_labels\"]"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "TestResultStorageMode",
+            Group = "General",
+            Description = "How finished test jobs are stored in the database: Full (complete result payload), MetadataOnly (row skeleton without the payload), or None (the row is deleted on completion). Applies to every terminal status; metrics are always emitted before deletion. Anything older than JobRetentionDays exists only in your metric store.",
+            ValueType = typeof(string),
+            Default = "Full"
+        },
+        new ServerSettingDefinition
+        {
+            Key = "JobRetentionDays",
+            Group = "General",
+            Description = "Days a finished test job stays in the database before the background sweep deletes it, no exceptions - there is no archive. Want history? Check your metric store. Minimum 1; the sweep also removes jobs stuck in a live status for more than 7 days. Default: 30.",
+            ValueType = typeof(int),
+            Default = "30"
         }
     };
 }

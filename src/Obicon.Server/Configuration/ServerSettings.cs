@@ -72,7 +72,20 @@ public class ServerSettings
     public bool TestMetricsEnabled { get; set; } = true;
 
     /// <summary>
-    /// If enabled, the executing node's labels are attached to the exported test metrics. Default: true.
+    /// JSON array of the labels attached to the exported test metrics, e.g.
+    /// ["test_type","node_name","node_labels"]. "test_id" and the counter's "status"
+    /// are always attached. Default: "["test_type","test_name","node_name","node_labels"]".
     /// </summary>
-    public bool TestMetricsIncludeNodeLabels { get; set; } = true;
+    public string TestMetricsLabels { get; set; } = "[\"test_type\",\"test_name\",\"node_name\",\"node_labels\"]";
+
+    /// <summary>
+    /// How finished test jobs are stored: Full, MetadataOnly, or None. Default: "Full".
+    /// </summary>
+    public string TestResultStorageMode { get; set; } = "Full";
+
+    /// <summary>
+    /// Days a finished test job stays in the database before the retention sweep
+    /// deletes it; history beyond this window lives in the user's metric store. Default: 30.
+    /// </summary>
+    public int JobRetentionDays { get; set; } = 30;
 }
