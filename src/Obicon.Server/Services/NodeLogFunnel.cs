@@ -33,8 +33,12 @@ public class NodeLogFunnel : INodeLogFunnel
 
     private readonly ILogger _logger;
 
-    public NodeLogFunnel(OpenTelemetryLoggerProvider provider)
+    public NodeLogFunnel(IEnumerable<ILoggerProvider> providers)
     {
+        // WithLogging registers the provider as an ILoggerProvider; pick that exact
+        // instance so the funnel's records carry the exporter configuration
+        var provider = providers.OfType<OpenTelemetryLoggerProvider>().FirstOrDefault()
+            ?? throw new InvalidOperationException("The OpenTelemetry logger provider is not registered");
         _logger = LoggerFactory.Create(builder => builder.AddProvider(provider)).CreateLogger(LoggerCategory);
     }
 
@@ -65,6 +69,12 @@ public class NodeLogFunnel : INodeLogFunnel
             new("node_version", entry.NodeVersion),
             new("source_context", Extract(entry.Properties, "SourceContext") ?? "unknown")
         };
+
+        if (!string.IsNullOrWhiteSpace(entry.Exception))
+        {
+            // The node ships the exception's rendered text, not a live exception object
+            state.Add(new("exception", entry.Exception));
+        }
 
         // The entry's own properties become fields verbatim: JobId and TestId are the
         // join keys into the metrics, everything else rides along unchanged
