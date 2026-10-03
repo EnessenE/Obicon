@@ -50,6 +50,12 @@ public class ServerSettings
     public bool NodeLocalLoggingEnabled { get; set; } = true;
 
     /// <summary>
+    /// Whether nodes may resolve their external (public) addresses via the configured
+    /// check services. Default: false.
+    /// </summary>
+    public bool NodeExternalIpResolvingEnabled { get; set; }
+
+    /// <summary>
     /// If enabled, log entries received from nodes are written to the server's own console. Default: false.
     /// </summary>
     public bool ShipNodeLogsToConsole { get; set; }

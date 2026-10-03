@@ -732,14 +732,15 @@ ws://localhost:5000/ws/nodes?token={authToken}
 #### ServerHello
 Sent by server immediately after accepting a node's WebSocket connection. The node logs the server version and checks compatibility: a server outside the node's supported range (same major.minor) closes the connection, unless the node's `AllowUnsupportedServerVersion` setting is enabled. Mirrored on the server: a node reporting an unsupported version is disconnected unless the `AllowUnsupportedNodeVersions` server setting is enabled.
 
-The message also carries the server's observability policy: `LogShippingEnabled` mirrors the `NodeLogShippingEnabled` setting (nodes may ship log entries only while it is true) and `NodeLocalLoggingEnabled` mirrors the `NodeLocalLoggingEnabled` default for whether nodes log locally — a node's own configuration takes precedence.
+The message also carries the server's observability policy: `LogShippingEnabled` mirrors the `NodeLogShippingEnabled` setting (nodes may ship log entries only while it is true), `NodeLocalLoggingEnabled` mirrors the `NodeLocalLoggingEnabled` default for whether nodes log locally — a node's own configuration takes precedence — and `ExternalIpResolvingEnabled` mirrors the `NodeExternalIpResolvingEnabled` setting (default false): while it is false, nodes do not contact any external-IP check service and report those addresses as unavailable.
 ```json
 {
   "type": "ServerHello",
   "data": {
     "ServerVersion": "0.2.0",
     "LogShippingEnabled": false,
-    "NodeLocalLoggingEnabled": true
+    "NodeLocalLoggingEnabled": true,
+    "ExternalIpResolvingEnabled": false
   }
 }
 ```
@@ -886,13 +887,14 @@ Sent by node to ship one of its log entries to the server. Accepted only while t
 Node-side controls: `Node:LogShippingEnabled` (opt the node out), `Node:LogShippingMinLevel` (minimum shipped level, default `Information`), and `Node:LocalLoggingEnabled` (override of the server's local-logging policy).
 
 #### ServerPolicyUpdate
-Sent by server to every connected node when a node-facing setting changes at runtime (`NodeLogShippingEnabled` or `NodeLocalLoggingEnabled`), so nodes apply the new policy on the fly without reconnecting. A node's `Node:LocalLoggingEnabled` override still wins over the announced local logging default.
+Sent by server to every connected node when a node-facing setting changes at runtime (`NodeLogShippingEnabled`, `NodeLocalLoggingEnabled`, or `NodeExternalIpResolvingEnabled`), so nodes apply the new policy on the fly without reconnecting. A node's `Node:LocalLoggingEnabled` override still wins over the announced local logging default, and a change to the external IP policy triggers a prompt address refresh on the node.
 ```json
 {
   "type": "ServerPolicyUpdate",
   "data": {
     "LogShippingEnabled": true,
-    "NodeLocalLoggingEnabled": true
+    "NodeLocalLoggingEnabled": true,
+    "ExternalIpResolvingEnabled": true
   }
 }
 ```

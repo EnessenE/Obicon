@@ -131,6 +131,14 @@ public static class ServerSettingDefinitions
         },
         new ServerSettingDefinition
         {
+            Key = "NodeExternalIpResolvingEnabled",
+            Group = "Observability",
+            Description = "If enabled, nodes may resolve their external (public) addresses by asking the configured check services. While disabled, nodes report their external addresses as unavailable and do not contact any check service. Announced to every node in the server hello.",
+            ValueType = typeof(bool),
+            Default = "false"
+        },
+        new ServerSettingDefinition
+        {
             Key = "ShipNodeLogsToConsole",
             Description = "If enabled, log entries received from nodes are written to the server's own console and log, tagged with the node's identity. Requires NodeLogShippingEnabled; otherwise nothing is received.",
             ValueType = typeof(bool),

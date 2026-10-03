@@ -24,7 +24,7 @@ public partial class NodePolicyBroadcaster
     /// <summary>
     /// Sends the current observability policy to every connected node.
     /// </summary>
-    public async Task BroadcastAsync(bool logShippingEnabled, bool nodeLocalLoggingEnabled)
+    public async Task BroadcastAsync(bool logShippingEnabled, bool nodeLocalLoggingEnabled, bool externalIpResolvingEnabled)
     {
         var connections = _connectionManager.GetAllConnections().ToList();
         if (connections.Count == 0)
@@ -38,7 +38,8 @@ public partial class NodePolicyBroadcaster
             Data = new ServerPolicyUpdateMessage
             {
                 LogShippingEnabled = logShippingEnabled,
-                NodeLocalLoggingEnabled = nodeLocalLoggingEnabled
+                NodeLocalLoggingEnabled = nodeLocalLoggingEnabled,
+                ExternalIpResolvingEnabled = externalIpResolvingEnabled
             }
         };
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
@@ -65,7 +66,7 @@ public partial class NodePolicyBroadcaster
 
         if (delivered > 0)
         {
-            LogPolicyDelivered(delivered, logShippingEnabled, nodeLocalLoggingEnabled);
+            LogPolicyDelivered(delivered, logShippingEnabled, nodeLocalLoggingEnabled, externalIpResolvingEnabled);
             Metrics.ServerMetrics.Action("policy_updated");
         }
     }
@@ -73,6 +74,6 @@ public partial class NodePolicyBroadcaster
     [LoggerMessage(Level = LogLevel.Debug, Message = "Could not deliver policy update to node {NodeId}")]
     private partial void LogPolicyDeliveryFailed(System.Exception exception, string nodeId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Policy update delivered to {Count} node(s): logShipping={LogShipping} localLogging={LocalLogging}")]
-    private partial void LogPolicyDelivered(int count, bool logShipping, bool localLogging);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Policy update delivered to {Count} node(s): logShipping={LogShipping} localLogging={LocalLogging} externalIpResolving={ExternalIpResolving}")]
+    private partial void LogPolicyDelivered(int count, bool logShipping, bool localLogging, bool externalIpResolving);
 }

@@ -13,6 +13,7 @@ separate version; its changes are listed under the server release.
 ## [Server 0.4.0] - Unreleased
 
 ### Server
+- New `NodeExternalIpResolvingEnabled` setting (default off): while disabled, nodes do not resolve their external (public) addresses via check services and report them as unavailable; enabling it propagates live to connected nodes and takes effect within a second
 - Test results now carry structured details instead of the old flat stringly metrics dictionary: nodes report one typed section per test type (traceroute hops with address/status/RTT each, HTTP phase timings with certificate, DNS record lists), the server persists them on the job, and the queue API exposes them as `details`. Breaking: results stored by earlier versions keep their text output but no longer show their metrics
 
 - Per-test settings beyond the traceroute ones: ping probes per run (default 4, range 1-100), per-probe timeout (default 2000 ms), and interval between probes (default 0); HTTP(S) request method (GET or HEAD) and a follow-redirects toggle (default on); and a DNS nameserver override to query a specific resolver instead of the system's — all settable on create, edit, and dry runs with server-side validation
@@ -24,6 +25,7 @@ separate version; its changes are listed under the server release.
 
 ## [Node 0.4.0] - Unreleased
 
+- External (public) address resolving is now gated by the server's `NodeExternalIpResolvingEnabled` policy (announced in the server hello and pushed live): while disabled the node contacts no check service and reports the addresses as unavailable, and a runtime change refreshes the addresses promptly
 - Traceroute runs honor the new per-test settings — hop limit, probes per hop, per-probe timeout, and best-effort reverse hostname resolution per hop — and each hop's details now carry every probe's round trip and the resolved hostname
 - Ping runs honor the new per-test settings (probe count, per-probe timeout, interval) and report every reply plus loss and min/avg/max round trip statistics; HTTP(S) runs support HEAD requests and disabling redirect following; DNS runs can target a specific nameserver
 - DNS tests log and report more data: the nameserver answer now includes each record's TTL and the DNS response status (e.g. `NXDOMAIN`), logged per nameserver and carried in the result details

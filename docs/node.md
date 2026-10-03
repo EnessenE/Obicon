@@ -42,7 +42,7 @@ dotnet run --project src/Obicon.Node
 
 ## Address reporting
 
-The node keeps track of four addresses of its own and reports them to the server: its **internal (LAN) IPv4 and IPv6 addresses** from its network interfaces, and its **external (public) IPv4 and IPv6 addresses** by asking the configured check services. All refresh on the `Node:IpCheckIntervalMinutes` interval; changes are logged and pushed to the server immediately as `NodeInfoUpdate` messages, and current values also travel with every registration. The external checks are best effort — a family the node cannot resolve (e.g. no IPv6 connectivity) is reported as unavailable, and offline nodes keep their last known addresses. All appear on the nodes page next to the connection-observed address.
+The node keeps track of four addresses of its own and reports them to the server: its **internal (LAN) IPv4 and IPv6 addresses** from its network interfaces, and its **external (public) IPv4 and IPv6 addresses** by asking the configured check services. External resolving is gated by the server's `NodeExternalIpResolvingEnabled` setting (default off): while disabled, the node contacts no check service and reports the external addresses as unavailable; enabling it at runtime takes effect within a second. All refresh on the `Node:IpCheckIntervalMinutes` interval; changes are logged and pushed to the server immediately as `NodeInfoUpdate` messages, and current values also travel with every registration. The external checks are best effort — a family the node cannot resolve (e.g. no IPv6 connectivity) is reported as unavailable, and offline nodes keep their last known addresses. All appear on the nodes page next to the connection-observed address.
 
 ## Console output
 

@@ -45,8 +45,16 @@ public partial class IpAddressMonitor : BackgroundService
 
             var internalIpv4 = IpResolver.GetInternalIpv4();
             var internalIpv6 = IpResolver.GetInternalIpv6();
-            var externalIpv4 = await TryGetExternalAsync(_settings.ExternalIpCheckUrl, IpResolver.ParseExternalIpv4, stoppingToken);
-            var externalIpv6 = await TryGetExternalAsync(_settings.ExternalIpCheckUrlIpv6, IpResolver.ParseExternalIpv6, stoppingToken);
+
+            // External checks are the server's call: while the policy has them disabled,
+            // no check service is contacted and the addresses are reported unavailable
+            string? externalIpv4 = null;
+            string? externalIpv6 = null;
+            if (_addressState.ServerAllowsExternalIpResolving)
+            {
+                externalIpv4 = await TryGetExternalAsync(_settings.ExternalIpCheckUrl, IpResolver.ParseExternalIpv4, stoppingToken);
+                externalIpv6 = await TryGetExternalAsync(_settings.ExternalIpCheckUrlIpv6, IpResolver.ParseExternalIpv6, stoppingToken);
+            }
 
             if (_addressState.InternalIpv4 != internalIpv4)
             {
@@ -60,13 +68,15 @@ public partial class IpAddressMonitor : BackgroundService
                 _addressState.InternalIpv6 = internalIpv6;
                 changed = true;
             }
-            if (externalIpv4 != null && externalIpv4 != _addressState.ExternalIpv4)
+            // A failed check keeps the last known value (null result), so clearing on
+            // disable is explicit here
+            if (externalIpv4 != _addressState.ExternalIpv4)
             {
                 LogChange("External IPv4", externalIpv4, _addressState.ExternalIpv4);
                 _addressState.ExternalIpv4 = externalIpv4;
                 changed = true;
             }
-            if (externalIpv6 != null && externalIpv6 != _addressState.ExternalIpv6)
+            if (externalIpv6 != _addressState.ExternalIpv6)
             {
                 LogChange("External IPv6", externalIpv6, _addressState.ExternalIpv6);
                 _addressState.ExternalIpv6 = externalIpv6;
@@ -78,9 +88,15 @@ public partial class IpAddressMonitor : BackgroundService
                 await SendUpdateAsync();
             }
 
+            // Wait for the interval, but wake early when a policy change asks for a
+            // prompt refresh (external resolving enabled or disabled at runtime)
+            var deadline = DateTime.UtcNow + interval;
             try
             {
-                await Task.Delay(interval, stoppingToken);
+                while (DateTime.UtcNow < deadline && !_addressState.ConsumeExternalRefreshRequest())
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                }
             }
             catch (OperationCanceledException)
             {
