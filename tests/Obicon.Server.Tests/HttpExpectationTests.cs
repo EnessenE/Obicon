@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
@@ -9,11 +10,12 @@ namespace Obicon.Server.Tests;
 /// Integration tests for the HTTP test enhancements: body regex, headers, proxy,
 /// and cache busting, including their validation.
 /// </summary>
-public class HttpExpectationTests : IClassFixture<ObiconServerFactory>
+public class HttpExpectationTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly HttpClient _client;
 
-    public HttpExpectationTests(ObiconServerFactory factory)
+    public HttpExpectationTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _client = factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);

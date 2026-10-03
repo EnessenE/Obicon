@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
@@ -8,11 +9,12 @@ namespace Obicon.Server.Tests;
 /// Tests the server stats endpoint: it must report the server's own version, so the
 /// UI can check each node's reported version against the supported range.
 /// </summary>
-public class ServerStatsTests : IClassFixture<ObiconServerFactory>
+public class ServerStatsTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly HttpClient _client;
 
-    public ServerStatsTests(ObiconServerFactory factory)
+    public ServerStatsTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _client = factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Obicon.Server.Configuration;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
@@ -11,11 +12,12 @@ namespace Obicon.Server.Tests;
 /// unforced settings can be changed and take effect. Every setting defined in
 /// ServerSettingDefinitions is covered: exposure, default, and where possible its behavior.
 /// </summary>
-public class SettingsTests : IClassFixture<ObiconServerFactory>
+public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly HttpClient _client;
 
-    public SettingsTests(ObiconServerFactory factory)
+    public SettingsTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _client = factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);

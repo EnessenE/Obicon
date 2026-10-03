@@ -2,13 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
 /// <summary>
 /// Integration tests for node self-enrollment, covering the settings gate and token validation.
 /// </summary>
-public class EnrollmentTests : IClassFixture<ObiconServerFactory>, IDisposable
+public class EnrollmentTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
     private static readonly string[] LabLabels = ["lab", "fast"];
@@ -20,15 +21,15 @@ public class EnrollmentTests : IClassFixture<ObiconServerFactory>, IDisposable
     private readonly ObiconServerFactory _disabledFactory;
     private ObiconServerFactory? _enabledFactory;
 
-    public EnrollmentTests(ObiconServerFactory disabledFactory)
+    public EnrollmentTests(ITestOutputHelper output, ObiconServerFactory disabledFactory)
+        : base(output)
     {
         _disabledFactory = disabledFactory;
         _disabledClient = CreateClient(_disabledFactory);
     }
 
-    public void Dispose()
+    protected override void DisposeManagedResources()
     {
-        GC.SuppressFinalize(this);
         _disabledClient.Dispose();
         _enabledFactory?.Dispose();
     }

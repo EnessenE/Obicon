@@ -2,17 +2,19 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
 /// <summary>
 /// Integration tests for test CRUD: creation, editing all settings, and validation.
 /// </summary>
-public class TestCrudTests : IClassFixture<ObiconServerFactory>
+public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly HttpClient _client;
 
-    public TestCrudTests(ObiconServerFactory factory)
+    public TestCrudTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _client = factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new(ObiconServerFactory.AuthHeader);

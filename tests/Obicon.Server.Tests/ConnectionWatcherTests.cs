@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Obicon.Server.WebSockets;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Obicon.Server.Tests;
 
@@ -13,12 +14,13 @@ namespace Obicon.Server.Tests;
 /// Tests the connection watcher: connections whose node record no longer exists
 /// are actively closed and removed, instead of heartbeating as connected ghosts.
 /// </summary>
-public class ConnectionWatcherTests : IClassFixture<ObiconServerFactory>
+public class ConnectionWatcherTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly ObiconServerFactory _factory;
     private readonly HttpClient _client;
 
-    public ConnectionWatcherTests(ObiconServerFactory factory)
+    public ConnectionWatcherTests(ITestOutputHelper output, ObiconServerFactory factory)
+        : base(output)
     {
         _factory = factory;
         _client = factory.CreateClient();
