@@ -51,6 +51,18 @@ public class DnsDetails
     public string Via { get; set; } = string.Empty;
 
     /// <summary>
+    /// DNS response status of the answering nameserver, e.g. "NOERROR" or "NXDOMAIN".
+    /// Null for the OS-resolver fallback. Default: null.
+    /// </summary>
+    public string? ResponseStatus { get; set; }
+
+    /// <summary>
+    /// Time to live of each returned record, in seconds, by address. Empty when the
+    /// resolver did not report TTLs. Default: empty dictionary.
+    /// </summary>
+    public Dictionary<string, long> RecordTtls { get; set; } = [];
+
+    /// <summary>
     /// Address the test expected among the resolved ones. Null when no expectation
     /// was set. Default: null.
     /// </summary>

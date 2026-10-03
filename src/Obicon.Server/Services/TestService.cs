@@ -66,6 +66,10 @@ public partial class TestService : ITestService
             Headers = request.Headers ?? new Dictionary<string, string>(),
             ProxyUrl = request.ProxyUrl,
             CacheBust = request.CacheBust,
+            TracerouteMaxHops = request.TracerouteMaxHops,
+            TracerouteQueriesPerHop = request.TracerouteQueriesPerHop,
+            TracerouteQueryTimeoutMs = request.TracerouteQueryTimeoutMs,
+            TracerouteResolveHostnames = request.TracerouteResolveHostnames,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = null
         };
@@ -124,6 +128,10 @@ public partial class TestService : ITestService
             test.Headers = request.Headers ?? new Dictionary<string, string>();
             test.ProxyUrl = request.ProxyUrl;
             test.CacheBust = request.CacheBust;
+            test.TracerouteMaxHops = request.TracerouteMaxHops;
+            test.TracerouteQueriesPerHop = request.TracerouteQueriesPerHop;
+            test.TracerouteQueryTimeoutMs = request.TracerouteQueryTimeoutMs;
+            test.TracerouteResolveHostnames = request.TracerouteResolveHostnames;
             test.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
@@ -426,7 +434,11 @@ public partial class TestService : ITestService
                     ExpectedBodyPattern = request.ExpectedBodyPattern,
                     Headers = request.Headers ?? new Dictionary<string, string>(),
                     ProxyUrl = request.ProxyUrl,
-                    CacheBust = request.CacheBust
+                    CacheBust = request.CacheBust,
+                    TracerouteMaxHops = request.TracerouteMaxHops,
+                    TracerouteQueriesPerHop = request.TracerouteQueriesPerHop,
+                    TracerouteQueryTimeoutMs = request.TracerouteQueryTimeoutMs,
+                    TracerouteResolveHostnames = request.TracerouteResolveHostnames
                 }));
             }
             return created;
@@ -528,6 +540,10 @@ public partial class TestService : ITestService
         Headers = test.Headers,
         ProxyUrl = test.ProxyUrl,
         CacheBust = test.CacheBust,
+        TracerouteMaxHops = test.TracerouteMaxHops,
+        TracerouteQueriesPerHop = test.TracerouteQueriesPerHop,
+        TracerouteQueryTimeoutMs = test.TracerouteQueryTimeoutMs,
+        TracerouteResolveHostnames = test.TracerouteResolveHostnames,
         CreatedAt = test.CreatedAt,
         UpdatedAt = test.UpdatedAt
     };

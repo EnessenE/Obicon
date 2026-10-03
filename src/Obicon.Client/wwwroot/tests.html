@@ -117,6 +117,24 @@
                                     <label class="form-check-label" for="cacheBust" title="Appends a unique query parameter so caches serve a fresh response">Cache busting</label>
                                 </div>
                             </div>
+                            <div class="col-md-6 traceroute-expectation">
+                                <label class="form-label mb-1">Max hops <span class="text-muted">(empty = 30)</span></label>
+                                <input id="tracerouteMaxHops" type="number" min="1" max="64" class="form-control" placeholder="30">
+                            </div>
+                            <div class="col-md-6 traceroute-expectation">
+                                <label class="form-label mb-1">Probes per hop <span class="text-muted">(empty = 3)</span></label>
+                                <input id="tracerouteQueriesPerHop" type="number" min="1" max="10" class="form-control" placeholder="3">
+                            </div>
+                            <div class="col-md-6 traceroute-expectation">
+                                <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                                <input id="tracerouteQueryTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                            </div>
+                            <div class="col-md-6 traceroute-expectation d-flex align-items-end">
+                                <div class="form-check">
+                                    <input id="tracerouteResolveHostnames" type="checkbox" class="form-check-input" checked>
+                                    <label class="form-check-label" for="tracerouteResolveHostnames" title="Resolves each hop's address to a hostname (best effort)">Resolve hop hostnames</label>
+                                </div>
+                            </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mt-3">
                             <button class="btn btn-primary" onclick="createTest()"><i class="bi bi-plus-lg me-1"></i>Create Test</button>
@@ -215,6 +233,26 @@
                             <input id="editExpectedDnsResult" class="form-control" placeholder="anything">
                         </div>
                     </div>
+                    <div class="row g-3 mb-2 traceroute-expectation">
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Max hops <span class="text-muted">(empty = 30)</span></label>
+                            <input id="editTracerouteMaxHops" type="number" min="1" max="64" class="form-control" placeholder="30">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Probes per hop <span class="text-muted">(empty = 3)</span></label>
+                            <input id="editTracerouteQueriesPerHop" type="number" min="1" max="10" class="form-control" placeholder="3">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Probe timeout (ms) <span class="text-muted">(empty = 2000)</span></label>
+                            <input id="editTracerouteQueryTimeoutMs" type="number" min="100" max="60000" class="form-control" placeholder="2000">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-center">
+                            <div class="form-check">
+                                <input id="editTracerouteResolveHostnames" type="checkbox" class="form-check-input" checked>
+                                <label class="form-check-label" for="editTracerouteResolveHostnames">Resolve hop hostnames</label>
+                            </div>
+                        </div>
+                    </div>
                     <div class="row g-3 mb-2 http-expectation">
                         <div class="col-md-3">
                             <label class="form-label mb-1">Body must match regex</label>
@@ -266,7 +304,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=4"></script>
-    <script src="js/testdetails.js?v=1"></script>
-    <script src="js/tests.js?v=13"></script>
+    <script src="js/testdetails.js?v=2"></script>
+    <script src="js/tests.js?v=14"></script>
 </body>
 </html>

@@ -53,13 +53,21 @@ function renderTestDetails(details) {
 }
 
 function renderTracerouteDetails(traceroute) {
-    const rows = (traceroute.hops || []).map(hop => `
+    const rows = (traceroute.hops || []).map(hop => {
+        const rtts = (hop.probes || [])
+            .map(probe => probe.roundtripMs != null ? `${probe.roundtripMs}` : '*')
+            .join(' / ');
+        const address = hop.address
+            ? (hop.hostname ? `${tdEscapeHtml(hop.hostname)} (${tdEscapeHtml(hop.address)})` : tdEscapeHtml(hop.address))
+            : '*';
+        return `
         <tr>
             <td>${tdEscapeHtml(hop.hop)}</td>
-            <td class="text-break">${hop.address ? tdEscapeHtml(hop.address) : '*'}</td>
+            <td class="text-break">${address}</td>
             <td>${tdEscapeHtml(hop.status)}</td>
-            <td>${hop.roundtripMs != null ? tdEscapeHtml(tdMs(hop.roundtripMs)) : '-'}</td>
-        </tr>`).join('');
+            <td>${rtts ? tdEscapeHtml(rtts + ' ms') : '-'}</td>
+        </tr>`;
+    }).join('');
 
     return `
         <div class="mt-1">
@@ -70,7 +78,7 @@ function renderTracerouteDetails(traceroute) {
                 tdPair('error', traceroute.error)
             ])}
             <table class="table table-sm table-striped small mb-0 mt-1">
-                <thead><tr><th>Hop</th><th>Address</th><th>Status</th><th>RTT</th></tr></thead>
+                <thead><tr><th>Hop</th><th>Host</th><th>Status</th><th>RTT per probe</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         </div>`;
@@ -133,8 +141,12 @@ function renderHttpDetails(http) {
 }
 
 function renderDnsDetails(dns) {
+    // Records annotated with their TTL when the resolver reported one
     const recordList = (label, records) => records && records.length > 0
-        ? `<span class="text-nowrap"><span class="text-body">${label}</span>: ${records.map(r => `<code>${tdEscapeHtml(r)}</code>`).join(' ')}</span>`
+        ? `<span class="text-nowrap"><span class="text-body">${label}</span>: ${records.map(r => {
+            const ttl = dns.recordTtls ? dns.recordTtls[r] : null;
+            return `<code>${tdEscapeHtml(r)}${ttl != null ? ` <span class="text-body">(${ttl}s)</span>` : ''}</code>`;
+        }).join(' ')}</span>`
         : '';
     const recordPairs = [recordList('A', dns.aRecords), recordList('AAAA', dns.aaaaRecords)]
         .filter(Boolean)
@@ -144,6 +156,7 @@ function renderDnsDetails(dns) {
         <div class="mt-1">
             ${tdPairs([
                 tdPair('via', dns.via),
+                tdPair('status', dns.responseStatus),
                 tdPair('nameservers', (dns.nameserversQueried || []).join(', ')),
                 tdPair('answered by', dns.answeringNameserver),
                 tdPair('rtt', tdMs(dns.nameserverRttMs)),

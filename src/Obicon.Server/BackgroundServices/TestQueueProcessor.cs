@@ -100,7 +100,11 @@ public partial class TestQueueProcessor : BackgroundService
                     ExpectedBodyPattern = job.ExpectedBodyPattern,
                     Headers = job.Headers,
                     ProxyUrl = job.ProxyUrl,
-                    CacheBust = job.CacheBust
+                    CacheBust = job.CacheBust,
+                    TracerouteMaxHops = job.TracerouteMaxHops,
+                    TracerouteQueriesPerHop = job.TracerouteQueriesPerHop,
+                    TracerouteQueryTimeoutMs = job.TracerouteQueryTimeoutMs,
+                    TracerouteResolveHostnames = job.TracerouteResolveHostnames
                 }
             };
 

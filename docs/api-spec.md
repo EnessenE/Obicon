@@ -306,11 +306,15 @@ Creates a new test.
   "expectedBodyPattern": null,  // HTTP/HTTPS: body must match this regex; null = no check
   "headers": {},  // HTTP/HTTPS: custom request headers
   "proxyUrl": null,  // HTTP/HTTPS: http(s) proxy URL; null = direct
-  "cacheBust": false  // HTTP/HTTPS: append a unique query parameter to bypass caches
+  "cacheBust": false,  // HTTP/HTTPS: append a unique query parameter to bypass caches
+  "tracerouteMaxHops": null,  // Traceroute: hop limit; null = 30, range 1-64
+  "tracerouteQueriesPerHop": null,  // Traceroute: probes per hop; null = 3, range 1-10
+  "tracerouteQueryTimeoutMs": null,  // Traceroute: per-probe wait; null = 2000, range 100-60000
+  "tracerouteResolveHostnames": null  // Traceroute: resolve each hop to a hostname; null = true
 }
 ```
 
-Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL.
+Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL, and the traceroute settings must be in range (max hops 1-64, queries per hop 1-10, query timeout 100-60000 ms).
 
 Targeting: the test runs on the union of `nodeIds` and all members of `poolIds` (deduplicated).
 
@@ -454,10 +458,14 @@ Runs a single test immediately on a selection of nodes without creating a test f
   "expectedBodyPattern": null,
   "headers": null,
   "proxyUrl": null,
-  "cacheBust": false
+  "cacheBust": false,
+  "tracerouteMaxHops": null,
+  "tracerouteQueriesPerHop": null,
+  "tracerouteQueryTimeoutMs": null,
+  "tracerouteResolveHostnames": null
 }
 ```
-`timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`). At least one node ID or pool ID is required.
+`timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`) and the same traceroute settings. At least one node ID or pool ID is required.
 
 **Response:** 200 OK - one job per selected node, in the order of the request; poll each at `GET /v1/queue/{id}` until `status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
 
@@ -773,7 +781,11 @@ Sent by server to assign a test to a node.
     "ExpectedBodyPattern": null,  // HTTP/HTTPS: body regex; null = no check
     "Headers": null,  // HTTP/HTTPS: custom request headers
     "ProxyUrl": null,  // HTTP/HTTPS: proxy URL; null = direct
-    "CacheBust": false  // HTTP/HTTPS: append a cache-busting query parameter
+    "CacheBust": false,  // HTTP/HTTPS: append a cache-busting query parameter
+    "TracerouteMaxHops": null,  // Traceroute: hop limit; null = 30
+    "TracerouteQueriesPerHop": null,  // Traceroute: probes per hop; null = 3
+    "TracerouteQueryTimeoutMs": null,  // Traceroute: per-probe wait in ms; null = 2000
+    "TracerouteResolveHostnames": null  // Traceroute: resolve each hop to a hostname; null = true
   }
 }
 ```
@@ -797,11 +809,11 @@ Sent by node to report test results.
 
 `Details` carries the structured measurements of the run — exactly one populated section matching the test type, with HTTP and HTTPS both using `Http`. It is persisted on the job and exposed by the queue API as `details` (camelCased there, like every HTTP response, while the WebSocket payload uses the PascalCase names shown here); the web UI renders it. Sections:
 
-- **Traceroute** — `ResolvedAddress`, `TargetReached`, `HopCount`, and `Hops`: one record per hop with `Hop` (number), `Address` (null when nothing responded), `Status` (`TtlExpired`, `Success`, `TimedOut`, ...), `RoundtripMs` (null for no response), and `Error` when the hop ended the trace
+- **Traceroute** — `ResolvedAddress`, `TargetReached`, `HopCount`, and `Hops`: one record per hop with `Hop` (number), `Address` (null when nothing responded), `Hostname` (best-effort reverse lookup, null when unresolved or disabled), `Status` (`TtlExpired`, `Success`, `TimedOut`, ...), `RoundtripMs` (average of the answered probes), `Probes` (one record per probe with `Status` and `RoundtripMs`), and `Error` when the hop ended the trace
 - **Ping** — `Target`, `ResolvedAddress`, `DnsMs`, `ReplyAddress`, `ReplyStatus`, `RoundtripMs`, `Ttl`, `WallclockMs`, `Error`
 - **Tcp** — `Host`, `Port`, `ResolvedAddress`, `Family`, `DnsMs`, `ConnectMs`, `Error`
 - **Http** (HTTP and HTTPS) — `Url`, `FinalUrl`, `StatusCode`, `ReasonPhrase`, `ResolvedAddress`, the phase timings `DnsMs`/`ConnectMs`/`TlsMs`/`TtfbMs`/`TransferMs` (`DnsMs`, `ConnectMs`, and `TlsMs` are null for proxied requests), `TlsProtocol`, `TlsCipher`, `BytesRead`, `BytesTruncated`, `ProxyUrl`, `BodyMatched` (null when no pattern was set), `Certificate` (`Subject`, `Issuer`, `NotAfter`, `DaysRemaining`), `Error`
-- **Dns** — `Host`, `NameserversQueried`, `AnsweringNameserver`, `NameserverRttMs`, `ARecords`, `AaaaRecords`, `Resolved` (after the IP version filter), `Via` (`nameserver`, `os-resolver`, or `literal`), `ExpectedAddress`, `ExpectedMatched`, `Error`
+- **Dns** — `Host`, `NameserversQueried`, `AnsweringNameserver`, `NameserverRttMs`, `ARecords`, `AaaaRecords`, `Resolved` (after the IP version filter), `RecordTtls` (TTL in seconds by address), `ResponseStatus` (the answering nameserver's DNS status, e.g. `NOERROR` or `NXDOMAIN`), `Via` (`nameserver`, `os-resolver`, or `literal`), `ExpectedAddress`, `ExpectedMatched`, `Error`
 
 #### TestStatusUpdate
 Sent by node to report in-progress job status: `Assigned` (1) when it accepts a job and `Running` (2) when execution starts. Final outcomes (Completed, Failed, Timeout) are reported via `TestResult` instead; `Queued` and `NoRun` are server-side only.

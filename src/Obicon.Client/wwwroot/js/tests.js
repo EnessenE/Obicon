@@ -199,6 +199,8 @@ function updateExpectationVisibility() {
         el.style.display = (type === 3) ? '' : 'none');
     document.querySelectorAll('.dns-expectation').forEach(el =>
         el.style.display = (type === 5) ? '' : 'none');
+    document.querySelectorAll('.traceroute-expectation').forEach(el =>
+        el.style.display = (type === 1) ? '' : 'none');
 }
 
 // Same for the edit modal, driven by its own type select
@@ -206,6 +208,8 @@ function updateEditExpectationVisibility() {
     const type = parseInt(document.getElementById('editType').value);
     document.querySelectorAll('#editTestModal .http-expectation').forEach(el =>
         el.style.display = (type === 2 || type === 3) ? '' : 'none');
+    document.querySelectorAll('#editTestModal .traceroute-expectation').forEach(el =>
+        el.style.display = (type === 1) ? '' : 'none');
 }
 
 function getSelectedNodeIds() {
@@ -302,6 +306,18 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         cacheBust = document.getElementById('cacheBust').checked;
     }
 
+    // Traceroute extras: empty inputs mean the node defaults
+    let tracerouteMaxHops = null;
+    let tracerouteQueriesPerHop = null;
+    let tracerouteQueryTimeoutMs = null;
+    let tracerouteResolveHostnames = null;
+    if (type === 1) {
+        tracerouteMaxHops = parseIntOrNull(document.getElementById('tracerouteMaxHops').value);
+        tracerouteQueriesPerHop = parseIntOrNull(document.getElementById('tracerouteQueriesPerHop').value);
+        tracerouteQueryTimeoutMs = parseIntOrNull(document.getElementById('tracerouteQueryTimeoutMs').value);
+        tracerouteResolveHostnames = document.getElementById('tracerouteResolveHostnames').checked ? null : false;
+    }
+
     return {
         name, target, type, frequency, isActive, nodeIds, poolIds, ipVersion, timeoutSeconds,
         expectedStatusCodes,
@@ -310,8 +326,18 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         expectedBodyPattern,
         headers,
         proxyUrl,
-        cacheBust
+        cacheBust,
+        tracerouteMaxHops,
+        tracerouteQueriesPerHop,
+        tracerouteQueryTimeoutMs,
+        tracerouteResolveHostnames
     };
+}
+
+// Parses an input's value as an integer, null for empty or invalid input
+function parseIntOrNull(value) {
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? null : parsed;
 }
 
 // Estimated checks for a saved test, based on its direct nodes plus pool members
@@ -405,7 +431,11 @@ async function createTest() {
             expectedBodyPattern: values.expectedBodyPattern,
             headers: values.headers,
             proxyUrl: values.proxyUrl,
-            cacheBust: values.cacheBust
+            cacheBust: values.cacheBust,
+            tracerouteMaxHops: values.tracerouteMaxHops,
+            tracerouteQueriesPerHop: values.tracerouteQueriesPerHop,
+            tracerouteQueryTimeoutMs: values.tracerouteQueryTimeoutMs,
+            tracerouteResolveHostnames: values.tracerouteResolveHostnames
         });
 
         // Reset form
@@ -422,6 +452,10 @@ async function createTest() {
         document.getElementById('testHeaders').value = '';
         document.getElementById('proxyUrl').value = '';
         document.getElementById('cacheBust').checked = false;
+        document.getElementById('tracerouteMaxHops').value = '';
+        document.getElementById('tracerouteQueriesPerHop').value = '';
+        document.getElementById('tracerouteQueryTimeoutMs').value = '';
+        document.getElementById('tracerouteResolveHostnames').checked = true;
         document.querySelectorAll('.node-checkbox:checked, .pool-checkbox:checked').forEach(cb => cb.checked = false);
         updateExpectationVisibility();
 
@@ -469,7 +503,11 @@ async function runOnRandomNode() {
             expectedBodyPattern: values.expectedBodyPattern,
             headers: values.headers,
             proxyUrl: values.proxyUrl,
-            cacheBust: values.cacheBust
+            cacheBust: values.cacheBust,
+            tracerouteMaxHops: values.tracerouteMaxHops,
+            tracerouteQueriesPerHop: values.tracerouteQueriesPerHop,
+            tracerouteQueryTimeoutMs: values.tracerouteQueryTimeoutMs,
+            tracerouteResolveHostnames: values.tracerouteResolveHostnames
         });
 
         // One job per selected node (direct picks plus the top pool members); poll all
@@ -542,6 +580,10 @@ function openTestEditModal(test) {
         .join('\n');
     document.getElementById('editProxyUrl').value = test.proxyUrl || '';
     document.getElementById('editCacheBust').checked = !!test.cacheBust;
+    document.getElementById('editTracerouteMaxHops').value = test.tracerouteMaxHops ?? '';
+    document.getElementById('editTracerouteQueriesPerHop').value = test.tracerouteQueriesPerHop ?? '';
+    document.getElementById('editTracerouteQueryTimeoutMs').value = test.tracerouteQueryTimeoutMs ?? '';
+    document.getElementById('editTracerouteResolveHostnames').checked = test.tracerouteResolveHostnames !== false;
     document.getElementById('editIsActive').checked = test.isActive;
     document.getElementById('editError').style.display = 'none';
     updateEditExpectationVisibility();
@@ -625,6 +667,18 @@ async function saveTestEdit() {
         cacheBust = document.getElementById('editCacheBust').checked;
     }
 
+    // Traceroute extras, read from the modal's own fields
+    let tracerouteMaxHops = null;
+    let tracerouteQueriesPerHop = null;
+    let tracerouteQueryTimeoutMs = null;
+    let tracerouteResolveHostnames = null;
+    if (type === 1) {
+        tracerouteMaxHops = parseIntOrNull(document.getElementById('editTracerouteMaxHops').value);
+        tracerouteQueriesPerHop = parseIntOrNull(document.getElementById('editTracerouteQueriesPerHop').value);
+        tracerouteQueryTimeoutMs = parseIntOrNull(document.getElementById('editTracerouteQueryTimeoutMs').value);
+        tracerouteResolveHostnames = document.getElementById('editTracerouteResolveHostnames').checked ? null : false;
+    }
+
     try {
         await apiCall('PUT', `/v1/tests/${editingTest.id}`, {
             type,
@@ -643,7 +697,11 @@ async function saveTestEdit() {
             expectedBodyPattern,
             headers,
             proxyUrl,
-            cacheBust
+            cacheBust,
+            tracerouteMaxHops,
+            tracerouteQueriesPerHop,
+            tracerouteQueryTimeoutMs,
+            tracerouteResolveHostnames
         });
 
         editTestModal.hide();

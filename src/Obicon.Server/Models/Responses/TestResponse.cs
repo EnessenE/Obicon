@@ -92,6 +92,30 @@ public class TestResponse
     public bool CacheBust { get; set; }
 
     /// <summary>
+    /// Traceroute: maximum number of hops before giving up. Null uses the default (30).
+    /// Default: null.
+    /// </summary>
+    public int? TracerouteMaxHops { get; set; }
+
+    /// <summary>
+    /// Traceroute: probes sent per hop, each with its own round trip time. Null uses
+    /// the default (3). Default: null.
+    /// </summary>
+    public int? TracerouteQueriesPerHop { get; set; }
+
+    /// <summary>
+    /// Traceroute: milliseconds to wait for each probe's reply. Null uses the default
+    /// (2000). Default: null.
+    /// </summary>
+    public int? TracerouteQueryTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Traceroute: when true, each hop's address is resolved to a hostname (best
+    /// effort). Null uses the default (true). Default: null.
+    /// </summary>
+    public bool? TracerouteResolveHostnames { get; set; }
+
+    /// <summary>
     /// Timestamp when the test was created.
     /// </summary>
     public DateTime CreatedAt { get; set; }

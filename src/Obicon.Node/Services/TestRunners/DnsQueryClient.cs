@@ -5,6 +5,22 @@ using System.Net.Sockets;
 namespace Obicon.Node.Services.TestRunners;
 
 /// <summary>
+/// One DNS record returned by a nameserver.
+/// </summary>
+public class DnsRecord
+{
+    /// <summary>
+    /// Resolved address. Default: empty string.
+    /// </summary>
+    public string Address { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Time to live of the record in seconds. -1 when the response carried none.
+    /// </summary>
+    public long TtlSeconds { get; init; } = -1;
+}
+
+/// <summary>
 /// Result of querying one nameserver.
 /// </summary>
 public class NameserverResult
@@ -22,12 +38,22 @@ public class NameserverResult
     /// <summary>
     /// A records returned by this nameserver. Default: empty list.
     /// </summary>
-    public List<string> A { get; init; } = new();
+    public List<DnsRecord> A { get; init; } = new();
 
     /// <summary>
     /// AAAA records returned by this nameserver. Default: empty list.
     /// </summary>
-    public List<string> Aaaa { get; init; } = new();
+    public List<DnsRecord> Aaaa { get; init; } = new();
+
+    /// <summary>
+    /// Response status of the A query, e.g. "NOERROR" or "NXDOMAIN". Default: empty string.
+    /// </summary>
+    public string AStatus { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Response status of the AAAA query, e.g. "NOERROR" or "NXDOMAIN". Default: empty string.
+    /// </summary>
+    public string AaaaStatus { get; init; } = string.Empty;
 
     /// <summary>
     /// Error description when the query failed. Null on success.
@@ -93,7 +119,9 @@ public static class DnsQueryClient
                 Nameserver = nameserver.ToString(),
                 RttMs = stopwatch.Elapsed.TotalMilliseconds,
                 A = ParseRecords(aResponse, 1),
-                Aaaa = ParseRecords(aaaaResponse, 28)
+                Aaaa = ParseRecords(aaaaResponse, 28),
+                AStatus = ParseStatus(aResponse),
+                AaaaStatus = ParseStatus(aaaaResponse)
             };
         }
         catch (Exception ex)
@@ -146,11 +174,33 @@ public static class DnsQueryClient
     }
 
     /// <summary>
+    /// Parses the response code of a DNS response into its mnemonic, e.g. "NOERROR".
+    /// </summary>
+    private static string ParseStatus(byte[] response)
+    {
+        if (response.Length < 12)
+        {
+            return string.Empty;
+        }
+
+        return (response[3] & 0x0F) switch
+        {
+            0 => "NOERROR",
+            1 => "FORMERR",
+            2 => "SERVFAIL",
+            3 => "NXDOMAIN",
+            4 => "NOTIMP",
+            5 => "REFUSED",
+            var code => $"RCODE{code}"
+        };
+    }
+
+    /// <summary>
     /// Parses A (1) or AAAA (28) records from a DNS response.
     /// </summary>
-    private static List<string> ParseRecords(byte[] response, ushort wantedType)
+    private static List<DnsRecord> ParseRecords(byte[] response, ushort wantedType)
     {
-        var records = new List<string>();
+        var records = new List<DnsRecord>();
         if (response.Length < 12)
         {
             return records;
@@ -173,6 +223,8 @@ public static class DnsQueryClient
             }
 
             var type = (ushort)((response[offset] << 8) | response[offset + 1]);
+            var ttl = ((long)response[offset + 4] << 24) | ((long)response[offset + 5] << 16)
+                | ((long)response[offset + 6] << 8) | response[offset + 7];
             var dataLength = (response[offset + 8] << 8) | response[offset + 9];
             offset += 10;
 
@@ -181,11 +233,11 @@ public static class DnsQueryClient
                 var data = response[offset..(offset + dataLength)];
                 if (wantedType == 1 && dataLength == 4)
                 {
-                    records.Add(new IPAddress(data).ToString());
+                    records.Add(new DnsRecord { Address = new IPAddress(data).ToString(), TtlSeconds = ttl });
                 }
                 else if (wantedType == 28 && dataLength == 16)
                 {
-                    records.Add(new IPAddress(data).ToString());
+                    records.Add(new DnsRecord { Address = new IPAddress(data).ToString(), TtlSeconds = ttl });
                 }
             }
 

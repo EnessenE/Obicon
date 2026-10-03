@@ -31,8 +31,26 @@ public class TestResultDetailsTests
                     HopCount = 2,
                     Hops =
                     [
-                        new TracerouteHop { Hop = 1, Address = "10.0.0.1", Status = "TtlExpired", RoundtripMs = 5 },
-                        new TracerouteHop { Hop = 2, Status = "TimedOut", Error = "TimedOut" }
+                        new TracerouteHop
+                        {
+                            Hop = 1,
+                            Address = "10.0.0.1",
+                            Hostname = "router1.local",
+                            Status = "TtlExpired",
+                            RoundtripMs = 5,
+                            Probes =
+                            [
+                                new TracerouteProbe { Status = "TtlExpired", RoundtripMs = 4 },
+                                new TracerouteProbe { Status = "TtlExpired", RoundtripMs = 6 }
+                            ]
+                        },
+                        new TracerouteHop
+                        {
+                            Hop = 2,
+                            Status = "TimedOut",
+                            Error = "TimedOut",
+                            Probes = [new TracerouteProbe { Status = "TimedOut" }]
+                        }
                     ]
                 },
                 Ping = new PingDetails
@@ -90,6 +108,8 @@ public class TestResultDetailsTests
                     AaaaRecords = [],
                     Resolved = ["93.184.216.34"],
                     Via = "nameserver",
+                    ResponseStatus = "NOERROR",
+                    RecordTtls = new Dictionary<string, long> { ["93.184.216.34"] = 3600 },
                     ExpectedAddress = "93.184.216.34",
                     ExpectedMatched = true
                 }
@@ -117,6 +137,10 @@ public class TestResultDetailsTests
         var hop = Assert.Single(traceroute.Hops, h => h.Address == null);
         Assert.Equal("TimedOut", hop.Status);
         Assert.Null(hop.RoundtripMs);
+        var answeredHop = Assert.Single(traceroute.Hops, h => h.Address != null);
+        Assert.Equal("router1.local", answeredHop.Hostname);
+        Assert.Equal(2, answeredHop.Probes.Count);
+        Assert.Equal(4, Assert.Single(answeredHop.Probes, p => p.RoundtripMs == 4).RoundtripMs);
 
         var ping = Assert.IsType<PingDetails>(details.Ping);
         Assert.Equal("Success", ping.ReplyStatus);
@@ -137,6 +161,8 @@ public class TestResultDetailsTests
         Assert.Equal("8.8.8.8", Assert.Single(dns.NameserversQueried));
         Assert.Equal("93.184.216.34", Assert.Single(dns.Resolved));
         Assert.True(dns.ExpectedMatched);
+        Assert.Equal("NOERROR", dns.ResponseStatus);
+        Assert.Equal(3600, dns.RecordTtls["93.184.216.34"]);
     }
 
     [Fact]

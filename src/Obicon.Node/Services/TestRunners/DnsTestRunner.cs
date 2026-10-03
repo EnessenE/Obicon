@@ -74,17 +74,31 @@ public partial class DnsTestRunner : ITestRunner
 
                 details.AnsweringNameserver = result.Nameserver;
                 details.NameserverRttMs = Math.Round(result.RttMs, 2);
+                details.ResponseStatus = result.AStatus;
+                if (result.AStatus != "NOERROR" || result.AaaaStatus != "NOERROR")
+                {
+                    LogNameserverStatus(assignment.Target, result.Nameserver, result.AStatus, result.AaaaStatus);
+                }
                 if (_logger.IsEnabled(LogLevel.Information))
                 {
-                    var aRecords = string.Join(", ", result.A);
-                    var aaaaRecords = string.Join(", ", result.Aaaa);
+                    var aRecords = RecordsText(result.A);
+                    var aaaaRecords = RecordsText(result.Aaaa);
                     LogNameserverAnswered(result.Nameserver, result.RttMs, aRecords, aaaaRecords);
                 }
 
                 var resolved = Filter(result, assignment.IpVersion);
-                details.ARecords = result.A;
-                details.AaaaRecords = result.Aaaa;
+                details.ARecords = result.A.Select(r => r.Address).ToList();
+                details.AaaaRecords = result.Aaaa.Select(r => r.Address).ToList();
                 details.Resolved = resolved;
+                foreach (var record in result.A.Concat(result.Aaaa).Where(r => r.TtlSeconds >= 0))
+                {
+                    details.RecordTtls[record.Address] = record.TtlSeconds;
+                }
+
+                if (resolved.Count == 0 && (!string.IsNullOrEmpty(result.AStatus) || !string.IsNullOrEmpty(result.AaaaStatus)))
+                {
+                    details.Error = $"nameserver returned {result.AStatus}/{result.AaaaStatus}";
+                }
 
                 return Evaluate(assignment, resolved, details, $"via nameserver {result.Nameserver}");
             }
@@ -128,10 +142,19 @@ public partial class DnsTestRunner : ITestRunner
     {
         return ipVersion switch
         {
-            IpVersion.Ipv4 => result.A,
-            IpVersion.Ipv6 => result.Aaaa,
-            _ => result.A.Concat(result.Aaaa).ToList()
+            IpVersion.Ipv4 => result.A.Select(r => r.Address).ToList(),
+            IpVersion.Ipv6 => result.Aaaa.Select(r => r.Address).ToList(),
+            _ => result.A.Select(r => r.Address).Concat(result.Aaaa.Select(r => r.Address)).ToList()
         };
+    }
+
+    /// <summary>
+    /// Renders records for the log, addresses annotated with their TTL, e.g.
+    /// "1.2.3.4 (ttl 3600s)".
+    /// </summary>
+    private static string RecordsText(IEnumerable<DnsRecord> records)
+    {
+        return string.Join(", ", records.Select(r => r.TtlSeconds >= 0 ? $"{r.Address} (ttl {r.TtlSeconds}s)" : r.Address));
     }
 
     private TestOutcome Evaluate(TestAssignmentMessage assignment, List<string> resolved, DnsDetails details, string via)
@@ -180,6 +203,9 @@ public partial class DnsTestRunner : ITestRunner
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Nameserver {Nameserver} failed: {Error}")]
     private partial void LogNameserverFailed(IPAddress nameserver, string? error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Nameserver {Nameserver} answered {Host} with status A={AStatus} AAAA={AaaaStatus}")]
+    private partial void LogNameserverStatus(string host, string nameserver, string aStatus, string aaaaStatus);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Nameserver {Nameserver} answered in {Rtt:F1} ms: A=[{A}] AAAA=[{Aaaa}]")]
     private partial void LogNameserverAnswered(string nameserver, double rtt, string a, string aaaa);

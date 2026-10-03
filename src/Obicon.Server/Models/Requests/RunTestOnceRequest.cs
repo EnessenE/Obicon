@@ -85,4 +85,31 @@ public class RunTestOnceRequest
     /// so caches serve a fresh response. Default: false.
     /// </summary>
     public bool CacheBust { get; set; }
+
+    /// <summary>
+    /// Traceroute: maximum number of hops before giving up. Null uses the default (30).
+    /// Range: 1-64. Default: null.
+    /// </summary>
+    [Range(1, 64)]
+    public int? TracerouteMaxHops { get; set; }
+
+    /// <summary>
+    /// Traceroute: probes sent per hop, each with its own round trip time. Null uses
+    /// the default (3). Range: 1-10. Default: null.
+    /// </summary>
+    [Range(1, 10)]
+    public int? TracerouteQueriesPerHop { get; set; }
+
+    /// <summary>
+    /// Traceroute: milliseconds to wait for each probe's reply. Null uses the default
+    /// (2000). Range: 100-60000. Default: null.
+    /// </summary>
+    [Range(100, 60_000)]
+    public int? TracerouteQueryTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Traceroute: when true, each hop's address is resolved to a hostname (best
+    /// effort). Null uses the default (true). Default: null.
+    /// </summary>
+    public bool? TracerouteResolveHostnames { get; set; }
 }
