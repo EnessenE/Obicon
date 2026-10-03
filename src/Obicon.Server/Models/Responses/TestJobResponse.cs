@@ -39,6 +39,12 @@ public class TestJobResponse
     public int TimeoutSeconds { get; set; }
 
     /// <summary>
+    /// IP family this job runs against. A test with Both is scheduled as one IPv4 and
+    /// one IPv6 job per node.
+    /// </summary>
+    public IpVersion IpVersion { get; set; }
+
+    /// <summary>
     /// Current status of the job. See <see cref="TestJobStatus"/> for available statuses.
     /// </summary>
     public TestJobStatus Status { get; set; }
@@ -102,6 +108,7 @@ public class TestJobResponse
         TestType = job.TestType,
         Target = job.Target,
         TimeoutSeconds = job.TimeoutSeconds,
+        IpVersion = job.IpVersion,
         Status = job.Status,
         CreatedAt = job.CreatedAt,
         StartedAt = job.StartedAt,

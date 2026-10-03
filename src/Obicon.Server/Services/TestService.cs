@@ -404,26 +404,50 @@ public partial class TestService : ITestService
     /// </summary>
     private async Task EnqueueJobsForTestAsync(ObiconDbContext db, Test test)
     {
-        // One job per targeted node: direct node IDs plus all pool members, deduplicated
+        // One job per targeted node and IP family: direct node IDs plus all pool
+        // members, deduplicated; Both schedules one IPv4 and one IPv6 job per node
         foreach (var nodeId in await ResolveTargetNodesAsync(test))
         {
-            await _queueService.CreateJobAsync(db, new TestJob
+            foreach (var ipVersion in FamiliesFor(test.IpVersion))
             {
-                TestId = test.Id,
-                NodeId = nodeId,
-                TestType = test.Type,
-                Target = test.Target,
-                TimeoutSeconds = test.TimeoutSeconds,
-                ExpectedStatusCodes = test.ExpectedStatusCodes,
-                CheckCertificateExpiryDays = test.CheckCertificateExpiryDays,
-                ExpectedDnsResult = test.ExpectedDnsResult,
-                IpVersion = test.IpVersion,
-                ExpectedBodyPattern = test.ExpectedBodyPattern,
-                Headers = test.Headers,
-                ProxyUrl = test.ProxyUrl,
-                CacheBust = test.CacheBust
-            });
+                await _queueService.CreateJobAsync(db, new TestJob
+                {
+                    TestId = test.Id,
+                    NodeId = nodeId,
+                    TestType = test.Type,
+                    Target = test.Target,
+                    TimeoutSeconds = test.TimeoutSeconds,
+                    ExpectedStatusCodes = test.ExpectedStatusCodes,
+                    CheckCertificateExpiryDays = test.CheckCertificateExpiryDays,
+                    ExpectedDnsResult = test.ExpectedDnsResult,
+                    IpVersion = ipVersion,
+                    ExpectedBodyPattern = test.ExpectedBodyPattern,
+                    Headers = test.Headers,
+                    ProxyUrl = test.ProxyUrl,
+                    CacheBust = test.CacheBust,
+                    TracerouteMaxHops = test.TracerouteMaxHops,
+                    TracerouteQueriesPerHop = test.TracerouteQueriesPerHop,
+                    TracerouteQueryTimeoutMs = test.TracerouteQueryTimeoutMs,
+                    TracerouteResolveHostnames = test.TracerouteResolveHostnames,
+                    PingCount = test.PingCount,
+                    PingTimeoutMs = test.PingTimeoutMs,
+                    PingIntervalMs = test.PingIntervalMs,
+                    HttpMethod = test.HttpMethod,
+                    FollowRedirects = test.FollowRedirects,
+                    DnsNameserver = test.DnsNameserver,
+                    DnsQueryType = test.DnsQueryType
+                });
+            }
         }
+    }
+
+    /// <summary>
+    /// The IP families a test runs against: Both becomes one IPv4 and one IPv6
+    /// execution; any other value runs as itself. Default: single value.
+    /// </summary>
+    private static IEnumerable<IpVersion> FamiliesFor(IpVersion ipVersion)
+    {
+        return ipVersion == IpVersion.Both ? [IpVersion.Ipv4, IpVersion.Ipv6] : [ipVersion];
     }
 
     /// <summary>
@@ -490,36 +514,40 @@ public partial class TestService : ITestService
                 throw new ArgumentException("None of the selected nodes are connected");
             }
 
+            // One job per selected node and IP family; Both schedules one per family
             var created = new List<Models.TestJob>();
             foreach (var nodeId in selectedNodeIds)
             {
-                created.Add(await _queueService.CreateJobAsync(db, new TestJob
+                foreach (var ipVersion in FamiliesFor(request.IpVersion))
                 {
-                    TestId = Guid.Empty,
-                    NodeId = nodeId,
-                    TestType = request.Type,
-                    Target = request.Target,
-                    TimeoutSeconds = request.TimeoutSeconds ?? 60,
-                    ExpectedStatusCodes = request.ExpectedStatusCodes,
-                    CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
-                    ExpectedDnsResult = request.ExpectedDnsResult,
-                    IpVersion = request.IpVersion,
-                    ExpectedBodyPattern = request.ExpectedBodyPattern,
-                    Headers = request.Headers ?? new Dictionary<string, string>(),
-                    ProxyUrl = request.ProxyUrl,
-                    CacheBust = request.CacheBust,
-                    TracerouteMaxHops = request.TracerouteMaxHops,
-                    TracerouteQueriesPerHop = request.TracerouteQueriesPerHop,
-                    TracerouteQueryTimeoutMs = request.TracerouteQueryTimeoutMs,
-                    TracerouteResolveHostnames = request.TracerouteResolveHostnames,
-                    PingCount = request.PingCount,
-                    PingTimeoutMs = request.PingTimeoutMs,
-                    PingIntervalMs = request.PingIntervalMs,
-                    HttpMethod = request.HttpMethod,
-                    FollowRedirects = request.FollowRedirects,
-                    DnsNameserver = request.DnsNameserver,
-                    DnsQueryType = request.DnsQueryType
-                }));
+                    created.Add(await _queueService.CreateJobAsync(db, new TestJob
+                    {
+                        TestId = Guid.Empty,
+                        NodeId = nodeId,
+                        TestType = request.Type,
+                        Target = request.Target,
+                        TimeoutSeconds = request.TimeoutSeconds ?? 60,
+                        ExpectedStatusCodes = request.ExpectedStatusCodes,
+                        CheckCertificateExpiryDays = request.CheckCertificateExpiryDays,
+                        ExpectedDnsResult = request.ExpectedDnsResult,
+                        IpVersion = ipVersion,
+                        ExpectedBodyPattern = request.ExpectedBodyPattern,
+                        Headers = request.Headers ?? new Dictionary<string, string>(),
+                        ProxyUrl = request.ProxyUrl,
+                        CacheBust = request.CacheBust,
+                        TracerouteMaxHops = request.TracerouteMaxHops,
+                        TracerouteQueriesPerHop = request.TracerouteQueriesPerHop,
+                        TracerouteQueryTimeoutMs = request.TracerouteQueryTimeoutMs,
+                        TracerouteResolveHostnames = request.TracerouteResolveHostnames,
+                        PingCount = request.PingCount,
+                        PingTimeoutMs = request.PingTimeoutMs,
+                        PingIntervalMs = request.PingIntervalMs,
+                        HttpMethod = request.HttpMethod,
+                        FollowRedirects = request.FollowRedirects,
+                        DnsNameserver = request.DnsNameserver,
+                        DnsQueryType = request.DnsQueryType
+                    }));
+                }
             }
             return created;
         });

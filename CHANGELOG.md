@@ -13,6 +13,7 @@ separate version; its changes are listed under the server release.
 ## [Server 0.4.0] - Unreleased
 
 ### Server
+- Tests can run over both IP families: the `ipVersion` field gains a `Both` value that schedules one job pinned to IPv4 and one pinned to IPv6 per targeted node (create, edit, run-once), so dual-stack coverage needs a single test; the queue API now reports each job's `ipVersion` and the queue page badges family-pinned runs
 - HTTP(S) tests accept all standard request methods (GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, TRACE); headers stay a plain dictionary end to end, and the web UI edits them as key/value rows instead of a free-text blob
 - New TLS test type: handshake against a host:port, reporting the negotiated protocol and cipher plus the full certificate (subject, issuer, validity window, SANs), with the existing certificate-expiry threshold applying
 - DNS tests can query specific record types: A, AAAA, CNAME, TXT, MX, or CAA (default remains both address families), with every returned record reported as a typed value with its TTL

@@ -496,7 +496,7 @@ Runs a single test immediately on a selection of nodes without creating a test f
 ```
 `timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`) and the same traceroute, ping, HTTP, and DNS settings. At least one node ID or pool ID is required.
 
-**Response:** 200 OK - one job per selected node, in the order of the request; poll each at `GET /v1/queue/{id}` until `status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
+**Response:** 200 OK - one job per selected node and IP family (a request with `ipVersion` 3 schedules two jobs per node), in the order of the request; poll each at `GET /v1/queue/{id}` until `status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
 
 **Errors:** 400 Bad Request for invalid expectations, unknown node or pool IDs, an empty selection, or when none of the selected nodes are connected.
 
@@ -666,6 +666,7 @@ Returns all test jobs in the queue, newest first.
     "testType": 5,
     "target": "example.com",
     "timeoutSeconds": 60,
+    "ipVersion": 3,
     "status": 0,
     "createdAt": "2024-01-01T00:00:00Z",
     "acknowledgedAt": null,
@@ -727,6 +728,7 @@ Databases from before this change stored `Frequency` as the old `TestFrequency` 
 | 0 | Any - use whatever the host resolves to |
 | 1 | Ipv4 - force IPv4, fail if no A record |
 | 2 | Ipv6 - force IPv6, fail if no AAAA record |
+| 3 | Both - the server schedules one job pinned to IPv4 and one pinned to IPv6 for every targeted node, so both families are tested independently |
 
 ---
 
