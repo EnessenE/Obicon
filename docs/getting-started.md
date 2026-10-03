@@ -7,13 +7,10 @@ The API listens on port 5000 and the UI is plain static HTML/JS that calls it fr
 ## 1. Run the server
 
 ```bash
-docker run -d --name obicon-server -p 5000:5000 \
-  -v obicon-data:/app/data \
-  -e ConnectionStrings__Default="Data Source=/app/data/obicon.db" \
-  ghcr.io/enessene/obicon/server:latest
+docker compose up -d
 ```
 
-The API is now on http://localhost:5000 (Swagger at http://localhost:5000/swagger) and the SQLite database is created automatically in the mounted volume — including schema upgrades, so you never need to delete it.
+The API is now on http://localhost:5000 (Swagger at http://localhost:5000/swagger). The compose file in the repo root runs the server next to a PostgreSQL database, which is created and migrated automatically on startup — after upgrades the schema is migrated in place, so you never need to delete it. Without compose, run a PostgreSQL container and point `ConnectionStrings__Default` at it (see [Server](server.md)).
 
 ## 2. Serve the UI
 

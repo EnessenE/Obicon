@@ -27,7 +27,7 @@ Returns server health status via the ASP.NET Core health checks middleware.
   "Entries": {
     "database": {
       "Data": {},
-      "Description": "SQLite database is reachable",
+      "Description": "PostgreSQL database is reachable",
       "Duration": "00:00:00.0015032",
       "Status": "Healthy"
     }
@@ -508,7 +508,7 @@ Runs a single test immediately on a selection of nodes without creating a test f
 GET /metrics
 ```
 Prometheus scrape endpoint (no auth). Exposes:
-- `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`, and `node_labels` while the `TestMetricsIncludeNodeLabels` setting is on) and `obicon.tests.duration_ms` (histogram, same dims minus `status`) from the `Obicon.Tests` meter. One label set per test and node combination; both are exported only while the `TestMetricsEnabled` setting is on
+- `obicon.tests.runs` (counter) and `obicon.tests.duration_ms` (histogram) from the `Obicon.Tests` meter, one label set per test and node combination, exported only while the `TestMetricsEnabled` setting is on. Labels come from the `TestMetricsLabels` setting (JSON array, default `["test_type","test_name","node_name","node_labels"]`); `test_id` and the counter's `status` are always attached, and the histogram omits `status`
 - `obicon.server.actions` (counter, dim `action`), `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`), and `obicon.server.nodelogs` (counter, dims `level`, `source_context`, `node_id`, `node_name`) counting received node log entries, from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
@@ -718,7 +718,7 @@ Returns a single test job.
 
 `Frequency` is the interval between runs, in plain seconds (no enum). The allowed values come from the `FrequencyPresetsSeconds` server setting (default: `10,30,60,120,300,600,3600`); create and update reject any value outside it. Adjust the setting on the Settings page or via `PUT /v1/settings/FrequencyPresetsSeconds` to offer different intervals, e.g. `15,45,1800`.
 
-Frequencies are enforced by the `TestScheduler` background loop, which wakes every `SchedulerLoopIntervalSeconds` (a read-only setting derived from the lowest `FrequencyPresetsSeconds` preset, default 10). Each wake runs one SQLite query plus an in-memory scan and then sleeps (`Task.Delay`), so the CPU cost is one short database burst per wake — a lower interval means proportionally more wakes per hour. Changing `FrequencyPresetsSeconds` takes effect on the next cycle without a restart. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
+Frequencies are enforced by the `TestScheduler` background loop, which wakes every `SchedulerLoopIntervalSeconds` (a read-only setting derived from the lowest `FrequencyPresetsSeconds` preset, default 10). Each wake runs one database query plus an in-memory scan and then sleeps (`Task.Delay`), so the CPU cost is one short database burst per wake — a lower interval means proportionally more wakes per hour. Changing `FrequencyPresetsSeconds` takes effect on the next cycle without a restart. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
 
 Databases from before this change stored `Frequency` as the old `TestFrequency` enum (0-6); the server converts those rows to seconds once at startup (`SchemaMigrations` table records it).
 

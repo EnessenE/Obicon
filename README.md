@@ -9,9 +9,19 @@ Self-hosted synthetic monitoring, built for observability. Lightweight nodes dep
 Published images on ghcr.io — no build required. (Building from source is covered in [Getting started](docs/getting-started.md); that path is for contributing and self-building.)
 
 ```bash
-# 1. Start the server (API on http://localhost:5000)
-docker run -d -p 5000:5000 -v obicon-data:/app/data \
-  -e ConnectionStrings__Default="Data Source=/app/data/obicon.db" \
+# 1. Start the server and its PostgreSQL database (API on http://localhost:5000)
+docker compose up -d
+```
+
+The `docker-compose.yml` in the repo root runs the server image next to a PostgreSQL container and creates the database automatically. Without compose:
+
+```bash
+docker network create obicon
+docker run -d --name obicon-db --network obicon \
+  -e POSTGRES_DB=obicon -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+  postgres:18-alpine
+docker run -d -p 5000:5000 --network obicon \
+  -e ConnectionStrings__Default="Host=obicon-db;Database=obicon;Username=postgres;Password=postgres" \
   ghcr.io/enessene/obicon/server:latest
 
 # 2. Connect a node with an enroll token (create it on the server's settings page)

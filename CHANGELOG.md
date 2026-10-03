@@ -10,6 +10,21 @@ The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
 
+## [Server 0.5.0] - Unreleased
+
+### Server
+- **Breaking: PostgreSQL replaces SQLite as the server database.** The server now requires a PostgreSQL instance (connection string in `ConnectionStrings:Default`, e.g. `Host=localhost;Database=obicon;Username=postgres;Password=postgres`) and applies EF Core migrations on startup instead of the in-place SQLite schema patcher. JSON-serialized values (test results, headers, labels, settings) are stored as `jsonb` columns, and the single-writer write queue is gone - PostgreSQL allows concurrent writers, so every unit of work runs directly against its own context. There is **no upgrade path from an existing `obicon.db`** (the project is below 1.0): back up the old file if you need its history; per the new retention contract, long-term history belongs in your metric store anyway. A `docker-compose.yml` ships in the repo root (server + PostgreSQL)
+- New `TestResultStorageMode` setting (default `Full`): `Full` keeps finished jobs with their complete result payload, `MetadataOnly` keeps the row skeleton but drops the payload on completion, `None` deletes the row the moment the run completes. Every terminal status respects the mode, and run metrics are always emitted before deletion
+- New `JobRetentionDays` setting (default 30): a background sweep deletes finished test jobs older than the window - no archive, no exceptions; anything older exists only in your metric store. Jobs stuck in a live status for more than 7 days are swept as a safety cap. The settings UI renders the mode as a select
+- New `TestMetricsLabels` setting (replaces `TestMetricsIncludeNodeLabels`, JSON array): chooses which labels ride along on `obicon.tests.runs` and `obicon.tests.duration_ms`. `test_id` and the counter's `status` are a forced floor; the default set is `test_type`, `test_name`, `node_name`, `node_labels` (node_name is the human-readable node dimension, node_id is the rename-stable opt-in), and an invalid value falls back to the defaults. The settings page renders one switch per label plus a permanently disabled `job_id` switch documenting why it can never be a metric label (high cardinality: one series per run)
+- OTLP egress through OpenTelemetry: set `Otlp:Endpoint` in appsettings (env `Otlp__Endpoint`) to push metrics **and** node logs to your observability backend - Prometheus 3.x's OTLP receiver, a collector, Mimir, VictoriaMetrics, or a vendor. Absent or empty keeps today's scrape-only behavior; the `/metrics` Prometheus endpoint stays up either way. Retention of that history is your backend's flag, not ours
+- Node log funnel: log entries accepted from nodes (while `NodeLogShippingEnabled` is on) are now forwarded into the server's OTel logging pipeline and egress via the OTLP logs exporter, with the node's identity and the entry's properties as first-class fields: `node_id`, `node_name`, `node_version`, `source_context`, and every shipped property (`job_id`, `test_id`) - the join keys into the metrics. `ShipNodeLogsToConsole` keeps its separate console echo; the structured content is no longer dropped on the floor
+- Tests: the server suite runs against a shared Testcontainers PostgreSQL with one database per test factory (Docker required, as for the integration suite), and the integration stack boots a PostgreSQL container next to the server. New coverage: storage modes, the metrics-before-deletion invariant, prune behavior, the label selection with its forced floor, and the log funnel's attribute contract
+
+## [Node 0.5.0] - Unreleased
+
+- No functional changes; version bump only, so nodes stay within the server's supported version range (same major.minor as the server they connect to - server 0.5.0 disconnects 0.4.x nodes unless `AllowUnsupportedNodeVersions` is enabled)
+
 ## [Server 0.4.0] - Unreleased
 
 ### Server
