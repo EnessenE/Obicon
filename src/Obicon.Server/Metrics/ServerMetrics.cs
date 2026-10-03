@@ -103,40 +103,19 @@ public class ServerMetrics
     }
 
     /// <summary>
-    /// Records a finished test run, labeled per test and per node. When <paramref name="nodeLabels"/>
-    /// is not null, it is attached as the comma-separated node_labels label.
+    /// Records a finished test run, labeled per the caller's selection (built by
+    /// <see cref="TestMetricsEmitter"/> from the TestMetricsLabels setting). The
+    /// counter adds the forced "status" label on top of the given labels.
     /// </summary>
-    public static void TestRun(
-        string status,
-        string testType,
-        string testId,
-        string testName,
-        string nodeId,
-        string nodeName,
-        double durationMs,
-        string? nodeLabels = null)
+    public static void TestRun(string status, IReadOnlyList<KeyValuePair<string, object?>> labels, double durationMs)
     {
-        var labels = new List<KeyValuePair<string, object?>>
+        var counterLabels = new List<KeyValuePair<string, object?>>(labels)
         {
-            new("status", status),
-            new("test_type", testType),
-            new("test_id", testId),
-            new("test_name", testName),
-            new("node_id", nodeId),
-            new("node_name", nodeName)
+            new("status", status)
         };
 
-        if (nodeLabels != null)
-        {
-            labels.Add(new("node_labels", nodeLabels));
-        }
-
-        TestRuns.Add(1, labels.ToArray());
-
-        var durationKeys = nodeLabels != null
-            ? new HashSet<string> { "test_type", "test_id", "test_name", "node_id", "node_name", "node_labels" }
-            : new HashSet<string> { "test_type", "test_id", "test_name", "node_id", "node_name" };
-        TestDuration.Record(durationMs, labels.Where(l => durationKeys.Contains(l.Key)).ToArray());
+        TestRuns.Add(1, counterLabels.ToArray());
+        TestDuration.Record(durationMs, labels.ToArray());
     }
 
     /// <summary>
