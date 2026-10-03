@@ -49,6 +49,9 @@ function renderTestDetails(details) {
     if (details.dns) {
         return renderDnsDetails(details.dns);
     }
+    if (details.tls) {
+        return renderTlsDetails(details.tls);
+    }
     return '';
 }
 
@@ -163,21 +166,16 @@ function renderHttpDetails(http) {
 }
 
 function renderDnsDetails(dns) {
-    // Records annotated with their TTL when the resolver reported one
-    const recordList = (label, records) => records && records.length > 0
-        ? `<span class="text-nowrap"><span class="text-body">${label}</span>: ${records.map(r => {
-            const ttl = dns.recordTtls ? dns.recordTtls[r] : null;
-            return `<code>${tdEscapeHtml(r)}${ttl != null ? ` <span class="text-body">(${ttl}s)</span>` : ''}</code>`;
-        }).join(' ')}</span>`
-        : '';
-    const recordPairs = [recordList('A', dns.aRecords), recordList('AAAA', dns.aaaaRecords)]
-        .filter(Boolean)
-        .join(' · ');
+    // Records with their type and TTL when the resolver reported one
+    const recordChips = (dns.records || []).map(record =>
+        `<code>${tdEscapeHtml(record.recordType)} ${tdEscapeHtml(record.value)}${record.ttlSeconds != null && record.ttlSeconds >= 0 ? ` <span class="text-body">(${record.ttlSeconds}s)</span>` : ''}</code>`);
+    const recordPairs = recordChips.join(' ');
 
     return `
         <div class="mt-1">
             ${tdPairs([
                 tdPair('via', dns.via),
+                tdPair('query type', dns.queryType),
                 tdPair('status', dns.responseStatus),
                 tdPair('nameservers', (dns.nameserversQueried || []).join(', ')),
                 tdPair('answered by', dns.answeringNameserver),
@@ -186,5 +184,37 @@ function renderDnsDetails(dns) {
                 tdPair('error', dns.error)
             ])}
             ${recordPairs ? `<div class="small text-muted">${recordPairs}</div>` : ''}
+        </div>`;
+}
+
+function renderTlsDetails(tls) {
+    const certificate = tls.certificate;
+    const certificatePairs = certificate
+        ? tdPairs([
+            tdPair('cert subject', certificate.subject),
+            tdPair('issuer', certificate.issuer),
+            tdPair('valid from', certificate.notBefore ? new Date(certificate.notBefore).toISOString().substring(0, 10) : null),
+            tdPair('expires', certificate.notAfter ? new Date(certificate.notAfter).toISOString().substring(0, 10) : null),
+            tdPair('days left', certificate.daysRemaining),
+            (certificate.subjectAlternativeNames || []).length > 0
+                ? `<span class="text-nowrap"><span class="text-body">SANs</span>: ${(certificate.subjectAlternativeNames).map(n => `<code>${tdEscapeHtml(n)}</code>`).join(' ')}</span>`
+                : ''
+        ])
+        : '';
+
+    return `
+        <div class="mt-1">
+            ${tdPairs([
+                tdPair('host', tls.host != null ? `${tls.host}:${tls.port}` : null),
+                tdPair('resolved', tls.resolvedAddress),
+                tdPair('family', tls.family),
+                tdPair('dns', tdMs(tls.dnsMs)),
+                tdPair('connect', tdMs(tls.connectMs)),
+                tdPair('handshake', tdMs(tls.handshakeMs)),
+                tdPair('protocol', tls.protocol),
+                tdPair('cipher', tls.cipher),
+                tdPair('error', tls.error)
+            ])}
+            ${certificatePairs}
         </div>`;
 }

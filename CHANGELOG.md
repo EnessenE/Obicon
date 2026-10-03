@@ -13,6 +13,10 @@ separate version; its changes are listed under the server release.
 ## [Server 0.4.0] - Unreleased
 
 ### Server
+- HTTP(S) tests accept all standard request methods (GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, TRACE); headers stay a plain dictionary end to end, and the web UI edits them as key/value rows instead of a free-text blob
+- New TLS test type: handshake against a host:port, reporting the negotiated protocol and cipher plus the full certificate (subject, issuer, validity window, SANs), with the existing certificate-expiry threshold applying
+- DNS tests can query specific record types: A, AAAA, CNAME, TXT, MX, or CAA (default remains both address families), with every returned record reported as a typed value with its TTL
+- New `EnabledTestTypes` setting (default empty = all types): a JSON array of the test type names this server offers, e.g. `["Ping","Http","Dns"]`; creating, editing, or dry-running a disabled type is rejected with 400, the web UI hides disabled types from the dropdowns, and a new `GET /v1/tests/types` endpoint reports every type's enabled state — the settings page renders one toggle per type instead of the raw JSON
 - New `NodeExternalIpResolvingEnabled` setting (default off): while disabled, nodes do not resolve their external (public) addresses via check services and report them as unavailable; enabling it propagates live to connected nodes and takes effect within a second
 - Test results now carry structured details instead of the old flat stringly metrics dictionary: nodes report one typed section per test type (traceroute hops with address/status/RTT each, HTTP phase timings with certificate, DNS record lists), the server persists them on the job, and the queue API exposes them as `details`. Breaking: results stored by earlier versions keep their text output but no longer show their metrics
 
@@ -25,6 +29,8 @@ separate version; its changes are listed under the server release.
 
 ## [Node 0.4.0] - Unreleased
 
+- New TLS runner: connects, handshakes, and reports the certificate chain details (including SANs), protocol, cipher, and per-phase timings; supports the certificate expiry threshold
+- The DNS runner queries the requested record type (A, AAAA, CNAME, TXT, MX, CAA) and reports typed records with TTLs; the raw DNS client gained name decompression and the new record parsers
 - External (public) address resolving is now gated by the server's `NodeExternalIpResolvingEnabled` policy (announced in the server hello and pushed live): while disabled the node contacts no check service and reports the addresses as unavailable, and a runtime change refreshes the addresses promptly
 - Traceroute runs honor the new per-test settings — hop limit, probes per hop, per-probe timeout, and best-effort reverse hostname resolution per hop — and each hop's details now carry every probe's round trip and the resolved hostname
 - Ping runs honor the new per-test settings (probe count, per-probe timeout, interval) and report every reply plus loss and min/avg/max round trip statistics; HTTP(S) runs support HEAD requests and disabling redirect following; DNS runs can target a specific nameserver

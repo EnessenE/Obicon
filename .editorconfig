@@ -123,7 +123,7 @@ dotnet_diagnostic.CA1716.severity = none
 [src/Obicon.Server/Data/SqliteWriteQueue.cs]
 dotnet_diagnostic.CA1711.severity = none
 
-# CA5359: HTTP(S) tests deliberately accept any certificate - self-signed targets
+# CA5359: HTTP(S)/TLS tests deliberately accept any certificate - self-signed targets
 #         are valid test targets, and TLS properties are reported in the result
-[src/Obicon.Node/Services/TestRunners/HttpTestRunnerBase.cs]
+[src/Obicon.Node/Services/TestRunners/{HttpTestRunnerBase,TlsTestRunner}.cs]
 dotnet_diagnostic.CA5359.severity = none

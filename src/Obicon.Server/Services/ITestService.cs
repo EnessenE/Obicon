@@ -6,6 +6,13 @@ namespace Obicon.Server.Services;
 
 public interface ITestService
 {
+    /// <summary>
+    /// Every test type with its current enabled state, resolved from the
+    /// EnabledTestTypes setting. Throws ArgumentException when the setting holds
+    /// something other than a JSON array of type names.
+    /// </summary>
+    Task<List<Models.Responses.TestTypeInfo>> GetTestTypesAsync();
+
     Task<TestResponse> CreateTestAsync(CreateTestRequest request);
     Task<IEnumerable<TestResponse>> GetAllTestsAsync();
     Task<TestResponse?> GetTestAsync(Guid id);

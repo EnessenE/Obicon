@@ -116,14 +116,38 @@ public class TestResultDetailsTests
                     NameserversQueried = ["8.8.8.8"],
                     AnsweringNameserver = "8.8.8.8",
                     NameserverRttMs = 12.5,
-                    ARecords = ["93.184.216.34"],
-                    AaaaRecords = [],
+                    Records =
+                    [
+                        new DnsRecord { RecordType = "A", Value = "93.184.216.34", TtlSeconds = 3600 },
+                        new DnsRecord { RecordType = "MX", Value = "10 mail.example.com", TtlSeconds = 1800 }
+                    ],
                     Resolved = ["93.184.216.34"],
                     Via = "nameserver",
+                    QueryType = "A",
                     ResponseStatus = "NOERROR",
-                    RecordTtls = new Dictionary<string, long> { ["93.184.216.34"] = 3600 },
                     ExpectedAddress = "93.184.216.34",
                     ExpectedMatched = true
+                },
+                Tls = new TlsDetails
+                {
+                    Host = "example.com",
+                    Port = 443,
+                    ResolvedAddress = "93.184.216.34",
+                    Family = "InterNetwork",
+                    DnsMs = 1,
+                    ConnectMs = 2,
+                    HandshakeMs = 30,
+                    Protocol = "Tls13",
+                    Cipher = "Tls13Aes128GcmSha256",
+                    Certificate = new CertificateDetails
+                    {
+                        Subject = "CN=example.com",
+                        Issuer = "CN=ca",
+                        NotBefore = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                        NotAfter = new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                        DaysRemaining = 100.5,
+                        SubjectAlternativeNames = ["example.com", "www.example.com"]
+                    }
                 }
             }
         };
@@ -181,7 +205,16 @@ public class TestResultDetailsTests
         Assert.Equal("93.184.216.34", Assert.Single(dns.Resolved));
         Assert.True(dns.ExpectedMatched);
         Assert.Equal("NOERROR", dns.ResponseStatus);
-        Assert.Equal(3600, dns.RecordTtls["93.184.216.34"]);
+        var mxRecord = Assert.Single(dns.Records, r => r.RecordType == "MX");
+        Assert.Equal("10 mail.example.com", mxRecord.Value);
+        Assert.Equal(3600, Assert.Single(dns.Records, r => r.RecordType == "A").TtlSeconds);
+
+        var tls = Assert.IsType<TlsDetails>(details.Tls);
+        Assert.Equal("Tls13", tls.Protocol);
+        Assert.Equal(443, tls.Port);
+        var tlsCertificate = Assert.IsType<CertificateDetails>(tls.Certificate);
+        Assert.Equal(["example.com", "www.example.com"], tlsCertificate.SubjectAlternativeNames);
+        Assert.Equal(new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), tlsCertificate.NotBefore);
     }
 
     [Fact]

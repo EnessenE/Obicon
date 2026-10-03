@@ -2,6 +2,10 @@
 let settings = [];
 let tokens = [];
 let pools = [];
+// Test types with their enabled state for the EnabledTestTypes toggles; null when the
+// endpoint failed (the setting then falls back to its raw text input)
+let testTypes = null;
+let testTypesError = null;
 
 // DOM elements
 const settingsList = document.getElementById('settingsList');
@@ -35,11 +39,23 @@ async function loadSettings() {
     settingsList.innerHTML = '<div class="text-center my-4"><div class="spinner-border"></div></div>';
     try {
         settings = await apiCall('GET', '/v1/settings');
-        renderSettings();
     } catch (error) {
         settingsError.textContent = error.message;
         settingsError.style.display = 'block';
+        return;
     }
+
+    // The test type list backs the EnabledTestTypes toggles; a failure (e.g. a broken
+    // setting value) must not take the whole settings page down with it
+    testTypes = null;
+    testTypesError = null;
+    try {
+        testTypes = await apiCall('GET', '/v1/tests/types');
+    } catch (error) {
+        testTypesError = error.message;
+    }
+
+    renderSettings();
 }
 
 function renderSettings() {
@@ -60,6 +76,10 @@ function renderSettings() {
 }
 
 function renderSettingRow(setting) {
+    if (setting.key === 'EnabledTestTypes' && testTypes) {
+        return renderTestTypesRow(setting);
+    }
+
     const locked = setting.isForced || setting.isReadOnly;
     const control = isBoolean(setting)
         ? `
@@ -103,6 +123,53 @@ function renderSettingRow(setting) {
             </div>
         </div>
     `;
+}
+
+// One row of per-type switches for EnabledTestTypes; the enabled list is recomputed
+// from every switch on each change, so concurrent toggles are kept
+function renderTestTypesRow(setting) {
+    const locked = setting.isForced || setting.isReadOnly;
+    const switches = testTypes.map(t => `
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input test-type-switch" type="checkbox" role="switch"
+                   id="test-type-${escapeHtml(t.name)}" ${t.enabled ? 'checked' : ''}
+                   ${locked ? 'disabled' : ''}
+                   onchange="toggleTestType('${escapeHtml(t.name)}', this.checked, this)">
+            <label class="form-check-label" for="test-type-${escapeHtml(t.name)}">${escapeHtml(t.name)}</label>
+        </div>`).join('');
+
+    const badge = setting.isForced
+        ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>'
+        : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`;
+
+    return `
+        <div class="row align-items-center mb-3 pb-3 border-bottom">
+            <div class="col-md-5">
+                <strong>${escapeHtml(setting.key)}</strong>
+                ${badge}
+                <div class="small text-muted">${escapeHtml(setting.description)}</div>
+            </div>
+            <div class="col-md-7">
+                <div class="d-flex flex-wrap gap-3">${switches}</div>
+            </div>
+        </div>
+    `;
+}
+
+async function toggleTestType(name, checked, input) {
+    // The switches are the source of truth: collect every checked type name
+    const enabled = testTypes
+        .filter(t => document.getElementById(`test-type-${t.name}`).checked)
+        .map(t => t.name);
+
+    try {
+        await apiCall('PUT', '/v1/settings/EnabledTestTypes', { value: JSON.stringify(enabled) });
+    } catch (error) {
+        input.checked = !checked;
+        settingsError.textContent = error.message;
+        settingsError.style.display = 'block';
+        setTimeout(() => { settingsError.style.display = 'none'; }, 8000);
+    }
 }
 
 function isBoolean(setting) {

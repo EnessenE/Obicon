@@ -110,7 +110,8 @@ public partial class TestQueueProcessor : BackgroundService
                     PingIntervalMs = job.PingIntervalMs,
                     HttpMethod = job.HttpMethod,
                     FollowRedirects = job.FollowRedirects,
-                    DnsNameserver = job.DnsNameserver
+                    DnsNameserver = job.DnsNameserver,
+                    DnsQueryType = job.DnsQueryType
                 }
             };
 

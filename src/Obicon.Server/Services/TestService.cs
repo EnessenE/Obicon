@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Obicon.Server.Configuration;
@@ -45,6 +47,7 @@ public partial class TestService : ITestService
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
         await ValidateFrequencyAsync(request.Frequency);
+        await ValidateTestTypeEnabledAsync(request.Type);
         ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
         var test = new Test
@@ -103,6 +106,7 @@ public partial class TestService : ITestService
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
         await ValidateFrequencyAsync(request.Frequency);
+        await ValidateTestTypeEnabledAsync(request.Type);
         ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
         var updated = await _writeQueue.EnqueueAsync(async db =>
@@ -138,6 +142,7 @@ public partial class TestService : ITestService
             test.HttpMethod = request.HttpMethod;
             test.FollowRedirects = request.FollowRedirects;
             test.DnsNameserver = request.DnsNameserver;
+            test.DnsQueryType = request.DnsQueryType;
             test.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
@@ -277,6 +282,67 @@ public partial class TestService : ITestService
     }
 
     /// <summary>
+    /// Rejects test types the server has disabled through the EnabledTestTypes setting,
+    /// a JSON array of TestType values such as ["Ping","Http","Dns"]. An empty or
+    /// missing setting enables every type.
+    /// </summary>
+    private static readonly JsonSerializerOptions TestTypeListOptions = new()
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    /// <inheritdoc />
+    public async Task<List<Models.Responses.TestTypeInfo>> GetTestTypesAsync()
+    {
+        var enabled = await ResolveEnabledTestTypesAsync();
+        return Enum.GetValues<TestType>()
+            .Select(type => new Models.Responses.TestTypeInfo
+            {
+                Type = type,
+                Name = type.ToString(),
+                Enabled = enabled == null || enabled.Contains(type)
+            })
+            .ToList();
+    }
+
+    private async Task ValidateTestTypeEnabledAsync(TestType type)
+    {
+        var enabled = await ResolveEnabledTestTypesAsync();
+        if (enabled == null || enabled.Contains(type))
+        {
+            return;
+        }
+
+        throw new ArgumentException($"Test type {type} is disabled on this server (EnabledTestTypes)");
+    }
+
+    /// <summary>
+    /// Parses the EnabledTestTypes setting into the enabled set; null means every type
+    /// (a missing setting or an empty array). Throws ArgumentException when the setting
+    /// holds something other than a JSON array of type names.
+    /// </summary>
+    private async Task<HashSet<TestType>?> ResolveEnabledTestTypesAsync()
+    {
+        var raw = await _settingsService.GetAsync<string>("EnabledTestTypes");
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        List<TestType>? enabled;
+        try
+        {
+            enabled = JsonSerializer.Deserialize<List<TestType>>(raw, TestTypeListOptions);
+        }
+        catch (JsonException)
+        {
+            throw new ArgumentException("EnabledTestTypes must be a JSON array of test type names, e.g. [\"Ping\",\"Http\",\"Dns\"]");
+        }
+
+        return enabled is { Count: > 0 } ? enabled.ToHashSet() : null;
+    }
+
+    /// <summary>
     /// Validates HTTP/HTTPS expectations: the body regex must compile, headers must have
     /// usable names, and the proxy must be an absolute http(s) URL. Non-HTTP types get the
     /// fields ignored (empty), so stale values cannot leak into e.g. a DNS test.
@@ -367,6 +433,7 @@ public partial class TestService : ITestService
     /// </summary>
     public async Task<List<Models.TestJob>> RunOnceAsync(Models.Requests.RunTestOnceRequest request)
     {
+        await ValidateTestTypeEnabledAsync(request.Type);
         ValidateHttpExpectations(request.Type, request.ExpectedBodyPattern, request.Headers, request.ProxyUrl);
 
         if (request.NodeIds.Count == 0 && request.PoolIds.Count == 0)
@@ -450,7 +517,8 @@ public partial class TestService : ITestService
                     PingIntervalMs = request.PingIntervalMs,
                     HttpMethod = request.HttpMethod,
                     FollowRedirects = request.FollowRedirects,
-                    DnsNameserver = request.DnsNameserver
+                    DnsNameserver = request.DnsNameserver,
+                    DnsQueryType = request.DnsQueryType
                 }));
             }
             return created;
@@ -562,6 +630,7 @@ public partial class TestService : ITestService
         HttpMethod = test.HttpMethod,
         FollowRedirects = test.FollowRedirects,
         DnsNameserver = test.DnsNameserver,
+        DnsQueryType = test.DnsQueryType,
         CreatedAt = test.CreatedAt,
         UpdatedAt = test.UpdatedAt
     };

@@ -126,9 +126,19 @@ public class CertificateDetails
     public string Issuer { get; set; } = string.Empty;
 
     /// <summary>
+    /// UTC date the certificate becomes valid. Default: null.
+    /// </summary>
+    public DateTime? NotBefore { get; set; }
+
+    /// <summary>
     /// UTC date the certificate expires. Default: null.
     /// </summary>
     public DateTime? NotAfter { get; set; }
+
+    /// <summary>
+    /// Subject alternative names (DNS entries) of the certificate. Default: empty list.
+    /// </summary>
+    public List<string> SubjectAlternativeNames { get; set; } = [];
 
     /// <summary>
     /// Days remaining until expiry, negative when already expired. Default: null.

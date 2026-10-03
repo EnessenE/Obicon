@@ -138,6 +138,11 @@ public class TestJob
     /// </summary>
     public string? DnsNameserver { get; set; }
     /// <summary>
+    /// DNS: the record type to query: "A", "AAAA", "CNAME", "TXT", "MX", or "CAA".
+    /// Null queries both address families. Default: null.
+    /// </summary>
+    public string? DnsQueryType { get; set; }
+    /// <summary>
     /// Current status of the job. See <see cref="TestJobStatus"/> for available statuses. Default: Queued.
     /// </summary>
     public TestJobStatus Status { get; set; } = TestJobStatus.Queued;

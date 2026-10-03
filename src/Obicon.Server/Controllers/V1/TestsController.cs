@@ -37,6 +37,25 @@ public class TestsController : ControllerBase
     }
 
     /// <summary>
+    /// Returns every test type with whether the server currently offers it,
+    /// resolved from the EnabledTestTypes setting.
+    /// </summary>
+    [HttpGet("types")]
+    [ProducesResponseType(typeof(List<TestTypeInfo>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetTestTypes()
+    {
+        try
+        {
+            return Ok(await _testService.GetTestTypesAsync());
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Returns all tests.
     /// </summary>
     [HttpGet]

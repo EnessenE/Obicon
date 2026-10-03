@@ -31,17 +31,13 @@ public class DnsDetails
     public double? NameserverRttMs { get; set; }
 
     /// <summary>
-    /// All A records the answer contained. Default: empty list.
+    /// Records the answer contained, of every queried type. Default: empty list.
     /// </summary>
-    public List<string> ARecords { get; set; } = [];
+    public List<DnsRecord> Records { get; set; } = [];
 
     /// <summary>
-    /// All AAAA records the answer contained. Default: empty list.
-    /// </summary>
-    public List<string> AaaaRecords { get; set; } = [];
-
-    /// <summary>
-    /// Addresses left after applying the test's IP version filter. Default: empty list.
+    /// Record values left after applying the test's IP version filter (address
+    /// records only; other types pass through unfiltered). Default: empty list.
     /// </summary>
     public List<string> Resolved { get; set; } = [];
 
@@ -57,10 +53,10 @@ public class DnsDetails
     public string? ResponseStatus { get; set; }
 
     /// <summary>
-    /// Time to live of each returned record, in seconds, by address. Empty when the
-    /// resolver did not report TTLs. Default: empty dictionary.
+    /// The record type the test queried: "A", "AAAA", "CNAME", "TXT", "MX", "CAA",
+    /// or "Any". Default: empty string.
     /// </summary>
-    public Dictionary<string, long> RecordTtls { get; set; } = [];
+    public string QueryType { get; set; } = string.Empty;
 
     /// <summary>
     /// Address the test expected among the resolved ones. Null when no expectation
@@ -78,4 +74,26 @@ public class DnsDetails
     /// Error text when resolution failed, e.g. the socket error code. Default: null.
     /// </summary>
     public string? Error { get; set; }
+}
+
+/// <summary>
+/// One DNS record returned by a nameserver.
+/// </summary>
+public class DnsRecord
+{
+    /// <summary>
+    /// Record type, e.g. "A", "AAAA", "CNAME", "TXT", "MX", or "CAA". Default: empty string.
+    /// </summary>
+    public string RecordType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Record value: an address, hostname, text, or "preference host" for MX.
+    /// Default: empty string.
+    /// </summary>
+    public string Value { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Time to live of the record in seconds. -1 when the response carried none.
+    /// </summary>
+    public long TtlSeconds { get; set; } = -1;
 }

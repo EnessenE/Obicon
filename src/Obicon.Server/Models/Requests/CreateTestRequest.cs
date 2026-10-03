@@ -151,7 +151,7 @@ public class CreateTestRequest
     /// HTTP/HTTPS: request method, "GET" or "HEAD". Null uses the default ("GET").
     /// Default: null.
     /// </summary>
-    [RegularExpression("^(GET|HEAD)$", ErrorMessage = "The HttpMethod field must be GET or HEAD.")]
+    [RegularExpression("^(GET|HEAD|POST|PUT|DELETE|PATCH|OPTIONS|TRACE)$", ErrorMessage = "The HttpMethod field must be a standard HTTP method.")]
     public string? HttpMethod { get; set; }
 
     /// <summary>
@@ -165,4 +165,10 @@ public class CreateTestRequest
     /// Null uses the system nameservers. Default: null.
     /// </summary>
     public string? DnsNameserver { get; set; }
+    /// <summary>
+    /// DNS: the record type to query: "A", "AAAA", "CNAME", "TXT", "MX", or "CAA".
+    /// Null queries both address families. Default: null.
+    /// </summary>
+    [RegularExpression("^(?i:ANY|A|AAAA|CNAME|TXT|MX|CAA)$", ErrorMessage = "The DnsQueryType field must be A, AAAA, CNAME, TXT, MX, CAA, or ANY.")]
+    public string? DnsQueryType { get; set; }
 }

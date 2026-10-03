@@ -149,6 +149,11 @@ public class TestResponse
     /// Null uses the system nameservers. Default: null.
     /// </summary>
     public string? DnsNameserver { get; set; }
+    /// <summary>
+    /// DNS: the record type to query: "A", "AAAA", "CNAME", "TXT", "MX", or "CAA".
+    /// Null queries both address families. Default: null.
+    /// </summary>
+    public string? DnsQueryType { get; set; }
 
     /// <summary>
     /// Timestamp when the test was created.

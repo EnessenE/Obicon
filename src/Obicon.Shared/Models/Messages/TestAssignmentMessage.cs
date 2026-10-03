@@ -161,4 +161,11 @@ public class TestAssignmentMessage
     /// </summary>
     [JsonPropertyName("DnsNameserver")]
     public string? DnsNameserver { get; set; }
+
+    /// <summary>
+    /// DNS: the record type to query: "A", "AAAA", "CNAME", "TXT", "MX", or "CAA".
+    /// Null queries both address families. Default: null.
+    /// </summary>
+    [JsonPropertyName("DnsQueryType")]
+    public string? DnsQueryType { get; set; }
 }

@@ -18,8 +18,15 @@ const testTypeSelect = document.getElementById('testType');
 
 // Enum mappings
 const testTypeMap = {
-    0: 'Ping', 1: 'Traceroute', 2: 'HTTP', 3: 'HTTPS', 4: 'TCP', 5: 'DNS'
+    0: 'Ping', 1: 'Traceroute', 2: 'HTTP', 3: 'HTTPS', 4: 'TCP', 5: 'DNS', 6: 'TLS'
 };
+
+// All selectable test types; hidden ones come from the EnabledTestTypes server setting
+const allTestTypes = [
+    { value: 0, label: 'Ping' }, { value: 1, label: 'Traceroute' }, { value: 2, label: 'HTTP' },
+    { value: 3, label: 'HTTPS' }, { value: 4, label: 'TCP' }, { value: 5, label: 'DNS' }, { value: 6, label: 'TLS' }
+];
+let enabledTestTypes = null;
 
 const jobStatusMap = {
     0: 'Queued', 1: 'Assigned', 2: 'Running', 3: 'Completed', 4: 'Failed', 5: 'Timeout'
@@ -52,9 +59,54 @@ async function loadFrequencyPresets() {
         console.error('Could not load frequency presets, using defaults:', error);
     }
 
+    const enabledSetting = settings.find(s => s.key === 'EnabledTestTypes');
+    enabledTestTypes = parseEnabledTestTypes(enabledSetting ? enabledSetting.value : '');
+    applyEnabledTestTypes();
+
     populateFrequencySelect(document.getElementById('testFrequency'));
     populateFrequencySelect(document.getElementById('editFrequency'));
     updateEstimate();
+}
+
+// Parses the EnabledTestTypes setting: a JSON array of TestType names or numbers,
+// e.g. ["Ping","Http","Dns"] or [0,2,5]. Null means all types (the default, an
+// empty array, or an unparseable value)
+function parseEnabledTestTypes(raw) {
+    if (!raw || !raw.trim()) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            return null;
+        }
+
+        const enabled = new Set();
+        for (const entry of parsed) {
+            const match = allTestTypes.find(t =>
+                t.value === entry || String(entry).toLowerCase() === t.label.toLowerCase());
+            if (match) {
+                enabled.add(match.value);
+            }
+        }
+        return enabled.size > 0 ? enabled : null;
+    } catch (error) {
+        console.error('Could not parse EnabledTestTypes, using all types:', error);
+        return null;
+    }
+}
+
+// Hides type options the server disabled; an edit of an existing test of a disabled
+// type keeps that type selectable so the modal can still show it
+function applyEnabledTestTypes(extraType = null) {
+    const enabled = new Set(enabledTestTypes ?? allTestTypes.map(t => t.value));
+    if (extraType != null) {
+        enabled.add(extraType);
+    }
+    for (const option of document.querySelectorAll('#testType option, #editType option')) {
+        option.style.display = enabled.has(parseInt(option.value, 10)) ? '' : 'none';
+    }
 }
 
 function populateFrequencySelect(select, extraValue = null) {
@@ -79,24 +131,37 @@ testTypeSelect.addEventListener('change', updateExpectationVisibility);
 document.getElementById('editType').addEventListener('change', updateEditExpectationVisibility);
 updateExpectationVisibility();
 
-// Parses a "Name: Value" textarea into a header object; returns null on a malformed line
-function parseHeaders(text) {
+// Adds one key/value header row to the given container
+function addHeaderRow(containerId, name = '', value = '') {
+    const row = document.createElement('div');
+    row.className = 'input-group input-group-sm mb-1';
+    row.innerHTML = `
+        <input class="form-control header-name" placeholder="Name">
+        <input class="form-control header-value" placeholder="Value">
+        <button class="btn btn-outline-danger" type="button" title="Remove this header"
+                onclick="this.closest('.input-group').remove()">Remove</button>`;
+    row.querySelector('.header-name').value = name;
+    row.querySelector('.header-value').value = value;
+    document.getElementById(containerId).appendChild(row);
+}
+
+// Collects the header rows into a dictionary; a filled row without a name is an error
+function collectHeaderRows(containerId) {
     const headers = {};
-    for (const line of text.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        const colon = trimmed.indexOf(':');
-        if (colon <= 0) {
-            return { error: `Header line "${trimmed}" must look like "Name: Value".` };
-        }
-        const name = trimmed.slice(0, colon).trim();
-        const value = trimmed.slice(colon + 1).trim();
+    for (const row of document.querySelectorAll(`#${containerId} .input-group`)) {
+        const name = row.querySelector('.header-name').value.trim();
+        const value = row.querySelector('.header-value').value.trim();
+        if (!name && !value) continue;
         if (!name) {
-            return { error: `Header line "${trimmed}" has an empty name.` };
+            return { error: 'A header row has an empty name.' };
         }
         headers[name] = value;
     }
     return { headers };
+}
+
+function clearHeaderRows(containerId) {
+    document.getElementById(containerId).innerHTML = '';
 }
 
 // Live estimate: recompute whenever targeting or frequency changes
@@ -195,8 +260,9 @@ function updateExpectationVisibility() {
     const type = parseInt(testTypeSelect.value);
     document.querySelectorAll('.http-expectation').forEach(el =>
         el.style.display = (type === 2 || type === 3) ? '' : 'none');
+    // The certificate expiry threshold applies to HTTPS and the TLS test type
     document.querySelectorAll('.https-expectation').forEach(el =>
-        el.style.display = (type === 3) ? '' : 'none');
+        el.style.display = (type === 3 || type === 6) ? '' : 'none');
     document.querySelectorAll('.dns-expectation').forEach(el =>
         el.style.display = (type === 5) ? '' : 'none');
     document.querySelectorAll('.traceroute-expectation').forEach(el =>
@@ -210,6 +276,10 @@ function updateEditExpectationVisibility() {
     const type = parseInt(document.getElementById('editType').value);
     document.querySelectorAll('#editTestModal .http-expectation').forEach(el =>
         el.style.display = (type === 2 || type === 3) ? '' : 'none');
+    document.querySelectorAll('#editTestModal .https-expectation').forEach(el =>
+        el.style.display = (type === 3 || type === 6) ? '' : 'none');
+    document.querySelectorAll('#editTestModal .dns-expectation').forEach(el =>
+        el.style.display = (type === 5) ? '' : 'none');
     document.querySelectorAll('#editTestModal .traceroute-expectation').forEach(el =>
         el.style.display = (type === 1) ? '' : 'none');
     document.querySelectorAll('#editTestModal .ping-expectation').forEach(el =>
@@ -295,7 +365,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
             }
         }
 
-        const parsed = parseHeaders(document.getElementById('testHeaders').value);
+        const parsed = collectHeaderRows('headerRows');
         if (parsed.error) {
             showFormError(parsed.error);
             return null;
@@ -341,6 +411,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
     }
 
     const dnsNameserver = document.getElementById('dnsNameserver').value.trim() || null;
+    const dnsQueryType = document.getElementById('dnsQueryType').value || null;
 
     return {
         name, target, type, frequency, isActive, nodeIds, poolIds, ipVersion, timeoutSeconds,
@@ -360,7 +431,8 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         pingIntervalMs,
         httpMethod,
         followRedirects,
-        dnsNameserver
+        dnsNameserver,
+        dnsQueryType
     };
 }
 
@@ -471,7 +543,8 @@ async function createTest() {
             pingIntervalMs: values.pingIntervalMs,
             httpMethod: values.httpMethod,
             followRedirects: values.followRedirects,
-            dnsNameserver: values.dnsNameserver
+            dnsNameserver: values.dnsNameserver,
+            dnsQueryType: values.dnsQueryType
         });
 
         // Reset form
@@ -498,6 +571,8 @@ async function createTest() {
         document.getElementById('httpMethod').value = '';
         document.getElementById('followRedirects').checked = true;
         document.getElementById('dnsNameserver').value = '';
+        document.getElementById('dnsQueryType').value = '';
+        clearHeaderRows('headerRows');
         document.querySelectorAll('.node-checkbox:checked, .pool-checkbox:checked').forEach(cb => cb.checked = false);
         updateExpectationVisibility();
 
@@ -555,7 +630,8 @@ async function runOnRandomNode() {
             pingIntervalMs: values.pingIntervalMs,
             httpMethod: values.httpMethod,
             followRedirects: values.followRedirects,
-            dnsNameserver: values.dnsNameserver
+            dnsNameserver: values.dnsNameserver,
+            dnsQueryType: values.dnsQueryType
         });
 
         // One job per selected node (direct picks plus the top pool members); poll all
@@ -612,6 +688,7 @@ function openTestEditModal(test) {
 
     document.getElementById('editTestName').textContent = `(${test.name})`;
     document.getElementById('editName').value = test.name;
+    applyEnabledTestTypes(test.type);
     document.getElementById('editType').value = String(test.type);
     document.getElementById('editTarget').value = test.target;
     // Keep the test's frequency selectable even if it is no longer part of the presets
@@ -623,9 +700,10 @@ function openTestEditModal(test) {
     document.getElementById('editCertExpiryDays').value = test.checkCertificateExpiryDays ?? '';
     document.getElementById('editExpectedDnsResult').value = test.expectedDnsResult || '';
     document.getElementById('editExpectedBodyPattern').value = test.expectedBodyPattern || '';
-    document.getElementById('editTestHeaders').value = Object.entries(test.headers || {})
-        .map(([name, value]) => `${name}: ${value}`)
-        .join('\n');
+    clearHeaderRows('editHeaderRows');
+    for (const [name, value] of Object.entries(test.headers || {})) {
+        addHeaderRow('editHeaderRows', name, value);
+    }
     document.getElementById('editProxyUrl').value = test.proxyUrl || '';
     document.getElementById('editCacheBust').checked = !!test.cacheBust;
     document.getElementById('editTracerouteMaxHops').value = test.tracerouteMaxHops ?? '';
@@ -638,6 +716,7 @@ function openTestEditModal(test) {
     document.getElementById('editHttpMethod').value = test.httpMethod || '';
     document.getElementById('editFollowRedirects').checked = test.followRedirects !== false;
     document.getElementById('editDnsNameserver').value = test.dnsNameserver || '';
+    document.getElementById('editDnsQueryType').value = test.dnsQueryType || '';
     document.getElementById('editIsActive').checked = test.isActive;
     document.getElementById('editError').style.display = 'none';
     updateEditExpectationVisibility();
@@ -704,7 +783,7 @@ async function saveTestEdit() {
             }
         }
 
-        const parsed = parseHeaders(document.getElementById('editTestHeaders').value);
+        const parsed = collectHeaderRows('editHeaderRows');
         if (parsed.error) {
             error.textContent = parsed.error;
             error.style.display = 'block';
@@ -752,6 +831,7 @@ async function saveTestEdit() {
     }
 
     const dnsNameserver = document.getElementById('editDnsNameserver').value.trim() || null;
+    const dnsQueryType = document.getElementById('editDnsQueryType').value || null;
 
     try {
         await apiCall('PUT', `/v1/tests/${editingTest.id}`, {
@@ -781,7 +861,8 @@ async function saveTestEdit() {
             pingIntervalMs,
             httpMethod,
             followRedirects,
-            dnsNameserver
+            dnsNameserver,
+            dnsQueryType
         });
 
         editTestModal.hide();

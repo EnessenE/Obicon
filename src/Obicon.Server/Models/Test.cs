@@ -147,6 +147,11 @@ public class Test
     /// </summary>
     public string? DnsNameserver { get; set; }
     /// <summary>
+    /// DNS: the record type to query: "A", "AAAA", "CNAME", "TXT", "MX", or "CAA".
+    /// Null queries both address families. Default: null.
+    /// </summary>
+    public string? DnsQueryType { get; set; }
+    /// <summary>
     /// Maximum execution time per run in seconds, between 1 and the server's MaxTestTimeoutSeconds. Default: 60.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 60;

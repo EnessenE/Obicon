@@ -54,7 +54,7 @@ public abstract partial class HttpTestRunnerBase : ITestRunner
         var httpDetails = new HttpDetails
         {
             Url = url,
-            Method = string.Equals(assignment.HttpMethod, "HEAD", StringComparison.OrdinalIgnoreCase) ? "HEAD" : "GET",
+            Method = assignment.HttpMethod?.Trim().ToUpperInvariant() is { Length: > 0 } method ? method : "GET",
             ProxyUrl = assignment.ProxyUrl
         };
         var followRedirects = assignment.FollowRedirects ?? true;
@@ -142,9 +142,7 @@ public abstract partial class HttpTestRunnerBase : ITestRunner
         var totalStopwatch = Stopwatch.StartNew();
         try
         {
-            using var request = new HttpRequestMessage(
-                string.Equals(httpDetails.Method, "HEAD", StringComparison.OrdinalIgnoreCase) ? HttpMethod.Head : HttpMethod.Get,
-                url);
+            using var request = new HttpRequestMessage(new HttpMethod(httpDetails.Method), url);
 
             // Custom headers from the test configuration, e.g. authentication headers
             if (assignment.Headers is { Count: > 0 } headers)

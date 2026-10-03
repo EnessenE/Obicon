@@ -282,6 +282,21 @@ Deletes the pool. Nodes are not affected.
 
 ### Tests
 
+#### Test Types
+```
+GET /v1/tests/types
+```
+Returns every test type with whether the server currently offers it, resolved from the `EnabledTestTypes` setting. Used by the settings UI to render one toggle per type.
+
+**Response:** 200 OK
+```json
+[
+  { "type": 0, "name": "Ping", "enabled": true },
+  { "type": 1, "name": "Traceroute", "enabled": false }
+]
+```
+**Errors:** 400 Bad Request when `EnabledTestTypes` holds something other than a JSON array of type names.
+
 #### Create Test
 ```
 POST /v1/tests
@@ -314,13 +329,14 @@ Creates a new test.
   "pingCount": null,  // Ping: probes per run; null = 4, range 1-100
   "pingTimeoutMs": null,  // Ping: per-probe wait; null = 2000, range 100-60000
   "pingIntervalMs": null,  // Ping: wait between probes; null = 0, range 0-10000
-  "httpMethod": null,  // HTTP/HTTPS: "GET" or "HEAD"; null = GET
+  "httpMethod": null,  // HTTP/HTTPS: GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, or TRACE; null = GET
   "followRedirects": null,  // HTTP/HTTPS: follow redirects; null = true
-  "dnsNameserver": null  // DNS: nameserver to query instead of the system's; null = system
+  "dnsNameserver": null,  // DNS: nameserver to query instead of the system's; null = system
+  "dnsQueryType": null  // DNS: A, AAAA, CNAME, TXT, MX, or CAA; null = A + AAAA
 }
 ```
 
-Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL, and the traceroute settings must be in range (max hops 1-64, queries per hop 1-10, query timeout 100-60000 ms), as must the ping settings (count 1-100, probe timeout 100-60000 ms, interval 0-10000 ms), and `httpMethod` must be `GET` or `HEAD`.
+Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL, and the traceroute settings must be in range (max hops 1-64, queries per hop 1-10, query timeout 100-60000 ms), as must the ping settings (count 1-100, probe timeout 100-60000 ms, interval 0-10000 ms), `httpMethod` must be one of GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, TRACE, and `dnsQueryType` must be A, AAAA, CNAME, TXT, MX, CAA, or ANY. The test type must also be enabled on this server: the `EnabledTestTypes` setting — a JSON array of test type names, e.g. `["Ping","Http","Dns"]` (default empty = all types) — rejects create, edit, and run-once requests for disabled types with 400.
 
 Targeting: the test runs on the union of `nodeIds` and all members of `poolIds` (deduplicated).
 
@@ -474,7 +490,8 @@ Runs a single test immediately on a selection of nodes without creating a test f
   "pingIntervalMs": null,
   "httpMethod": null,
   "followRedirects": null,
-  "dnsNameserver": null
+  "dnsNameserver": null,
+  "dnsQueryType": null
 }
 ```
 `timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`) and the same traceroute, ping, HTTP, and DNS settings. At least one node ID or pool ID is required.
@@ -694,6 +711,7 @@ Returns a single test job.
 | 3 | Https |
 | 4 | Tcp |
 | 5 | Dns |
+| 6 | Tls - handshake against host:port (default 443), reporting the certificate and negotiated parameters; `checkCertificateExpiryDays` applies |
 
 ## Test Frequency
 
@@ -802,9 +820,10 @@ Sent by server to assign a test to a node.
     "PingCount": null,  // Ping: probes per run; null = 4
     "PingTimeoutMs": null,  // Ping: per-probe wait in ms; null = 2000
     "PingIntervalMs": null,  // Ping: wait between probes in ms; null = 0
-    "HttpMethod": null,  // HTTP/HTTPS: "GET" or "HEAD"; null = GET
+    "HttpMethod": null,  // HTTP/HTTPS: GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, or TRACE; null = GET
     "FollowRedirects": null,  // HTTP/HTTPS: follow redirects; null = true
-    "DnsNameserver": null  // DNS: nameserver to query instead of the system's; null = system
+    "DnsNameserver": null,  // DNS: nameserver to query instead of the system's; null = system
+    "DnsQueryType": null  // DNS: A, AAAA, CNAME, TXT, MX, or CAA; null = A + AAAA
   }
 }
 ```
@@ -831,8 +850,9 @@ Sent by node to report test results.
 - **Traceroute** — `ResolvedAddress`, `TargetReached`, `HopCount`, and `Hops`: one record per hop with `Hop` (number), `Address` (null when nothing responded), `Hostname` (best-effort reverse lookup, null when unresolved or disabled), `Status` (`TtlExpired`, `Success`, `TimedOut`, ...), `RoundtripMs` (average of the answered probes), `Probes` (one record per probe with `Status` and `RoundtripMs`), and `Error` when the hop ended the trace
 - **Ping** — `Target`, `ResolvedAddress`, `DnsMs`, `ReplyAddress`, `ReplyStatus`, `RoundtripMs` (average of the answered probes), `Ttl`, `WallclockMs`, `Sent`, `Received`, `LossPercent`, `MinRoundtripMs`/`AvgRoundtripMs`/`MaxRoundtripMs` (null when nothing was received), `Replies` (one record per probe with `ReplyAddress`, `ReplyStatus`, `RoundtripMs`, `Ttl`), `Error`. The run succeeds when at least one probe got a reply, classic ping semantics
 - **Tcp** — `Host`, `Port`, `ResolvedAddress`, `Family`, `DnsMs`, `ConnectMs`, `Error`
-- **Http** (HTTP and HTTPS) — `Url`, `Method` ("GET" or "HEAD"), `FinalUrl`, `StatusCode`, `ReasonPhrase`, `ResolvedAddress`, the phase timings `DnsMs`/`ConnectMs`/`TlsMs`/`TtfbMs`/`TransferMs` (`DnsMs`, `ConnectMs`, and `TlsMs` are null for proxied requests), `TlsProtocol`, `TlsCipher`, `BytesRead`, `BytesTruncated`, `ProxyUrl`, `BodyMatched` (null when no pattern was set), `Certificate` (`Subject`, `Issuer`, `NotAfter`, `DaysRemaining`), `Error`
-- **Dns** — `Host`, `NameserversQueried`, `AnsweringNameserver`, `NameserverRttMs`, `ARecords`, `AaaaRecords`, `Resolved` (after the IP version filter), `RecordTtls` (TTL in seconds by address), `ResponseStatus` (the answering nameserver's DNS status, e.g. `NOERROR` or `NXDOMAIN`), `Via` (`nameserver`, `os-resolver`, or `literal`), `ExpectedAddress`, `ExpectedMatched`, `Error`
+- **Http** (HTTP and HTTPS) — `Url`, `Method`, `FinalUrl`, `StatusCode`, `ReasonPhrase`, `ResolvedAddress`, the phase timings `DnsMs`/`ConnectMs`/`TlsMs`/`TtfbMs`/`TransferMs` (`DnsMs`, `ConnectMs`, and `TlsMs` are null for proxied requests), `TlsProtocol`, `TlsCipher`, `BytesRead`, `BytesTruncated`, `ProxyUrl`, `BodyMatched` (null when no pattern was set), `Certificate` (`Subject`, `Issuer`, `NotBefore`, `NotAfter`, `DaysRemaining`, `SubjectAlternativeNames`), `Error`
+- **Dns** — `Host`, `QueryType` (the queried record type), `NameserversQueried`, `AnsweringNameserver`, `NameserverRttMs`, `Records` (one per returned record with `RecordType`, `Value`, and `TtlSeconds`), `Resolved` (record values after the IP version filter, which applies to address records only), `ResponseStatus` (the answering nameserver's DNS status, e.g. `NOERROR` or `NXDOMAIN`), `Via` (`nameserver`, `os-resolver`, or `literal`), `ExpectedAddress`, `ExpectedMatched`, `Error`
+- **Tls** — `Host`, `Port`, `ResolvedAddress`, `Family`, `DnsMs`, `ConnectMs`, `HandshakeMs`, `Protocol`, `Cipher`, `Certificate` (same shape as the HTTP certificate), `Error`. The run succeeds when the handshake completes and the certificate is within the expiry threshold
 
 #### TestStatusUpdate
 Sent by node to report in-progress job status: `Assigned` (1) when it accepts a job and `Running` (2) when execution starts. Final outcomes (Completed, Failed, Timeout) are reported via `TestResult` instead; `Queued` and `NoRun` are server-side only.

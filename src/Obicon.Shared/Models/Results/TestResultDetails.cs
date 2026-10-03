@@ -34,4 +34,10 @@ public class TestResultDetails
     /// Default: null.
     /// </summary>
     public DnsDetails? Dns { get; set; }
+
+    /// <summary>
+    /// TLS handshake details: negotiated protocol and cipher plus the server's
+    /// certificate. Default: null.
+    /// </summary>
+    public TlsDetails? Tls { get; set; }
 }
