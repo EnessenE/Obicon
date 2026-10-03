@@ -3,14 +3,15 @@ using System.Text.Json;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
+using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace Obicon.Integration.Tests;
 
 /// <summary>
-/// Boots the full Obicon stack in Docker via Testcontainers: the server image built
-/// from the repo's Dockerfile, and a node image that connects to it over a real
-/// WebSocket after enrolling with a token. Tests share one stack through the
+/// Boots the full Obicon stack in Docker via Testcontainers: a PostgreSQL database, the
+/// server image built from the repo's Dockerfile, and a node image that connects to it
+/// over a real WebSocket after enrolling with a token. Tests share one stack through the
 /// <see cref="ObiconStackCollectionDefinition"/>.
 /// </summary>
 public sealed class ObiconStackFixture : IAsyncLifetime
@@ -20,6 +21,7 @@ public sealed class ObiconStackFixture : IAsyncLifetime
 
     private readonly string _runId = Guid.NewGuid().ToString("N");
     private INetwork _network = null!;
+    private PostgreSqlContainer _database = null!;
     private IContainer _server = null!;
     private IContainer _node = null!;
 
@@ -75,6 +77,18 @@ public sealed class ObiconStackFixture : IAsyncLifetime
         await BuildImageAsync(repoRoot, "src/Obicon.Server/Dockerfile", serverImageName);
         await BuildImageAsync(repoRoot, "src/Obicon.Node/Dockerfile", nodeImageName);
 
+        // The server's PostgreSQL database joins the same network; the server reaches
+        // it by container name and applies its EF Core migrations on startup
+        var databaseName = $"obicon-it-db-{_runId}";
+        _database = new PostgreSqlBuilder("postgres:18-alpine")
+            .WithName(databaseName)
+            .WithNetwork(_network)
+            .WithDatabase("obicon")
+            .WithUsername("postgres")
+            .WithPassword("postgres")
+            .Build();
+        await _database.StartAsync();
+
         // The server container joins the network under its name, so the node can
         // reach it as a docker DNS name; the API is reachable from the host on a
         // random mapped port
@@ -82,6 +96,7 @@ public sealed class ObiconStackFixture : IAsyncLifetime
         _server = new ContainerBuilder(serverImageName)
             .WithName(ServerContainerName)
             .WithNetwork(_network)
+            .WithEnvironment("ConnectionStrings__Default", $"Host={databaseName};Database=obicon;Username=postgres;Password=postgres")
             .WithEnvironment("ServerSettings__AuthHeader", AuthHeader)
             .WithEnvironment("ServerSettings__NodeAutoEnrollmentEnabled", "true")
             .WithPortBinding(ServerPort, assignRandomHostPort: true)
@@ -129,6 +144,11 @@ public sealed class ObiconStackFixture : IAsyncLifetime
             await _server.DisposeAsync();
         }
 
+        if (_database != null)
+        {
+            await _database.DisposeAsync();
+        }
+
         if (_network != null)
         {
             await _network.DeleteAsync();
@@ -141,9 +161,11 @@ public sealed class ObiconStackFixture : IAsyncLifetime
     /// </summary>
     private async Task<string> CollectLogsAsync()
     {
+        var databaseLogs = await GetLogsAsync(_database, "database");
         var serverLogs = await GetLogsAsync(_server, "server");
         var nodeLogs = await GetLogsAsync(_node, "node");
-        return $"--- server container logs ---{Environment.NewLine}{serverLogs}"
+        return $"--- database container logs ---{Environment.NewLine}{databaseLogs}"
+            + $"{Environment.NewLine}--- server container logs ---{Environment.NewLine}{serverLogs}"
             + $"{Environment.NewLine}--- node container logs ---{Environment.NewLine}{nodeLogs}";
     }
 
