@@ -64,7 +64,9 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
             string? plainToken = null;
             if (request.NodeId is { } nodeId)
             {
-                node = await db.Nodes.FindAsync(nodeId);
+                node = await db.Nodes
+                    .Include(n => n.Labels)
+                    .FirstOrDefaultAsync(n => n.Id == nodeId);
                 if (node == null)
                 {
                     throw new ArgumentException($"Unknown node ID: {nodeId}");
@@ -75,7 +77,9 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
                 }
 
                 node.Name = request.NodeName;
-                node.Labels = labels;
+                db.NodeLabels.RemoveRange(node.Labels);
+                node.Labels = labels.Select(l => new NodeLabel { NodeId = node.Id, Label = l }).ToList();
+                db.NodeLabels.AddRange(node.Labels);
             }
             else
             {
@@ -87,18 +91,19 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
                     AuthToken = TokenHasher.Hash(plainToken),
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
-                    Labels = labels,
                     EnrollmentType = NodeEnrollmentType.AutoEnrollment
                 };
+                node.Labels = labels.Select(l => new NodeLabel { NodeId = node.Id, Label = l }).ToList();
                 db.Nodes.Add(node);
             }
 
             foreach (var poolId in poolIds)
             {
-                var pool = await db.NodePools.FindAsync(poolId);
-                if (pool != null && !pool.NodeIds.Contains(node.Id))
+                var alreadyMember = await db.PoolMembers
+                    .AnyAsync(pm => pm.PoolId == poolId && pm.NodeId == node.Id);
+                if (!alreadyMember)
                 {
-                    pool.NodeIds = pool.NodeIds.Append(node.Id).ToList();
+                    db.PoolMembers.Add(new PoolMember { PoolId = poolId, NodeId = node.Id });
                 }
             }
 
@@ -114,7 +119,7 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
             Id = node.Id,
             Name = node.Name,
             AuthToken = plainToken ?? string.Empty,
-            Labels = node.Labels,
+            Labels = node.Labels.Select(l => l.Label).ToList(),
             PoolIds = poolIds
         };
     }
@@ -141,7 +146,7 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
             {
                 Id = Guid.NewGuid(),
                 Name = name,
-                NodeIds = new List<Guid>(),
+                Members = new List<PoolMember>(),
                 CreatedAt = DateTime.UtcNow
             };
             db.NodePools.Add(pool);

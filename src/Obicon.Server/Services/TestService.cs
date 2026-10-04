@@ -55,8 +55,6 @@ public partial class TestService : ITestService
             Name = request.Name,
             Type = request.Type,
             Target = request.Target,
-            NodeIds = request.NodeIds,
-            PoolIds = request.PoolIds,
             Frequency = request.Frequency,
             IsActive = request.IsActive,
             ExpectedStatusCodes = request.ExpectedStatusCodes,
@@ -65,7 +63,6 @@ public partial class TestService : ITestService
             IpVersion = request.IpVersion,
             TimeoutSeconds = request.TimeoutSeconds,
             ExpectedBodyPattern = request.ExpectedBodyPattern,
-            Headers = request.Headers ?? new Dictionary<string, string>(),
             ProxyUrl = request.ProxyUrl,
             CacheBust = request.CacheBust,
             TracerouteMaxHops = request.TracerouteMaxHops,
@@ -75,6 +72,11 @@ public partial class TestService : ITestService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = null
         };
+        test.NodeTargets = request.NodeIds.Select(id => new TestTargetNode { TestId = test.Id, NodeId = id }).ToList();
+        test.PoolTargets = request.PoolIds.Select(id => new TestTargetPool { TestId = test.Id, PoolId = id }).ToList();
+        test.Headers = (request.Headers ?? new Dictionary<string, string>())
+            .Select(kv => new TestHeader { TestId = test.Id, Name = kv.Key, Value = kv.Value })
+            .ToList();
 
         await _dbFactory.ExecuteAsync(async db =>
         {
@@ -90,14 +92,19 @@ public partial class TestService : ITestService
     public async Task<IEnumerable<TestResponse>> GetAllTestsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var tests = await db.Tests.OrderBy(t => t.CreatedAt).ToListAsync();
+        var tests = await db.Tests
+            .Include(t => t.NodeTargets)
+            .Include(t => t.PoolTargets)
+            .Include(t => t.Headers)
+            .OrderBy(t => t.CreatedAt)
+            .ToListAsync();
         return tests.Select(ToResponse);
     }
 
     public async Task<TestResponse?> GetTestAsync(Guid id)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var test = await db.Tests.FindAsync(id);
+        var test = await LoadTestAsync(db, id);
         return test == null ? null : ToResponse(test);
     }
 
@@ -110,7 +117,7 @@ public partial class TestService : ITestService
 
         var updated = await _dbFactory.ExecuteAsync(async db =>
         {
-            var test = await db.Tests.FindAsync(id);
+            var test = await LoadTestAsync(db, id);
             if (test == null)
             {
                 return (Test?)null;
@@ -118,8 +125,6 @@ public partial class TestService : ITestService
 
             test.Type = request.Type;
             test.Target = request.Target;
-            test.NodeIds = request.NodeIds;
-            test.PoolIds = request.PoolIds;
             test.Frequency = request.Frequency;
             test.IsActive = request.IsActive;
             test.ExpectedStatusCodes = request.ExpectedStatusCodes;
@@ -128,7 +133,6 @@ public partial class TestService : ITestService
             test.IpVersion = request.IpVersion;
             test.TimeoutSeconds = request.TimeoutSeconds;
             test.ExpectedBodyPattern = request.ExpectedBodyPattern;
-            test.Headers = request.Headers ?? new Dictionary<string, string>();
             test.ProxyUrl = request.ProxyUrl;
             test.CacheBust = request.CacheBust;
             test.TracerouteMaxHops = request.TracerouteMaxHops;
@@ -143,6 +147,21 @@ public partial class TestService : ITestService
             test.DnsNameserver = request.DnsNameserver;
             test.DnsQueryType = request.DnsQueryType;
             test.UpdatedAt = DateTime.UtcNow;
+
+            // Replace the targeting and header rows wholesale: the request carries the
+            // complete target set, so the diff is simply old rows out, new rows in
+            db.TestTargetNodes.RemoveRange(test.NodeTargets);
+            db.TestTargetPools.RemoveRange(test.PoolTargets);
+            db.TestHeaders.RemoveRange(test.Headers);
+            test.NodeTargets = request.NodeIds.Select(nodeId => new TestTargetNode { TestId = test.Id, NodeId = nodeId }).ToList();
+            test.PoolTargets = request.PoolIds.Select(poolId => new TestTargetPool { TestId = test.Id, PoolId = poolId }).ToList();
+            test.Headers = (request.Headers ?? new Dictionary<string, string>())
+                .Select(kv => new TestHeader { TestId = test.Id, Name = kv.Key, Value = kv.Value })
+                .ToList();
+            db.TestTargetNodes.AddRange(test.NodeTargets);
+            db.TestTargetPools.AddRange(test.PoolTargets);
+            db.TestHeaders.AddRange(test.Headers);
+
             await db.SaveChangesAsync();
 
             return test;
@@ -196,8 +215,8 @@ public partial class TestService : ITestService
     {
         return await _dbFactory.ExecuteAsync(async db =>
         {
-            var test = await db.Tests.FirstOrDefaultAsync(t => t.Id == testId && t.IsActive);
-            if (test == null)
+            var test = await LoadTestAsync(db, testId);
+            if (test == null || !test.IsActive)
             {
                 return false;
             }
@@ -232,7 +251,7 @@ public partial class TestService : ITestService
             // enqueuing, so a row that cannot be updated does not create jobs either
             var enqueued = await _dbFactory.ExecuteAsync(async db =>
             {
-                var test = await db.Tests.FindAsync(due.Id);
+                var test = await LoadTestAsync(db, due.Id);
                 if (test == null || !test.IsActive)
                 {
                     return false;
@@ -397,6 +416,19 @@ public partial class TestService : ITestService
     }
 
     /// <summary>
+    /// Loads a test with its targeting and header rows, for units that resolve targets
+    /// or copy headers onto jobs.
+    /// </summary>
+    private static async Task<Test?> LoadTestAsync(ObiconDbContext db, Guid id)
+    {
+        return await db.Tests
+            .Include(t => t.NodeTargets)
+            .Include(t => t.PoolTargets)
+            .Include(t => t.Headers)
+            .FirstOrDefaultAsync(t => t.Id == id);
+    }
+
+    /// <summary>
     /// Creates the test's jobs with the given context, so callers that already hold a
     /// context for their own read-modify-write unit reuse it instead of opening another.
     /// </summary>
@@ -404,7 +436,7 @@ public partial class TestService : ITestService
     {
         // One job per targeted node and IP family: direct node IDs plus all pool
         // members, deduplicated; Both schedules one IPv4 and one IPv6 job per node
-        foreach (var nodeId in await ResolveTargetNodesAsync(test))
+        foreach (var nodeId in await ResolveTargetNodesAsync(db, test))
         {
             foreach (var ipVersion in FamiliesFor(test.IpVersion))
             {
@@ -420,7 +452,7 @@ public partial class TestService : ITestService
                     ExpectedDnsResult = test.ExpectedDnsResult,
                     IpVersion = ipVersion,
                     ExpectedBodyPattern = test.ExpectedBodyPattern,
-                    Headers = test.Headers,
+                    Headers = test.Headers.Select(h => new TestJobHeader { Name = h.Name, Value = h.Value }).ToList(),
                     ProxyUrl = test.ProxyUrl,
                     CacheBust = test.CacheBust,
                     TracerouteMaxHops = test.TracerouteMaxHops,
@@ -485,9 +517,15 @@ public partial class TestService : ITestService
             {
                 var pool = await db.NodePools.FindAsync(poolId)
                     ?? throw new ArgumentException($"Unknown pool ID: {poolId}");
-                foreach (var memberId in pool.NodeIds.Where(id => !selectedNodeIds.Contains(id) && !poolCandidates.Contains(id)))
+                foreach (var memberId in await db.PoolMembers
+                             .Where(pm => pm.PoolId == poolId)
+                             .Select(pm => pm.NodeId)
+                             .ToListAsync())
                 {
-                    poolCandidates.Add(memberId);
+                    if (!selectedNodeIds.Contains(memberId) && !poolCandidates.Contains(memberId))
+                    {
+                        poolCandidates.Add(memberId);
+                    }
                 }
             }
 
@@ -529,7 +567,9 @@ public partial class TestService : ITestService
                         ExpectedDnsResult = request.ExpectedDnsResult,
                         IpVersion = ipVersion,
                         ExpectedBodyPattern = request.ExpectedBodyPattern,
-                        Headers = request.Headers ?? new Dictionary<string, string>(),
+                        Headers = (request.Headers ?? new Dictionary<string, string>())
+                            .Select(kv => new TestJobHeader { Name = kv.Key, Value = kv.Value })
+                            .ToList(),
                         ProxyUrl = request.ProxyUrl,
                         CacheBust = request.CacheBust,
                         TracerouteMaxHops = request.TracerouteMaxHops,
@@ -578,11 +618,13 @@ public partial class TestService : ITestService
     public async Task<IEnumerable<Test>> GetTestsForNodeAsync(Guid nodeId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var tests = await db.Tests
-            .Where(t => t.IsActive)
+        return await db.Tests
+            .Include(t => t.NodeTargets)
+            .Include(t => t.PoolTargets)
+            .Include(t => t.Headers)
+            .Where(t => t.IsActive && t.NodeTargets.Any(n => n.NodeId == nodeId))
             .OrderBy(t => t.CreatedAt)
             .ToListAsync();
-        return tests.Where(t => t.NodeIds.Contains(nodeId));
     }
 
     private async Task ValidateTargetsAsync(List<Guid> nodeIds, List<Guid> poolIds)
@@ -609,18 +651,23 @@ public partial class TestService : ITestService
         }
     }
 
-    private async Task<List<Guid>> ResolveTargetNodesAsync(Test test)
+    /// <summary>
+    /// The nodes a test runs on: its direct targets plus the members of its targeted
+    /// pools, deduplicated. Read from the join tables in the given context.
+    /// </summary>
+    private static async Task<List<Guid>> ResolveTargetNodesAsync(ObiconDbContext db, Test test)
     {
-        var nodeIds = new HashSet<Guid>(test.NodeIds);
-        foreach (var poolId in test.PoolIds)
+        var nodeIds = new HashSet<Guid>(test.NodeTargets.Select(t => t.NodeId));
+        var poolIds = test.PoolTargets.Select(t => t.PoolId).ToList();
+        if (poolIds.Count > 0)
         {
-            var pool = await _poolService.GetPoolAsync(poolId);
-            if (pool != null)
+            var members = await db.PoolMembers
+                .Where(pm => poolIds.Contains(pm.PoolId))
+                .Select(pm => pm.NodeId)
+                .ToListAsync();
+            foreach (var memberId in members)
             {
-                foreach (var nodeId in pool.NodeIds)
-                {
-                    nodeIds.Add(nodeId);
-                }
+                nodeIds.Add(memberId);
             }
         }
         return nodeIds.ToList();
@@ -632,8 +679,8 @@ public partial class TestService : ITestService
         Name = test.Name,
         Type = test.Type,
         Target = test.Target,
-        NodeIds = test.NodeIds,
-        PoolIds = test.PoolIds,
+        NodeIds = test.NodeTargets.Select(t => t.NodeId).ToList(),
+        PoolIds = test.PoolTargets.Select(t => t.PoolId).ToList(),
         Frequency = test.Frequency,
         IsActive = test.IsActive,
         ExpectedStatusCodes = test.ExpectedStatusCodes,
@@ -642,7 +689,7 @@ public partial class TestService : ITestService
         IpVersion = test.IpVersion,
         TimeoutSeconds = test.TimeoutSeconds,
         ExpectedBodyPattern = test.ExpectedBodyPattern,
-        Headers = test.Headers,
+        Headers = test.Headers.ToDictionary(h => h.Name, h => h.Value),
         ProxyUrl = test.ProxyUrl,
         CacheBust = test.CacheBust,
         TracerouteMaxHops = test.TracerouteMaxHops,

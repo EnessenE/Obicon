@@ -34,9 +34,10 @@ public class Node
     public DateTime? LastSeenAt { get; set; }
 
     /// <summary>
-    /// Free-form labels attached to this node, used later for test targeting. Default: empty list.
+    /// Free-form labels attached to this node, used later for test targeting; one row
+    /// per label in the node_labels table. Default: empty list.
     /// </summary>
-    public List<string> Labels { get; set; } = new();
+    public List<NodeLabel> Labels { get; set; } = new();
 
     /// <summary>
     /// How this node came to exist: Manual (created by a user) or AutoEnrollment (enrolled itself).
@@ -77,8 +78,9 @@ public class Node
     public string? ExternalIpv6 { get; set; }
 
     /// <summary>
-    /// Operating settings the node reported on its last connection, e.g. MaxConcurrentTests.
-    /// Keys match the NodeRegistrationMessage field names. Default: empty dictionary.
+    /// Operating settings the node reported on its last connection, e.g. MaxConcurrentTests;
+    /// one row per key in the node_reported_settings table. Keys match the
+    /// NodeRegistrationMessage field names. Default: empty list.
     /// </summary>
-    public Dictionary<string, string> Settings { get; set; } = new();
+    public List<NodeReportedSetting> Settings { get; set; } = new();
 }

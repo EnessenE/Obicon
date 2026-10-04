@@ -47,7 +47,22 @@ public class JobStorageTests : LoggedTest, IClassFixture<ObiconServerFactory>
             Success = true,
             DurationMs = 42,
             Output = "probe output",
-            Details = null
+            Details = new()
+            {
+                Ping = new()
+                {
+                    Target = "example.com",
+                    Sent = 4,
+                    Received = 3,
+                    LossPercent = 25,
+                    AvgRoundtripMs = 12.5,
+                    Replies =
+                    [
+                        new() { ReplyAddress = "93.184.216.34", ReplyStatus = "Success", RoundtripMs = 12, Ttl = 56 },
+                        new() { ReplyStatus = "TimedOut" }
+                    ]
+                }
+            }
         }))!;
     }
 
@@ -66,10 +81,23 @@ public class JobStorageTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
         Assert.NotNull(stored);
         Assert.Equal(TestJobStatus.Completed, stored.Status);
-        Assert.NotNull(stored.Result);
-        Assert.Equal("probe output", stored.Result.Output);
-        Assert.Equal(42, stored.Result.DurationMs);
+        Assert.Equal(true, stored.Success);
+        Assert.Equal(42, stored.DurationMs);
+        Assert.Equal("probe output", stored.Output);
         Assert.NotNull(stored.CompletedAt);
+
+        // The structured details round-trip through the normalized tables, order included
+        // (the API serves details through the mapper, which restores the probe order)
+        Assert.NotNull(stored.Ping);
+        var details = TestResultDetailsMapper.ToShared(stored);
+        Assert.NotNull(details);
+        Assert.NotNull(details.Ping);
+        Assert.Equal(4, details.Ping.Sent);
+        Assert.Equal(25, details.Ping.LossPercent);
+        Assert.Equal(2, details.Ping.Replies.Count);
+        Assert.Equal("93.184.216.34", details.Ping.Replies[0].ReplyAddress);
+        Assert.Equal(56, details.Ping.Replies[0].Ttl);
+        Assert.Equal("TimedOut", details.Ping.Replies[1].ReplyStatus);
     }
 
     [Fact]
@@ -84,7 +112,11 @@ public class JobStorageTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
             Assert.NotNull(stored);
             Assert.Equal(TestJobStatus.Completed, stored.Status);
-            Assert.Null(stored.Result);
+            // The scalar outcome stays on the row; the structured details are stripped
+            Assert.Equal(true, stored.Success);
+            Assert.Equal(42, stored.DurationMs);
+            Assert.Null(stored.Ping);
+            Assert.Null(TestResultDetailsMapper.ToShared(stored));
             Assert.NotNull(stored.CompletedAt);
         }
         finally
@@ -149,7 +181,8 @@ public class JobStorageTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
         var stored = await _queue.GetJobAsync(job.Id);
         Assert.NotNull(stored);
-        Assert.NotNull(stored.Result);
+        Assert.Equal(true, stored.Success);
+        Assert.NotNull(stored.Ping);
 
         await SetModeAsync("Full");
     }
@@ -210,7 +243,8 @@ public class JobStorageTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
     /// <summary>
     /// Moves a job's timestamps into the past with raw SQL, simulating a row that has
-    /// been sitting in the database longer than the retention window.
+    /// been sitting in the database longer than the retention window. Unquoted snake_case
+    /// identifiers: the schema never needs quoting.
     /// </summary>
     private void Backdate(Guid jobId, bool completed)
     {
@@ -219,8 +253,8 @@ public class JobStorageTests : LoggedTest, IClassFixture<ObiconServerFactory>
         using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
         using var command = connection.CreateCommand();
-        var timestamp = completed ? "\"CompletedAt\"" : "\"CreatedAt\"";
-        command.CommandText = $"UPDATE \"TestJobs\" SET {timestamp} = @old WHERE \"Id\" = @id";
+        var timestamp = completed ? "completed_at" : "created_at";
+        command.CommandText = $"UPDATE test_jobs SET {timestamp} = @old WHERE id = @id";
         command.Parameters.AddWithValue("old", DateTime.UtcNow - TimeSpan.FromDays(10));
         command.Parameters.AddWithValue("id", jobId);
         command.ExecuteNonQuery();

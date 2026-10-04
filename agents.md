@@ -45,7 +45,7 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 
 - **Pipelines:** `.github/workflows/ci.yml` (pull requests to `main`: build + test, default read-only permissions) and `.github/workflows/release.yml` (pushes to `main`: build + test, then publish the server and node images to the GitHub Container Registry, `ghcr.io/enessene/obicon/server` and `/node` — each as `<version>` and `latest`, versions derived from the CHANGELOG headings — then tag and release). The frontend is not published as an image (run it with `dotnet run --project src/Obicon.Client`)
 - **Versions are per component:** `CHANGELOG.md` tracks `## [Server x.y.z]` and `## [Node x.y.z]` headings independently — bump only the component that changed. The pipeline publishes each image with its own version and creates `server-vx.y.z` / `node-vx.y.z` tags and releases, with the matching changelog section as notes. Frontend changes are listed under the server release. The publish job reuses images for an existing tag but skips re-releasing
-- **Dockerfiles:** `src/Obicon.Server/Dockerfile` (aspnet:10.0, port 5000, SQLite file in `/app`) and `src/Obicon.Node/Dockerfile` (runtime:10.0, configured via `Node__*` env vars; needs `--cap-add=NET_RAW` for ping/traceroute, and `Node__MetricsHost=+` to expose metrics). Both build from the repo root as context with `.dockerignore` keeping it small
+- **Dockerfiles:** `src/Obicon.Server/Dockerfile` (aspnet:10.0, port 5000, configured via `ConnectionStrings__Default` to point at a PostgreSQL instance) and `src/Obicon.Node/Dockerfile` (runtime:10.0, configured via `Node__*` env vars; needs `--cap-add=NET_RAW` for ping/traceroute, and `Node__MetricsHost=+` to expose metrics). Both build from the repo root as context with `.dockerignore` keeping it small
 
 ## Server Settings Standard
 
@@ -91,8 +91,17 @@ The node's console sink is configured in `appsettings.json` (`Serilog:ConsoleSin
 - **Responses:** never return EF entities directly; map through DTOs in `Models/Responses/` (`TestJobResponse.From(job)` pattern)
 - **Frontend cache busting:** bump `?v=N` on `<script>` tags whenever a JS file changes — browsers cache them
 - **Metrics:** two server meters (`Obicon.Server` for lifecycle actions, `Obicon.Tests` for run counts/durations) exported at `GET /metrics` via the OpenTelemetry Prometheus exporter and, when `Otlp:Endpoint` is configured, via OTLP (metrics and the node-log funnel share that endpoint); the node exports its `Obicon.Node` meter on `http://localhost:9464/metrics`. Add new actions to the existing counters, don't create new meters. The per-run labels come from the `TestMetricsLabels` setting (`test_id` and `status` are a forced floor) — `job_id` must never become a metric label; it is the join key into the logs
-- **Timestamps:** all persistence uses UTC; `ObiconDbContext` re-marks SQLite datetimes as UTC on read so they serialize with `Z`
+- **Timestamps:** all persistence uses UTC; `ObiconDbContext` marks every persisted datetime as UTC on write and read so they serialize with `Z`
 - **DI cycle warning:** `ServerConnection` and `TestExecutor` mutually reference each other; the executor resolves `IServerConnection` lazily. Keep it that way when touching constructors
+
+## Database Standard
+
+The schema is plain, fully relational PostgreSQL, designed to be queried by hand:
+
+- **Snake_case everywhere.** Every table, column, and constraint name is snake_case (`tests`, `node_id`, `created_at`, `FK_pool_members_nodes_node_id`). `ObiconDbContext.OnModelCreating` applies the conversion to every entity at the end of model building — new entities get it for free; never hand-name a table or column in PascalCase, and never add a quoted identifier to a query. The goal: `select * from tests`, never `select * from "Tests"`
+- **Never use `jsonb` (or JSON-in-text) for any column.** Relationships are junction tables (`test_target_nodes`, `test_target_pools`, `pool_members`), dictionaries are key-value rows (`node_labels`, `node_reported_settings`, `test_headers`, `test_job_headers`), and a finished run's structured details are normalized into one table per test-type section (`test_job_traceroute_details` + `test_job_traceroute_hops` + `test_job_traceroute_probes`, `test_job_ping_details` + `test_job_ping_replies`, `test_job_tcp_details`, `test_job_http_details`, `test_job_dns_details` + `test_job_dns_records`, `test_job_tls_details`, `test_job_certificates`). The only list-typed columns are native `text[]` for plain string lists (DNS nameservers/resolved addresses, certificate SANs). New structured data gets its own tables, mapped through `TestResultDetailsMapper` or a sibling mapper
+- **Join rows cascade.** Every junction and child row has a cascading foreign key to its owner, so deleting a node/pool/test/job leaves no stale references (this is what keeps deleted nodes from queueing jobs)
+- **API casing is unaffected:** HTTP responses stay camelCase and WebSocket payloads stay PascalCase — the snake_case rule is strictly database identifiers
 
 ## Model Documentation Standard
 

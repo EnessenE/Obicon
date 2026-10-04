@@ -64,9 +64,10 @@ public class TestJob
     public string? ExpectedBodyPattern { get; set; }
 
     /// <summary>
-    /// HTTP/HTTPS: custom headers sent with the request. Default: empty dictionary.
+    /// HTTP/HTTPS: custom headers sent with the request, copied from the test at enqueue
+    /// time; one row per header in the test_job_headers table. Default: empty list.
     /// </summary>
-    public Dictionary<string, string> Headers { get; set; } = new();
+    public List<TestJobHeader> Headers { get; set; } = new();
 
     /// <summary>
     /// HTTP/HTTPS: URL of an HTTP proxy the request goes through. Null connects directly. Default: null.
@@ -168,12 +169,59 @@ public class TestJob
     public DateTime? CompletedAt { get; set; }
 
     /// <summary>
-    /// Result of the test execution. Null if not yet completed.
+    /// Whether the test execution succeeded. Null if not yet completed.
     /// </summary>
-    public TestResult? Result { get; set; }
+    public bool? Success { get; set; }
+
+    /// <summary>
+    /// Duration of the test execution in milliseconds. Null if not yet completed.
+    /// </summary>
+    public long? DurationMs { get; set; }
+
+    /// <summary>
+    /// Text output of the test execution. Null if not yet completed.
+    /// </summary>
+    public string? Output { get; set; }
 
     /// <summary>
     /// Error message if the job failed. Null if successful or not yet completed.
     /// </summary>
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Structured details of the run, normalized into per-type detail tables keyed by
+    /// this job's ID; load them before mapping a response. Null sections mean the run
+    /// reported no details for that type.
+    /// </summary>
+    public TestJobTracerouteDetails? Traceroute { get; set; }
+
+    /// <summary>
+    /// Ping details of the run, with the probe replies. Default: null.
+    /// </summary>
+    public TestJobPingDetails? Ping { get; set; }
+
+    /// <summary>
+    /// TCP details of the run. Default: null.
+    /// </summary>
+    public TestJobTcpDetails? Tcp { get; set; }
+
+    /// <summary>
+    /// HTTP(S) details of the run. Default: null.
+    /// </summary>
+    public TestJobHttpDetails? Http { get; set; }
+
+    /// <summary>
+    /// DNS details of the run, with the returned records. Default: null.
+    /// </summary>
+    public TestJobDnsDetails? Dns { get; set; }
+
+    /// <summary>
+    /// TLS details of the run. Default: null.
+    /// </summary>
+    public TestJobTlsDetails? Tls { get; set; }
+
+    /// <summary>
+    /// The run's TLS certificate, when the section reported one. Default: null.
+    /// </summary>
+    public TestJobCertificate? Certificate { get; set; }
 }

@@ -98,7 +98,7 @@ public partial class TestQueueProcessor : BackgroundService
                     ExpectedDnsResult = job.ExpectedDnsResult,
                     IpVersion = job.IpVersion,
                     ExpectedBodyPattern = job.ExpectedBodyPattern,
-                    Headers = job.Headers,
+                    Headers = job.Headers.ToDictionary(h => h.Name, h => h.Value),
                     ProxyUrl = job.ProxyUrl,
                     CacheBust = job.CacheBust,
                     TracerouteMaxHops = job.TracerouteMaxHops,

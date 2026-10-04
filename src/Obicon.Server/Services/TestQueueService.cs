@@ -7,8 +7,9 @@ namespace Obicon.Server.Services;
 
 /// <summary>
 /// Stores and transitions test jobs. Terminal statuses apply the TestResultStorageMode:
-/// Full keeps the payload, MetadataOnly strips it, None deletes the row - always returning
-/// the job to the caller first, so metrics are emitted before any deletion.
+/// Full keeps the payload, MetadataOnly strips the structured details but keeps the
+/// scalar outcome, None deletes the row - always returning the job to the caller first,
+/// so metrics are emitted before any deletion.
 /// </summary>
 public class TestQueueService : ITestQueueService
 {
@@ -27,6 +28,21 @@ public class TestQueueService : ITestQueueService
         _dbFactory = dbFactory;
         _settingsService = settingsService;
     }
+
+    /// <summary>
+    /// Loads jobs with their header rows and every details section, so responses and
+    /// dispatches see the complete job in one query.
+    /// </summary>
+    private static IQueryable<TestJob> WithFullLoad(ObiconDbContext db) => db.TestJobs
+        .Include(j => j.Headers)
+        .Include(j => j.Traceroute!).ThenInclude(d => d.Hops!)
+        .ThenInclude(h => h.Probes)
+        .Include(j => j.Ping!).ThenInclude(d => d.Replies)
+        .Include(j => j.Tcp)
+        .Include(j => j.Http)
+        .Include(j => j.Dns!).ThenInclude(d => d.Records)
+        .Include(j => j.Tls)
+        .Include(j => j.Certificate);
 
     public async Task<TestJob> EnqueueJobAsync(TestJob job)
     {
@@ -55,7 +71,7 @@ public class TestQueueService : ITestQueueService
     {
         return _dbFactory.ExecuteAsync(async db =>
         {
-            var job = await db.TestJobs
+            var job = await WithFullLoad(db)
                 .Where(j => j.NodeId == nodeId && j.Status == TestJobStatus.Queued)
                 .OrderBy(j => j.CreatedAt)
                 .FirstOrDefaultAsync();
@@ -96,15 +112,27 @@ public class TestQueueService : ITestQueueService
             var mode = await GetStorageModeAsync();
             if (terminal && mode == TestResultStorageMode.None)
             {
-                // Delete the row, but hand the in-memory job back: the caller still
-                // emits the run's metrics, which must never be lost to storage policy
+                // Delete the row (the cascading foreign keys take the header and details
+                // rows with it), but hand the in-memory job back: the caller still emits
+                // the run's metrics, which must never be lost to storage policy
                 db.TestJobs.Remove(job);
                 await db.SaveChangesAsync();
                 return job;
             }
 
-            // MetadataOnly keeps the row skeleton and error message; only the payload goes
-            job.Result = terminal && mode == TestResultStorageMode.MetadataOnly ? null : result;
+            if (result != null)
+            {
+                job.Success = result.Success;
+                job.DurationMs = result.DurationMs;
+                job.Output = result.Output;
+
+                // MetadataOnly keeps the scalar outcome but strips the structured
+                // payload: no detail rows are written for the run
+                if (result.Details != null && (!terminal || mode == TestResultStorageMode.Full))
+                {
+                    TestResultDetailsMapper.Persist(db, job.Id, result.Details);
+                }
+            }
             job.ErrorMessage = errorMessage;
 
             await db.SaveChangesAsync();
@@ -115,13 +143,13 @@ public class TestQueueService : ITestQueueService
     public async Task<TestJob?> GetJobAsync(Guid jobId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.TestJobs.FindAsync(jobId);
+        return await WithFullLoad(db).FirstOrDefaultAsync(j => j.Id == jobId);
     }
 
     public async Task<IEnumerable<TestJob>> GetJobsForNodeAsync(Guid nodeId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.TestJobs
+        return await WithFullLoad(db)
             .Where(j => j.NodeId == nodeId)
             .OrderByDescending(j => j.CreatedAt)
             .ToListAsync();
@@ -130,7 +158,7 @@ public class TestQueueService : ITestQueueService
     public async Task<IEnumerable<TestJob>> GetAllJobsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.TestJobs
+        return await WithFullLoad(db)
             .OrderByDescending(j => j.CreatedAt)
             .ToListAsync();
     }
@@ -138,7 +166,7 @@ public class TestQueueService : ITestQueueService
     public async Task<IEnumerable<TestJob>> GetPendingJobsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.TestJobs
+        return await WithFullLoad(db)
             .Where(j => j.Status == TestJobStatus.Queued)
             .OrderBy(j => j.CreatedAt)
             .ToListAsync();
@@ -147,7 +175,7 @@ public class TestQueueService : ITestQueueService
     public async Task<IEnumerable<TestJob>> GetActiveJobsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.TestJobs
+        return await WithFullLoad(db)
             .Where(j => j.Status == TestJobStatus.Assigned || j.Status == TestJobStatus.Running)
             .ToListAsync();
     }

@@ -196,7 +196,7 @@ Returns the live status of every node: its active flag and whether it currently 
 ```
 DELETE /v1/nodes/{id}
 ```
-Deletes a node and removes it from every pool it belongs to.
+Deletes a node, removes it from every pool it belongs to, and removes it from every test that directly targets it (pool-targeted tests are unaffected; a test left with no targets simply stops producing runs).
 
 **Response:** 204 No Content
 

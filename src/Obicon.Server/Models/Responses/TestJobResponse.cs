@@ -114,10 +114,10 @@ public class TestJobResponse
         StartedAt = job.StartedAt,
         AcknowledgedAt = job.AcknowledgedAt,
         CompletedAt = job.CompletedAt,
-        Success = job.Result?.Success,
-        DurationMs = job.Result?.DurationMs,
-        Output = job.Result?.Output,
+        Success = job.Success,
+        DurationMs = job.DurationMs,
+        Output = job.Output,
         ErrorMessage = job.ErrorMessage,
-        Details = job.Result?.Details
+        Details = TestResultDetailsMapper.ToShared(job)
     };
 }
