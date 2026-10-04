@@ -207,6 +207,26 @@ namespace Obicon.Server.Data.Migrations
                     b.ToTable("pool_members");
                 });
 
+            modelBuilder.Entity("Obicon.Server.Models.ServerSettingListValue", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasColumnType("text")
+                        .HasColumnName("key");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("item");
+
+                    b.HasKey("Key", "Position");
+
+                    b.ToTable("server_setting_list_values");
+                });
+
             modelBuilder.Entity("Obicon.Server.Models.ServerSettingValue", b =>
                 {
                     b.Property<string>("Key")

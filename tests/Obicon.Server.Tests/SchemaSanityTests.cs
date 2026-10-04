@@ -133,6 +133,47 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
     }
 
     [Fact]
+    public async Task ListSettingOverride_StoredAsItemRows_NotJsonText()
+    {
+        // Change a list-typed setting through the API with a native array
+        var put = await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels",
+            new { value = new[] { "test_name", "node_id" } });
+        put.EnsureSuccessStatusCode();
+
+        try
+        {
+            await using var connection = OpenConnection();
+
+            // Two ordered item rows, no JSON anywhere; the scalar table carries
+            // the override's presence marker, holding the item count
+            Assert.Equal(2L, CountRows(connection, "server_setting_list_values", "key = @key", ("key", "TestMetricsLabels")));
+            Assert.Equal(1L, CountRows(connection, "server_setting_values", "key = @key and value = '2'", ("key", "TestMetricsLabels")));
+
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                select position, item from server_setting_list_values
+                where key = @key order by position
+                """;
+            command.Parameters.AddWithValue("key", "TestMetricsLabels");
+            using var reader = command.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal(0, reader.GetInt32(0));
+            Assert.Equal("test_name", reader.GetString(1));
+            Assert.True(reader.Read());
+            Assert.Equal(1, reader.GetInt32(0));
+            Assert.Equal("node_id", reader.GetString(1));
+            Assert.False(reader.Read());
+        }
+        finally
+        {
+            // Restore the default labels, because the fixture database is shared
+            var restore = await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels",
+                new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
+            restore.EnsureSuccessStatusCode();
+        }
+    }
+
+    [Fact]
     public async Task Schema_NoJsonColumns()
     {
         await using var connection = OpenConnection();

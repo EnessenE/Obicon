@@ -57,7 +57,7 @@ public static class ServerSettingDefinitions
         {
             Key = "EnabledTestTypes",
             Group = "General",
-            Description = "List of the test types this server offers, e.g. [\"Ping\", \"Http\", \"Dns\"]. Values: Ping, Traceroute, Http, Https, Tcp, Dns, Tls. An empty list enables all types; creating, editing, or dry-running a disabled type is rejected.",
+            Description = "List of the test types this server offers, by name: Ping, Traceroute, Http, Https, Tcp, Dns, Tls. An empty list enables all types; creating, editing, or dry-running a disabled type is rejected.",
             ValueType = typeof(List<string>),
             Default = new List<string>()
         },
@@ -127,7 +127,7 @@ public static class ServerSettingDefinitions
         {
             Key = "TestMetricsLabels",
             Group = "Observability",
-            Description = "List of the labels attached to the exported test metrics, e.g. [\"test_type\", \"node_name\", \"node_labels\"]. test_type (few values), test_name and node_name (human-readable, but fork series on renames), node_id (rename-stable), and node_labels (churniest: any label change on any node starts new series). \"test_id\" and the counter's \"status\" are always attached. Changing the set starts new series for subsequent runs. Requires TestMetricsEnabled.",
+            Description = "List of the labels attached to the exported test metrics, by name: test_type (few values), test_name and node_name (human-readable, but fork series on renames), node_id (rename-stable), and node_labels (churniest: any label change on any node starts new series). test_id and the counter status are always attached. Changing the set starts new series for subsequent runs. Requires TestMetricsEnabled.",
             ValueType = typeof(List<string>),
             Default = new List<string> { "test_type", "test_name", "node_name", "node_labels" }
         },

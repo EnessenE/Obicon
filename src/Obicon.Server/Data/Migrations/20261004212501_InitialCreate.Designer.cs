@@ -13,7 +13,7 @@ using Obicon.Server.Data;
 namespace Obicon.Server.Data.Migrations
 {
     [DbContext(typeof(ObiconDbContext))]
-    [Migration("20261004120659_InitialCreate")]
+    [Migration("20261004212501_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -208,6 +208,26 @@ namespace Obicon.Server.Data.Migrations
                     b.HasIndex("NodeId");
 
                     b.ToTable("pool_members");
+                });
+
+            modelBuilder.Entity("Obicon.Server.Models.ServerSettingListValue", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasColumnType("text")
+                        .HasColumnName("key");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("item");
+
+                    b.HasKey("Key", "Position");
+
+                    b.ToTable("server_setting_list_values");
                 });
 
             modelBuilder.Entity("Obicon.Server.Models.ServerSettingValue", b =>

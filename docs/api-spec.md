@@ -552,7 +552,7 @@ Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.no
 
 Server settings resolve as: forced by appsettings/env (read-only) → database override → default. Read-only derived settings (e.g. `SchedulerLoopIntervalSeconds`) are computed from other settings: `PUT` returns 409 for them, and their `source` is `Derived`. Each setting carries a `group` naming the section it is displayed under in the settings UI, e.g. `General` or `Observability`.
 
-Values are typed on the wire: booleans as `true`/`false`, integers as numbers, and collection settings (`EnabledTestTypes`, `FrequencyPresetsSeconds`, `TestMetricsLabels`) as native JSON arrays - never JSON-encoded strings. `PUT` accepts the same native forms (a plain string is also accepted for scalar settings).
+Values are typed on the wire: booleans as `true`/`false`, integers as numbers, and collection settings (`EnabledTestTypes`, `FrequencyPresetsSeconds`, `TestMetricsLabels`) as native JSON arrays - never JSON-encoded strings. `PUT` accepts the same native forms (a plain string is also accepted for scalar settings), and forced configuration in appsettings or environment variables uses native arrays the same way.
 
 #### List Settings
 ```

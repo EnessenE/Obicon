@@ -17,8 +17,6 @@ namespace Obicon.Server.Tests;
 /// </summary>
 public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
-    private const string DefaultLabels = "[\"test_type\",\"test_name\",\"node_name\",\"node_labels\"]";
-
     private readonly ObiconServerFactory _factory;
     private readonly HttpClient _client;
     private readonly ITestMetricsEmitter _emitter;
@@ -82,9 +80,8 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var settings = await _client.GetFromJsonAsync<JsonElement>("/v1/settings");
         var byKey = settings.EnumerateArray().ToDictionary(s => s.GetProperty("key").GetString()!, s => s);
         Assert.True(byKey["TestMetricsEnabled"].GetProperty("value").GetBoolean());
-        Assert.Equal(
-            "[\"test_type\",\"test_name\",\"node_name\",\"node_labels\"]",
-            JsonSerializer.Serialize(byKey["TestMetricsLabels"].GetProperty("value")));
+        var expected = JsonSerializer.SerializeToElement(new[] { "test_type", "test_name", "node_name", "node_labels" });
+        Assert.True(JsonElement.DeepEquals(expected, byKey["TestMetricsLabels"].GetProperty("value")));
     }
 
     [Fact]

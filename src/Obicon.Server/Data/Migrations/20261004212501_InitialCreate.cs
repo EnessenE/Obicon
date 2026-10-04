@@ -65,6 +65,19 @@ public partial class InitialCreate : Migration
             });
 
         migrationBuilder.CreateTable(
+            name: "server_setting_list_values",
+            columns: table => new
+            {
+                key = table.Column<string>(type: "text", nullable: false),
+                position = table.Column<int>(type: "integer", nullable: false),
+                item = table.Column<string>(type: "text", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_server_setting_list_values", x => new { x.key, x.position });
+            });
+
+        migrationBuilder.CreateTable(
             name: "server_setting_values",
             columns: table => new
             {
@@ -663,6 +676,9 @@ public partial class InitialCreate : Migration
 
         migrationBuilder.DropTable(
             name: "pool_members");
+
+        migrationBuilder.DropTable(
+            name: "server_setting_list_values");
 
         migrationBuilder.DropTable(
             name: "server_setting_values");

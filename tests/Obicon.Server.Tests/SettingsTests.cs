@@ -313,7 +313,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
         Assert.True(interval.GetProperty("isReadOnly").GetBoolean());
         Assert.Equal("Derived", interval.GetProperty("source").GetString());
-        Assert.Equal("10", interval.GetProperty("value").GetString());
+        Assert.Equal(10, interval.GetProperty("value").GetInt32());
     }
 
     [Fact]
@@ -333,7 +333,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         {
             var settings = await _client.GetFromJsonAsync<JsonElement>("/v1/settings");
             var interval = settings.EnumerateArray().Single(s => s.GetProperty("key").GetString() == "SchedulerLoopIntervalSeconds");
-            Assert.Equal("15", interval.GetProperty("value").GetString());
+            Assert.Equal(15, interval.GetProperty("value").GetInt32());
         }
         finally
         {

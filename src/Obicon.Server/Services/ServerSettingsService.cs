@@ -18,8 +18,6 @@ public partial class ServerSettingsService : IServerSettingsService
 {
     private const string ConfigSection = "ServerSettings";
 
-    private static readonly JsonSerializerOptions ListOptions = new(JsonSerializerDefaults.Web);
-
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
 
     private readonly IConfiguration _configuration;
@@ -44,7 +42,7 @@ public partial class ServerSettingsService : IServerSettingsService
     public async Task<IEnumerable<ServerSettingResponse>> GetAllAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var overrides = await db.ServerSettingValues.ToDictionaryAsync(s => s.Key, s => s.Value);
+        var overrides = await LoadOverridesAsync(db);
 
         return ServerSettingDefinitions.All.Select(definition =>
         {
@@ -55,7 +53,7 @@ public partial class ServerSettingsService : IServerSettingsService
             if (definition.IsReadOnly)
             {
                 source = "Derived";
-                value = ComputeReadOnly(definition.Key, EffectiveRawValue(FindDefinition("FrequencyPresetsSeconds"), overrides));
+                value = ComputeReadOnly(definition.Key, EffectivePresets(overrides));
             }
             else
             {
@@ -63,21 +61,15 @@ public partial class ServerSettingsService : IServerSettingsService
                 if (forced)
                 {
                     source = "Configuration (forced)";
-                    value = _configuration[$"{ConfigSection}:{definition.Key}"] ?? definition.Default;
                 }
-                else if (overrides.TryGetValue(definition.Key, out var stored))
+                else if (overrides.ContainsKey(definition.Key))
                 {
                     source = "Database";
-                    value = stored;
-                }
-                else
-                {
-                    value = definition.Default;
                 }
 
                 // Collection settings carry their typed list on the wire, whatever
                 // their source; scalar settings already hold their plain string
-                value = TryConvert(definition, value, out var converted) ? converted : value;
+                value = TryConvert(definition, EffectiveValue(definition, overrides), out var converted) ? converted : definition.Default;
             }
 
             return new ServerSettingResponse
@@ -112,22 +104,51 @@ public partial class ServerSettingsService : IServerSettingsService
 
         await _dbFactory.ExecuteAsync(async db =>
         {
-            var stored = await db.ServerSettingValues.FindAsync(key);
-            if (stored == null)
+            // List settings replace their item rows wholesale and keep a count row in
+            // server_setting_values, so an explicitly empty list stays distinct from
+            // "no override"; scalar settings upsert their text row
+            if (canonical is List<string> items)
             {
-                db.ServerSettingValues.Add(new ServerSettingValue { Key = key, Value = canonical, UpdatedAt = DateTime.UtcNow });
+                var rows = await db.ServerSettingListValues.Where(v => v.Key == key).ToListAsync();
+                db.ServerSettingListValues.RemoveRange(rows);
+                db.ServerSettingListValues.AddRange(items.Select((item, position) => new ServerSettingListValue
+                {
+                    Key = key,
+                    Position = position,
+                    Item = item
+                }));
+
+                var count = await db.ServerSettingValues.FindAsync(key);
+                var countText = items.Count.ToString(CultureInfo.InvariantCulture);
+                if (count == null)
+                {
+                    db.ServerSettingValues.Add(new ServerSettingValue { Key = key, Value = countText, UpdatedAt = DateTime.UtcNow });
+                }
+                else
+                {
+                    count.Value = countText;
+                    count.UpdatedAt = DateTime.UtcNow;
+                }
             }
             else
             {
-                stored.Value = canonical;
-                stored.UpdatedAt = DateTime.UtcNow;
+                var stored = await db.ServerSettingValues.FindAsync(key);
+                if (stored == null)
+                {
+                    db.ServerSettingValues.Add(new ServerSettingValue { Key = key, Value = (string)canonical, UpdatedAt = DateTime.UtcNow });
+                }
+                else
+                {
+                    stored.Value = (string)canonical;
+                    stored.UpdatedAt = DateTime.UtcNow;
+                }
             }
 
             await db.SaveChangesAsync();
         });
 
         _cache.TryRemove(key, out _);
-        LogSettingChanged(key, key == "AuthHeader" ? "***" : canonical);
+        LogSettingChanged(key, key == "AuthHeader" ? "***" : CanonicalLogText(canonical));
         Metrics.ServerMetrics.Action("setting_changed");
 
         // Node-facing settings propagate to connected nodes immediately
@@ -161,18 +182,16 @@ public partial class ServerSettingsService : IServerSettingsService
             ?? throw new ArgumentException($"Unknown setting: {key}");
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var overrides = await db.ServerSettingValues.ToDictionaryAsync(s => s.Key, s => s.Value);
+        var overrides = await LoadOverridesAsync(db);
 
         var value = definition.IsReadOnly
-            ? ComputeReadOnly(definition.Key, EffectiveRawValue(FindDefinition("FrequencyPresetsSeconds"), overrides))
-            : EffectiveRawValue(definition, overrides);
+            ? ComputeReadOnly(definition.Key, EffectivePresets(overrides))
+            : TryConvert(definition, EffectiveValue(definition, overrides), out var result)
+                ? result
+                : throw new InvalidOperationException($"Stored value for {key} is not a valid {definition.ValueType.Name}");
 
-        var converted = TryConvert(definition, value, out var result)
-            ? result
-            : throw new InvalidOperationException($"Stored value for {key} is not a valid {definition.ValueType.Name}");
-
-        _cache[key] = converted;
-        return (T)converted;
+        _cache[key] = value;
+        return (T)value;
     }
 
     private static ServerSettingDefinition FindDefinition(string key)
@@ -181,14 +200,36 @@ public partial class ServerSettingsService : IServerSettingsService
     }
 
     /// <summary>
-    /// The effective raw value of a stored setting: forced configuration, database override,
-    /// or default. Collection defaults serialize to their JSON text form here.
+    /// Loads every runtime override: scalar settings as their stored text, list
+    /// settings as their ordered item rows. A list override's count row in
+    /// server_setting_values stays behind as the presence marker when its list is
+    /// explicitly empty.
     /// </summary>
-    private string EffectiveRawValue(ServerSettingDefinition definition, Dictionary<string, string> overrides)
+    private static async Task<Dictionary<string, object>> LoadOverridesAsync(ObiconDbContext db)
+    {
+        var overrides = new Dictionary<string, object>();
+        foreach (var scalar in await db.ServerSettingValues.ToListAsync())
+        {
+            overrides[scalar.Key] = scalar.Value;
+        }
+        foreach (var group in (await db.ServerSettingListValues.ToListAsync()).GroupBy(v => v.Key))
+        {
+            overrides[group.Key] = group.OrderBy(v => v.Position).Select(v => v.Item).ToList();
+        }
+        return overrides;
+    }
+
+    /// <summary>
+    /// The effective value of a setting: forced configuration, database override, or
+    /// the typed default. Configuration scalars arrive as text and native arrays bind
+    /// to the setting's type, so forced lists never need JSON-in-string forms.
+    /// </summary>
+    private object EffectiveValue(ServerSettingDefinition definition, Dictionary<string, object> overrides)
     {
         if (IsForced(definition.Key))
         {
-            return _configuration[$"{ConfigSection}:{definition.Key}"] ?? definition.Default as string ?? string.Empty;
+            var section = _configuration.GetSection($"{ConfigSection}:{definition.Key}");
+            return section.Value ?? section.Get(definition.ValueType) ?? definition.Default;
         }
 
         if (overrides.TryGetValue(definition.Key, out var stored))
@@ -196,28 +237,29 @@ public partial class ServerSettingsService : IServerSettingsService
             return stored;
         }
 
-        return definition.Default as string ?? JsonSerializer.Serialize(definition.Default, ListOptions);
+        return definition.Default;
+    }
+
+    /// <summary>
+    /// The effective FrequencyPresetsSeconds list, normalized for the scheduler's
+    /// read-only setting.
+    /// </summary>
+    private List<int> EffectivePresets(Dictionary<string, object> overrides)
+    {
+        var definition = FindDefinition("FrequencyPresetsSeconds");
+        return TryConvert(definition, EffectiveValue(definition, overrides), out var converted)
+            ? (List<int>)converted
+            : [];
     }
 
     /// <summary>
     /// Computes the value of a read-only setting from the settings it derives from.
     /// </summary>
-    private static string ComputeReadOnly(string key, string frequencyPresets)
+    private static int ComputeReadOnly(string key, List<int> frequencyPresets)
     {
         if (key == "SchedulerLoopIntervalSeconds")
         {
-            List<int>? presets = null;
-            try
-            {
-                presets = JsonSerializer.Deserialize<List<int>>(frequencyPresets, ListOptions);
-            }
-            catch (JsonException)
-            {
-                // Normalize falls back to the default presets for anything unusable
-            }
-
-            return FrequencyPresets.SchedulerIntervalSeconds(presets)
-                .ToString(CultureInfo.InvariantCulture);
+            return FrequencyPresets.SchedulerIntervalSeconds(frequencyPresets);
         }
 
         throw new ArgumentException($"No computation for read-only setting: {key}");
@@ -229,15 +271,15 @@ public partial class ServerSettingsService : IServerSettingsService
     }
 
     /// <summary>
-    /// Converts a raw stored value to the setting's type. Collection settings parse their
-    /// JSON text into the typed list; an unusable collection value yields the empty list,
-    /// so consumers apply their documented fallback (defaults, or "all types").
+    /// Converts an effective value to the setting's type: values already of the
+    /// setting's type pass through (typed defaults, bound configuration, stored list
+    /// rows), scalar text parses, and an unusable collection value yields the empty
+    /// list, so consumers apply their documented fallback (defaults, or "all types").
     /// </summary>
     private static bool TryConvert(ServerSettingDefinition definition, object value, out object converted)
     {
         try
         {
-            // A value already of the setting's type (e.g. a typed default) passes through
             if (definition.ValueType.IsInstanceOfType(value))
             {
                 converted = value;
@@ -247,7 +289,7 @@ public partial class ServerSettingsService : IServerSettingsService
             var raw = value.ToString() ?? string.Empty;
             if (definition.ValueType == typeof(int))
             {
-                converted = int.Parse(raw, CultureInfo.InvariantCulture);
+                converted = int.Parse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture);
                 return true;
             }
             if (definition.ValueType == typeof(bool))
@@ -255,19 +297,22 @@ public partial class ServerSettingsService : IServerSettingsService
                 converted = bool.Parse(raw);
                 return true;
             }
+            // Scalar text for a list definition is the presence marker of an
+            // explicitly empty list override (a non-empty override has its items
+            // in server_setting_list_values instead)
             if (definition.ValueType == typeof(List<string>))
             {
-                converted = DeserializeList(raw) ?? new List<string>();
+                converted = value as List<string> ?? [];
                 return true;
             }
             if (definition.ValueType == typeof(List<int>))
             {
-                var items = DeserializeList(raw);
-                if (items == null || items.All(item => int.TryParse(item, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+                var items = value as List<string> ?? [];
+                if (items.All(item => int.TryParse(item, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
                 {
-                    converted = items == null
-                        ? new List<int>()
-                        : items.Select(item => int.Parse(item, NumberStyles.Integer, CultureInfo.InvariantCulture)).ToList();
+                    converted = items
+                        .Select(item => int.Parse(item, NumberStyles.Integer, CultureInfo.InvariantCulture))
+                        .ToList();
                     return true;
                 }
                 converted = new List<int>();
@@ -275,40 +320,31 @@ public partial class ServerSettingsService : IServerSettingsService
             }
 
             converted = raw;
-            return true;
+            return definition.ValueType == typeof(string);
         }
         catch (Exception)
         {
-            converted = definition.Default;
+            if (definition.ValueType == typeof(List<string>))
+            {
+                converted = new List<string>();
+            }
+            else if (definition.ValueType == typeof(List<int>))
+            {
+                converted = new List<int>();
+            }
+            else
+            {
+                converted = definition.Default;
+            }
             return false;
         }
     }
 
     /// <summary>
-    /// Deserializes a JSON array of strings; null when the value is empty or unparseable.
+    /// Converts the incoming JSON value of a PUT to its canonical stored form:
+    /// plain text for scalar settings, the ordered item list for collections.
     /// </summary>
-    private static List<string>? DeserializeList(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return null;
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<List<string>>(raw, ListOptions);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Converts the incoming JSON value of a PUT to the canonical text stored in the
-    /// database: plain text for scalar settings, JSON array text for collections.
-    /// </summary>
-    private static string Canonicalize(ServerSettingDefinition definition, JsonElement value)
+    private static object Canonicalize(ServerSettingDefinition definition, JsonElement value)
     {
         if (definition.ValueType == typeof(bool))
         {
@@ -339,10 +375,9 @@ public partial class ServerSettingsService : IServerSettingsService
             {
                 throw new ArgumentException($"Setting {definition.Key} expects a list of strings");
             }
-            var items = value.EnumerateArray()
+            return value.EnumerateArray()
                 .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : item.GetRawText())
-                .ToList();
-            return JsonSerializer.Serialize(items, ListOptions);
+                .ToList()!;
         }
 
         if (definition.ValueType == typeof(List<int>))
@@ -356,12 +391,21 @@ public partial class ServerSettingsService : IServerSettingsService
             {
                 throw new ArgumentException($"Setting {definition.Key} expects a list of integers");
             }
-            return JsonSerializer.Serialize(items, ListOptions);
+            return items;
         }
 
         return value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? string.Empty
             : throw new ArgumentException($"Setting {definition.Key} expects a string value");
+    }
+
+    /// <summary>
+    /// Human-readable form of a canonical value for the change log line: scalar text
+    /// as-is, list items comma-joined.
+    /// </summary>
+    private static string CanonicalLogText(object canonical)
+    {
+        return canonical is List<string> items ? string.Join(", ", items) : (string)canonical;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Setting {Key} changed to {Value}")]

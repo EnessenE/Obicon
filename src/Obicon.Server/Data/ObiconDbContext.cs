@@ -124,6 +124,7 @@ public class ObiconDbContext : DbContext
     /// Runtime overrides of server settings. Default: empty.
     /// </summary>
     public DbSet<ServerSettingValue> ServerSettingValues => Set<ServerSettingValue>();
+    public DbSet<ServerSettingListValue> ServerSettingListValues => Set<ServerSettingListValue>();
 
     /// <summary>
     /// Enroll tokens for node self-registration, stored as hashes. Default: empty.
@@ -157,6 +158,10 @@ public class ObiconDbContext : DbContext
 
         modelBuilder.Entity<ServerSettingValue>()
             .HasKey(s => s.Key);
+
+        // List-typed setting overrides: one ordered row per item, never JSON text
+        modelBuilder.Entity<ServerSettingListValue>()
+            .HasKey(v => new { v.Key, v.Position });
 
         // Relationship and dictionary tables: no ID lists or key-value maps are ever
         // serialized into a column; each reference is a row with a cascading foreign key
