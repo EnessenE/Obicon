@@ -12,7 +12,7 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 
 `/docs` hosts the user-facing documentation and will eventually be served as a docs page:
 
-- `index.md` (overview), `getting-started.md`, `server.md`, `node.md`, `metrics.md`, and the full `api-spec.md`
+- `index.md` (overview), `getting-started.md` (published-image user path), `contributing.md` (build and tests), `server.md`, `node.md`, `metrics.md`, and the full `api-spec.md`
 - Keep these pages **light and basic** — setup, configuration, and pointers; deep internals belong in `/Project` docs or the API spec, not duplicated there
 - Update them whenever user-facing behavior changes: ports, settings, env vars, endpoints, Docker usage. Like the API spec, a docs page that lags the code is a bug
 - The docs are plain Markdown with relative links between pages, so any static site generator (e.g. MkDocs) can host them without changes
@@ -43,7 +43,7 @@ Note: the `/Project` folder is **local-only** (gitignored). In a fresh clone it 
 
 ## CI, Releases, and Docker
 
-- **Pipelines:** `.github/workflows/ci.yml` (pull requests to `main`: build + test, default read-only permissions) and `.github/workflows/release.yml` (pushes to `main`: build + test, then publish the server and node images to the GitHub Container Registry, `ghcr.io/<owner>/<repo>/server` and `/node`, then tag and release). The frontend is not published as an image (run it with `dotnet run --project src/Obicon.Client`)
+- **Pipelines:** `.github/workflows/ci.yml` (pull requests to `main`: build + test, default read-only permissions) and `.github/workflows/release.yml` (pushes to `main`: build + test, then publish the server and node images to the GitHub Container Registry, `ghcr.io/enessene/obicon/server` and `/node` — each as `<version>` and `latest`, versions derived from the CHANGELOG headings — then tag and release). The frontend is not published as an image (run it with `dotnet run --project src/Obicon.Client`)
 - **Versions are per component:** `CHANGELOG.md` tracks `## [Server x.y.z]` and `## [Node x.y.z]` headings independently — bump only the component that changed. The pipeline publishes each image with its own version and creates `server-vx.y.z` / `node-vx.y.z` tags and releases, with the matching changelog section as notes. Frontend changes are listed under the server release. The publish job reuses images for an existing tag but skips re-releasing
 - **Dockerfiles:** `src/Obicon.Server/Dockerfile` (aspnet:10.0, port 5000, SQLite file in `/app`) and `src/Obicon.Node/Dockerfile` (runtime:10.0, configured via `Node__*` env vars; needs `--cap-add=NET_RAW` for ping/traceroute, and `Node__MetricsHost=+` to expose metrics). Both build from the repo root as context with `.dockerignore` keeping it small
 

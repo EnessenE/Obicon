@@ -8,9 +8,10 @@ The Obicon server is the central piece: it stores nodes, tests, and jobs; schedu
 docker compose up -d   # server + PostgreSQL, from the repo root
 ```
 
-or from source (needs a reachable PostgreSQL):
+or from source (needs a reachable PostgreSQL — the standalone database compose in [`test/`](../test/) provides one matching the default connection string):
 
 ```bash
+docker compose -f test/docker-compose.yml up -d
 dotnet run --project src/Obicon.Server
 ```
 
@@ -22,11 +23,11 @@ dotnet run --project src/Obicon.Server
 | Prometheus metrics | `GET /metrics` (no auth) |
 | WebSocket hub | `ws://localhost:5000/ws/nodes` (nodes connect here) |
 
-In Docker, the published image is `ghcr.io/<owner>/<repo>/server` (port 5000). The repo root's `docker-compose.yml` runs the server next to a PostgreSQL container.
+In Docker, the published image is `ghcr.io/enessene/obicon/server` (port 5000; tags `latest` and the per-release version, e.g. `0.4.0`). The repo root's `docker-compose.yml` runs the server next to a PostgreSQL container.
 
 ## Storage
 
-All data lives in PostgreSQL (default connection string `Host=localhost;Port=5432;Database=obicon;Username=obicon;Password=postgres`, override with `ConnectionStrings__Default`). EF Core migrations run automatically on startup - a fresh database is created, and an existing one is brought up to the current schema.
+All data lives in PostgreSQL (default connection string `Host=localhost;Port=5432;Database=obicon;Username=obicon;Password=obicon`, override with `ConnectionStrings__Default`; the compose in [`test/`](../test/) starts a database with exactly those credentials). EF Core migrations run automatically on startup - a fresh database is created, and an existing one is brought up to the current schema.
 
 The database is the system of record for configuration (nodes, pools, tests, settings, enroll tokens) and for a **bounded window of finished test results**:
 
@@ -47,7 +48,7 @@ Server configuration lives in `appsettings.json` (override with environment vari
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `ConnectionStrings:Default` | `Host=localhost;Port=5432;Database=obicon;Username=obicon;Password=postgres` | PostgreSQL connection string |
+| `ConnectionStrings:Default` | `Host=localhost;Port=5432;Database=obicon;Username=obicon;Password=obicon` | PostgreSQL connection string |
 | `Otlp:Endpoint` | *(empty)* | OTLP endpoint (e.g. `http://collector:4317`); set it to push metrics **and** node logs to your observability backend. Empty keeps the scrape-only behavior |
 | `ServerSettings:AuthHeader` | `secureobiconkey` | Required API auth header value |
 | `ServerSettings:MaxTestTimeoutSeconds` | `60` | Upper bound for test timeouts |

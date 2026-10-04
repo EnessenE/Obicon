@@ -5,7 +5,7 @@ All notable changes to Obicon are documented here. The format is based on
 [semantic versioning](https://semver.org) independently.
 
 Versions are tracked per component: `## [Server x.y.z]` and `## [Node x.y.z]`.
-The CI pipeline publishes `ghcr.io/<owner>/<repo>/server:<server version>` and
+The CI pipeline publishes `ghcr.io/enessene/obicon/server:<server version>` and
 `.../node:<node version>`, and creates the tags/releases `server-vx.y.z` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
@@ -20,6 +20,7 @@ separate version; its changes are listed under the server release.
 - OTLP egress through OpenTelemetry: set `Otlp:Endpoint` in appsettings (env `Otlp__Endpoint`) to push metrics **and** node logs to your observability backend - Prometheus 3.x's OTLP receiver, a collector, Mimir, VictoriaMetrics, or a vendor. Absent or empty keeps today's scrape-only behavior; the `/metrics` Prometheus endpoint stays up either way. Retention of that history is your backend's flag, not ours
 - Node log funnel: log entries accepted from nodes (while `NodeLogShippingEnabled` is on) are now forwarded into the server's OTel logging pipeline and egress via the OTLP logs exporter, with the node's identity and the entry's properties as first-class fields: `node_id`, `node_name`, `node_version`, `source_context`, and every shipped property (`job_id`, `test_id`) - the join keys into the metrics. `ShipNodeLogsToConsole` keeps its separate console echo; the structured content is no longer dropped on the floor
 - Tests: the server suite runs against a shared Testcontainers PostgreSQL with one database per test factory (Docker required, as for the integration suite), and the integration stack boots a PostgreSQL container next to the server. New coverage: storage modes, the metrics-before-deletion invariant, prune behavior, the label selection with its forced floor, and the log funnel's attribute contract
+- Docs: `docs/getting-started.md` is now purely the published-image user path, driving the REST API via Swagger — it no longer tells users to self-host the web UI (which is not part of the published images); build-from-source moved to the new `docs/contributing.md`, the architecture diagram renders as a Mermaid diagram, and a standalone database compose ships in `test/` for running the server from source with the default connection string
 
 ## [Node 0.5.0] - Unreleased
 

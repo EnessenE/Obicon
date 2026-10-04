@@ -1,6 +1,6 @@
 # Obicon server with its PostgreSQL database.
 # Start with: docker compose up -d
-# The UI is static files - serve src/Obicon.Client/wwwroot with any static file server.
+# The API (with Swagger) is on http://localhost:5000 - see docs/api-spec.md.
 services:
   server:
     image: ghcr.io/enessene/obicon/server:latest
@@ -21,7 +21,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - obicon-db:/var/lib/postgresql/data
+      # postgres 18+ expects a single mount at /var/lib/postgresql; data lands
+      # in a major-version subdirectory (e.g. 18/docker) inside it
+      - obicon-db:/var/lib/postgresql
     restart: unless-stopped
 
 volumes:

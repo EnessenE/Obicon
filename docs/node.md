@@ -83,7 +83,7 @@ docker run -d \
   -e Node__Token="<auth token>" \
   -p 9464:9464 \
   --cap-add=NET_RAW \
-  ghcr.io/<owner>/<repo>/node
+  ghcr.io/enessene/obicon/node:latest
 ```
 
 `--cap-add=NET_RAW` is needed for ping/traceroute; add `-e Node__MetricsHost=+` to expose the metrics endpoint outside the container.
