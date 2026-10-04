@@ -85,7 +85,8 @@ public class NodeTargetCleanupTests : LoggedTest, IClassFixture<ObiconServerFact
         var run = await _client.PostAsync($"/v1/tests/{testId}/run", content: null);
         Assert.True(run.IsSuccessStatusCode, $"Triggering the run failed: {run.StatusCode}");
 
-        var queue = await _client.GetFromJsonAsync<JsonElement[]>("/v1/queue") ?? [];
-        Assert.DoesNotContain(queue, j => j.GetProperty("testId").GetString() == testId);
+        var page = await _client.GetFromJsonAsync<JsonElement>($"/v1/testruns?limit=500&testId={testId}");
+        Assert.Equal(0, page.GetProperty("total").GetInt32());
+        Assert.Empty(page.GetProperty("items").EnumerateArray());
     }
 }

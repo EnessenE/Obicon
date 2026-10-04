@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Obicon.Server.Models;
 using Obicon.Server.Models.Responses;
 using Obicon.Server.Services;
@@ -38,8 +37,6 @@ public class TestMetricsEmitter : ITestMetricsEmitter
     /// setting's documented default.
     /// </summary>
     public static readonly string[] DefaultLabels = ["test_type", "test_name", "node_name", "node_labels"];
-
-    private static readonly JsonSerializerOptions LabelJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IServerSettingsService _settingsService;
 
@@ -88,28 +85,15 @@ public class TestMetricsEmitter : ITestMetricsEmitter
     }
 
     /// <summary>
-    /// Parses the TestMetricsLabels setting into the selected label set, falling back to
-    /// the documented defaults when the value is missing, empty, or not a JSON array.
+    /// The selected label set from the TestMetricsLabels setting. An explicitly empty
+    /// list means only the forced floor rides along; the defaults apply only when the
+    /// setting is missing entirely.
     /// </summary>
     public async Task<HashSet<string>> GetSelectedLabelsAsync()
     {
-        var raw = await _settingsService.GetAsync<string>("TestMetricsLabels");
-        if (!string.IsNullOrWhiteSpace(raw))
-        {
-            try
-            {
-                var parsed = JsonSerializer.Deserialize<string[]>(raw, LabelJsonOptions);
-                if (parsed != null)
-                {
-                    return new HashSet<string>(parsed.Select(l => l.Trim()), StringComparer.Ordinal);
-                }
-            }
-            catch (JsonException)
-            {
-                // Fall through to the defaults; an invalid array is a UI/config error
-            }
-        }
-
-        return new HashSet<string>(DefaultLabels, StringComparer.Ordinal);
+        var selected = await _settingsService.GetAsync<List<string>>("TestMetricsLabels");
+        return selected == null
+            ? new HashSet<string>(DefaultLabels, StringComparer.Ordinal)
+            : new HashSet<string>(selected.Select(l => l.Trim()), StringComparer.Ordinal);
     }
 }

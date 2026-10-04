@@ -60,7 +60,7 @@ curl -X POST http://localhost:5000/v1/tests \
   }'
 ```
 
-The scheduler enqueues it at the chosen frequency. To execute a test once without creating anything first, use a dry run (`POST /v1/tests/run-once`) — it runs immediately on the selected nodes and reports through the queue like any other job. Every run is a job: `GET /v1/queue` lists them with status, duration, output, and structured details (timings, certificates, DNS records), and `GET /v1/queue/{id}` tracks a single one.
+The scheduler enqueues it at the chosen frequency. To execute a test once without creating anything first, use a dry run (`POST /v1/tests/run-once`) — it runs immediately on the selected nodes and reports through the queue like any other job. Every run is a job: `GET /v1/testruns` lists them (paginated, with status/node/text filters) with status, duration, output, and structured details (timings, certificates, DNS records), and `GET /v1/testruns/{id}` tracks a single one.
 
 ## 4. Watch the metrics
 

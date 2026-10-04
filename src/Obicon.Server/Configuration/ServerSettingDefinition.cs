@@ -16,7 +16,8 @@ public class ServerSettingDefinition
     public string Description { get; init; } = string.Empty;
 
     /// <summary>
-    /// Value type of the setting: string, int, or bool.
+    /// Value type of the setting: string, int, bool, or a typed collection such as
+    /// List&lt;string&gt; or List&lt;int&gt; - collections are never JSON-encoded strings.
     /// </summary>
     public Type ValueType { get; init; } = typeof(string);
 
@@ -33,7 +34,9 @@ public class ServerSettingDefinition
     public string Group { get; init; } = "General";
 
     /// <summary>
-    /// Default value as string, used when nothing is configured or stored. Default: empty string.
+    /// Default value, used when nothing is configured or stored: a string for scalar
+    /// settings, a typed collection (e.g. List&lt;string&gt;) for collection settings.
+    /// Default: empty string.
     /// </summary>
-    public string Default { get; init; } = string.Empty;
+    public object Default { get; init; } = string.Empty;
 }

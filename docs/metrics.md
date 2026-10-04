@@ -8,7 +8,7 @@ The database keeps finished test results only for a bounded window (`JobRetentio
 
 ## Server — `http://localhost:5000/metrics`
 
-No auth required. The per-run test metrics (`obicon.tests.runs` and `obicon.tests.duration_ms`) are exported only while the `TestMetricsEnabled` setting is on; which labels ride along is chosen by the `TestMetricsLabels` setting (JSON array, default `["test_type","test_name","node_name","node_labels"]`). `test_id` and the counter's `status` are always attached; `node_name` is the human-readable node dimension (forks series on rename), `node_id` the rename-stable opt-in, and `node_labels` the churniest label — any label change on any node starts new series. Changing the set starts new series for subsequent runs. Scraped metrics:
+No auth required. The per-run test metrics (`obicon.tests.runs` and `obicon.tests.duration_ms`) are exported only while the `TestMetricsEnabled` setting is on; which labels ride along is chosen by the `TestMetricsLabels` setting (default `["test_type","test_name","node_name","node_labels"]`). `test_id` and the counter's `status` are always attached; `node_name` is the human-readable node dimension (forks series on rename), `node_id` the rename-stable opt-in, and `node_labels` the churniest label — any label change on any node starts new series. Changing the set starts new series for subsequent runs. Scraped metrics:
 
 | Metric | Type | Labels | Meaning |
 |--------|------|--------|---------|

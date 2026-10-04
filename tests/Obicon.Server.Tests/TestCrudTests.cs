@@ -48,7 +48,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var run = await _client.PostAsync($"/v1/tests/{testId}/run", null);
         run.EnsureSuccessStatusCode();
 
-        var jobs = await _client.GetFromJsonAsync<JsonElement>("/v1/queue");
+        var jobs = (await _client.GetFromJsonAsync<JsonElement>("/v1/testruns?limit=500")).GetProperty("items");
         var forTest = jobs.EnumerateArray()
             .Where(j => j.GetProperty("testId").GetGuid() == testId)
             .ToList();
@@ -146,7 +146,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task Test_AcceptsFrequencyAfterPresetChange()
     {
-        var original = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "15,45" });
+        var original = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 15, 45 } });
         original.EnsureSuccessStatusCode();
         try
         {
@@ -168,7 +168,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "10,30,60,120,300,600,3600" });
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 10, 30, 60, 120, 300, 600, 3600 } });
         }
     }
 

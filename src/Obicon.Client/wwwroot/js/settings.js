@@ -89,6 +89,9 @@ function renderSettingRow(setting) {
     if (setting.key === 'TestResultStorageMode') {
         return renderStorageModeRow(setting);
     }
+    if (setting.key === 'FrequencyPresetsSeconds') {
+        return renderFrequencyPresetsRow(setting);
+    }
 
     const locked = setting.isForced || setting.isReadOnly;
     const control = isBoolean(setting)
@@ -96,7 +99,7 @@ function renderSettingRow(setting) {
             <div class="form-check form-switch">
                 <input class="form-check-input setting-switch" type="checkbox" role="switch"
                        id="setting-input-${escapeHtml(setting.key)}"
-                       ${setting.value === 'true' ? 'checked' : ''}
+                       ${setting.value === true ? 'checked' : ''}
                        ${locked ? 'disabled' : ''}
                        onchange="toggleSetting('${escapeHtml(setting.key)}', this.checked, this)">
             </div>`
@@ -173,7 +176,7 @@ async function toggleTestType(name, checked, input) {
         .map(t => t.name);
 
     try {
-        await apiCall('PUT', '/v1/settings/EnabledTestTypes', { value: JSON.stringify(enabled) });
+        await apiCall('PUT', '/v1/settings/EnabledTestTypes', { value: enabled });
     } catch (error) {
         input.checked = !checked;
         settingsError.textContent = error.message;
@@ -186,13 +189,11 @@ async function toggleTestType(name, checked, input) {
 // job_id switch that documents why it can never be a metric label
 function renderMetricLabelsRow(setting) {
     const locked = setting.isForced || setting.isReadOnly;
-    let selected;
-    try {
-        selected = JSON.parse(setting.value);
-    } catch (error) {
-        // An unparseable value falls back to the raw text input, like a broken setting
+    if (!Array.isArray(setting.value)) {
+        // An unexpected shape falls back to the raw text input, like a broken setting
         return renderRawSettingRow(setting);
     }
+    const selected = setting.value;
 
     const switches = metricLabels.map(label => `
         <div class="form-check form-switch mb-0">
@@ -232,7 +233,7 @@ async function toggleMetricLabel(label, checked, input) {
         .filter(l => document.getElementById(`metric-label-${l}`).checked);
 
     try {
-        await apiCall('PUT', '/v1/settings/TestMetricsLabels', { value: JSON.stringify(selected) });
+        await apiCall('PUT', '/v1/settings/TestMetricsLabels', { value: selected });
     } catch (error) {
         input.checked = !checked;
         settingsError.textContent = error.message;
@@ -318,7 +319,7 @@ function isBoolean(setting) {
 // Boolean settings save immediately on toggle; the switch reverts on failure
 async function toggleSetting(key, checked, input) {
     try {
-        await apiCall('PUT', `/v1/settings/${key}`, { value: checked ? 'true' : 'false' });
+        await apiCall('PUT', `/v1/settings/${key}`, { value: checked });
     } catch (error) {
         input.checked = !checked;
         settingsError.textContent = error.message;
@@ -327,10 +328,38 @@ async function toggleSetting(key, checked, input) {
     }
 }
 
+// The frequency presets row: a comma-separated text field over the int-list setting
+function renderFrequencyPresetsRow(setting) {
+    const locked = setting.isForced || setting.isReadOnly;
+    const values = Array.isArray(setting.value) ? setting.value.join(', ') : String(setting.value ?? '');
+    return `
+        <div class="row align-items-center mb-3 pb-3 border-bottom">
+            <div class="col-md-5">
+                <strong>${escapeHtml(setting.key)}</strong>
+                ${setting.isForced ? '<span class="badge bg-secondary ms-1" title="Pinned by appsettings or an environment variable; cannot be changed here">Forced by configuration</span>' : `<span class="badge bg-light text-dark border ms-1">${escapeHtml(setting.source)}</span>`}
+                <div class="small text-muted">${escapeHtml(setting.description)}</div>
+            </div>
+            <div class="col-md-4">
+                <input id="setting-input-${escapeHtml(setting.key)}" class="form-control"
+                       value="${escapeHtml(values)}" placeholder="e.g. 15, 45, 3600" ${locked ? 'readonly' : ''}>
+            </div>
+            <div class="col-md-3 text-end">
+                ${locked ? '<span class="text-muted small">Read-only</span>' : `<button class="btn btn-sm btn-primary" onclick="saveSetting('${escapeHtml(setting.key)}')">Save</button>`}
+            </div>
+        </div>
+    `;
+}
+
 async function saveSetting(key) {
     const input = document.getElementById(`setting-input-${key}`);
+    let value = input.value;
+    if (key === 'FrequencyPresetsSeconds') {
+        value = value.split(',')
+            .map(part => parseInt(part.trim(), 10))
+            .filter(seconds => Number.isFinite(seconds) && seconds > 0);
+    }
     try {
-        await apiCall('PUT', `/v1/settings/${key}`, { value: input.value });
+        await apiCall('PUT', `/v1/settings/${key}`, { value });
         await loadSettings();
     } catch (error) {
         settingsError.textContent = error.message;

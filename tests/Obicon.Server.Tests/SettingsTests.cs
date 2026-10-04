@@ -60,7 +60,23 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
             var source = setting.GetProperty("source").GetString();
             if (source == "Default")
             {
-                Assert.Equal(definition.Default, setting.GetProperty("value").GetString());
+                var value = setting.GetProperty("value");
+                if (definition.ValueType == typeof(bool))
+                {
+                    Assert.Equal((bool)definition.Default, value.GetBoolean());
+                }
+                else if (definition.ValueType == typeof(int))
+                {
+                    Assert.Equal((int)definition.Default, value.GetInt32());
+                }
+                else if (definition.ValueType == typeof(List<string>) || definition.ValueType == typeof(List<int>))
+                {
+                    Assert.Equal(JsonSerializer.Serialize(definition.Default), JsonSerializer.Serialize(value));
+                }
+                else
+                {
+                    Assert.Equal((string)definition.Default, value.GetString());
+                }
             }
         }
     }
@@ -130,8 +146,8 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var run = await _client.PostAsync($"/v1/tests/{testId}/run", null);
         run.EnsureSuccessStatusCode();
 
-        var queue = await _client.GetFromJsonAsync<JsonElement>("/v1/queue");
-        var job = queue.EnumerateArray().First(j => j.GetProperty("testId").GetGuid() == testId);
+        var page = await _client.GetFromJsonAsync<JsonElement>("/v1/testruns?limit=500");
+        var job = page.GetProperty("items").EnumerateArray().First(j => j.GetProperty("testId").GetGuid() == testId);
         Assert.Equal(60, job.GetProperty("timeoutSeconds").GetInt32());
     }
 
@@ -151,7 +167,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var setting = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("3", setting.GetProperty("value").GetString());
+        Assert.Equal(3, setting.GetProperty("value").GetInt32());
         Assert.Equal("Database", setting.GetProperty("source").GetString());
 
         // Restore the default so other tests see a clean state
@@ -171,12 +187,12 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     {
         var settings = await GetSettingsMapAsync();
         Assert.False(settings["AllowUnsupportedNodeVersions"].GetProperty("isForced").GetBoolean());
-        Assert.Equal("false", settings["AllowUnsupportedNodeVersions"].GetProperty("value").GetString());
+        Assert.False(settings["AllowUnsupportedNodeVersions"].GetProperty("value").GetBoolean());
 
         var enable = await _client.PutAsJsonAsync("/v1/settings/AllowUnsupportedNodeVersions", new { Value = "true" });
         Assert.Equal(HttpStatusCode.OK, enable.StatusCode);
         var enabled = await enable.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("true", enabled.GetProperty("value").GetString());
+        Assert.True(enabled.GetProperty("value").GetBoolean());
 
         var invalid = await _client.PutAsJsonAsync("/v1/settings/AllowUnsupportedNodeVersions", new { Value = "maybe" });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
@@ -200,9 +216,9 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         Assert.Equal("Observability", settings["ShipNodeLogsToConsole"].GetProperty("group").GetString());
 
         // Shipping is off and console forwarding is off by default; local node logging is on
-        Assert.Equal("false", settings["NodeLogShippingEnabled"].GetProperty("value").GetString());
-        Assert.Equal("true", settings["NodeLocalLoggingEnabled"].GetProperty("value").GetString());
-        Assert.Equal("false", settings["ShipNodeLogsToConsole"].GetProperty("value").GetString());
+        Assert.False(settings["NodeLogShippingEnabled"].GetProperty("value").GetBoolean());
+        Assert.True(settings["NodeLocalLoggingEnabled"].GetProperty("value").GetBoolean());
+        Assert.False(settings["ShipNodeLogsToConsole"].GetProperty("value").GetBoolean());
     }
 
     [Fact]
@@ -253,7 +269,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task FrequencyPresetsSeconds_GateTestCreation()
     {
-        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "15,45" });
+        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 15, 45 } });
         change.EnsureSuccessStatusCode();
 
         try
@@ -285,7 +301,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "10,30,60,120,300,600,3600" });
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 10, 30, 60, 120, 300, 600, 3600 } });
         }
     }
 
@@ -311,7 +327,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task SchedulerInterval_FollowsPresetOverride()
     {
-        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "15,45,300" });
+        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 15, 45, 300 } });
         change.EnsureSuccessStatusCode();
         try
         {
@@ -321,7 +337,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "10,30,60,120,300,600,3600" });
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 10, 30, 60, 120, 300, 600, 3600 } });
         }
     }
 

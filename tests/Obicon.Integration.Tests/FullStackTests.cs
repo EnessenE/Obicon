@@ -153,7 +153,7 @@ public sealed class FullStackTests
         JsonElement job = default;
         await ObiconStackFixture.RetryUntilAsync(async () =>
         {
-            var jobs = await _fixture.Api.GetFromJsonAsync<JsonElement>("/v1/queue");
+            var jobs = (await _fixture.Api.GetFromJsonAsync<JsonElement>("/v1/testruns?limit=500")).GetProperty("items");
             var match = jobs.EnumerateArray()
                 .FirstOrDefault(j => exactId
                     ? j.GetProperty("id").GetGuid() == id

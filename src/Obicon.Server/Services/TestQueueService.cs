@@ -158,21 +158,54 @@ public class TestQueueService : ITestQueueService
         return await WithFullLoad(db).FirstOrDefaultAsync(j => j.Id == jobId);
     }
 
-    public async Task<IEnumerable<TestJob>> GetJobsForNodeAsync(Guid nodeId)
+    /// <summary>
+    /// One page of test runs, newest first, with the server-side filters of the query
+    /// applied and the total number of matching runs across all pages. The page window
+    /// is applied before the details load, so a page never loads more than its jobs.
+    /// </summary>
+    public async Task<TestRunPage> GetRunsAsync(TestRunQuery query)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await WithFullLoad(db)
-            .Where(j => j.NodeId == nodeId)
+
+        var items = await ApplyRunFilters(WithFullLoad(db), query)
             .OrderByDescending(j => j.CreatedAt)
+            .Skip(query.Offset)
+            .Take(query.Limit)
             .ToListAsync();
+
+        var total = await ApplyRunFilters(db.TestJobs, query).CountAsync();
+
+        return new TestRunPage(items, total, query.Limit, query.Offset);
     }
 
-    public async Task<IEnumerable<TestJob>> GetAllJobsAsync()
+    /// <summary>
+    /// The filters shared by the page query and the total count: status, node, test,
+    /// and a case-insensitive search over target, output, and error message.
+    /// </summary>
+    private static IQueryable<TestJob> ApplyRunFilters(IQueryable<TestJob> jobs, TestRunQuery query)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await WithFullLoad(db)
-            .OrderByDescending(j => j.CreatedAt)
-            .ToListAsync();
+        if (query.Status != null)
+        {
+            jobs = jobs.Where(j => j.Status == query.Status);
+        }
+        if (query.NodeId != null)
+        {
+            jobs = jobs.Where(j => j.NodeId == query.NodeId);
+        }
+        if (query.TestId != null)
+        {
+            jobs = jobs.Where(j => j.TestId == query.TestId);
+        }
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var pattern = $"%{query.Search.Trim()}%";
+            jobs = jobs.Where(j =>
+                EF.Functions.ILike(j.Target, pattern) ||
+                (j.Output != null && EF.Functions.ILike(j.Output, pattern)) ||
+                (j.ErrorMessage != null && EF.Functions.ILike(j.ErrorMessage, pattern)));
+        }
+
+        return jobs;
     }
 
     public async Task<IEnumerable<TestJob>> GetPendingJobsAsync()

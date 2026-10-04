@@ -380,7 +380,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var firstRun = await _client.PostAsync($"/v1/tests/{testId}/run", content: null);
         Assert.True(firstRun.IsSuccessStatusCode);
 
-        var firstJob = (await _queue.GetJobsForNodeAsync(nodeId)).First();
+        var firstJob = (await _queue.GetRunsAsync(new(50, 0, null, nodeId, null, null))).Items.First();
         Assert.Equal("first", firstJob.Headers.Single(h => h.Name == "X-Original").Value);
 
         // Editing the test must never reach the already-enqueued job
@@ -402,7 +402,8 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var secondRun = await _client.PostAsync($"/v1/tests/{testId}/run", content: null);
         Assert.True(secondRun.IsSuccessStatusCode);
 
-        var jobs = (await _queue.GetJobsForNodeAsync(nodeId)).OrderBy(j => j.CreatedAt).ToList();
+        var jobs = (await _queue.GetRunsAsync(new(500, 0, null, nodeId, null, null)))
+            .Items.OrderBy(j => j.CreatedAt).ToList();
         Assert.Equal(2, jobs.Count);
         Assert.Equal("first", jobs[0].Headers.Single(h => h.Name == "X-Original").Value);
         Assert.Equal("second", jobs[1].Headers.Single(h => h.Name == "X-Original").Value);

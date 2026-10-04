@@ -31,7 +31,7 @@ public class ServerSettings
     /// Comma-separated list of test frequencies, in seconds, offered in the UI and accepted when
     /// creating or editing a test. Default: "10,30,60,120,300,600,3600".
     /// </summary>
-    public string FrequencyPresetsSeconds { get; set; } = "10,30,60,120,300,600,3600";
+    public string FrequencyPresetsSeconds { get; set; } = "[10,30,60,120,300,600,3600]";
 
     /// <summary>
     /// If enabled, the server accepts nodes whose version is outside the supported range

@@ -65,7 +65,7 @@ Separate from the static config above, the server has runtime settings editable 
 2. **Database override** — set via the API/UI, stored in the database
 3. **Default** — built-in defaults
 
-Useful settings include `FrequencyPresetsSeconds` (the intervals tests can choose, default `10,30,60,120,300,600,3600`), `NodeAutoEnrollmentEnabled` (lets nodes register themselves with enroll tokens), `NoRunGraceFactor`, and `AllowUnsupportedNodeVersions` (accept nodes outside the supported version range instead of disconnecting them). `SchedulerLoopIntervalSeconds` is read-only and derived from the lowest frequency preset.
+Useful settings include `FrequencyPresetsSeconds` (the intervals tests can choose, default `[10,30,60,120,300,600,3600]`), `NodeAutoEnrollmentEnabled` (lets nodes register themselves with enroll tokens), `NoRunGraceFactor`, and `AllowUnsupportedNodeVersions` (accept nodes outside the supported version range instead of disconnecting them). `SchedulerLoopIntervalSeconds` is read-only and derived from the lowest frequency preset.
 
 Two settings in the **General** group control what test results the database keeps:
 
@@ -83,7 +83,7 @@ The settings UI groups settings into sections; the **Observability** section con
 | `NodeExternalIpResolvingEnabled` | `false` | Nodes may resolve their external (public) addresses via the configured check services; while off, nodes report them as unavailable and contact no check service |
 | `ShipNodeLogsToConsole` | `false` | Log entries received from nodes are written to the server's own console, tagged with the node's identity |
 | `TestMetricsEnabled` | `true` | Finished test runs are exported on `/metrics` (and via OTLP) as `obicon.tests.runs` and `obicon.tests.duration_ms`; when off, new runs are not recorded (already exported series persist until restart) |
-| `TestMetricsLabels` | `["test_type","test_name","node_name","node_labels"]` | JSON array choosing which labels ride along on the test metrics. `test_id` and the counter's `status` are always attached; `node_name` is the human-readable node dimension, `node_id` the rename-stable opt-in, `node_labels` the churniest. Changing the set starts new series for subsequent runs |
+| `TestMetricsLabels` | `["test_type","test_name","node_name","node_labels"]` | List choosing which labels ride along on the test metrics. `test_id` and the counter's `status` are always attached; `node_name` is the human-readable node dimension, `node_id` the rename-stable opt-in, `node_labels` the churniest. Changing the set starts new series for subsequent runs |
 
 The policy is announced to every node in the server hello message. Changing `NodeLogShippingEnabled` or `NodeLocalLoggingEnabled` through the API or UI pushes a `ServerPolicyUpdate` to all connected nodes immediately — they apply it on the fly, without reconnecting. A node's `Node:LocalLoggingEnabled` override always wins over the server's local logging default.
 

@@ -81,8 +81,10 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     {
         var settings = await _client.GetFromJsonAsync<JsonElement>("/v1/settings");
         var byKey = settings.EnumerateArray().ToDictionary(s => s.GetProperty("key").GetString()!, s => s);
-        Assert.Equal("true", byKey["TestMetricsEnabled"].GetProperty("value").GetString());
-        Assert.Equal(DefaultLabels, byKey["TestMetricsLabels"].GetProperty("value").GetString());
+        Assert.True(byKey["TestMetricsEnabled"].GetProperty("value").GetBoolean());
+        Assert.Equal(
+            "[\"test_type\",\"test_name\",\"node_name\",\"node_labels\"]",
+            JsonSerializer.Serialize(byKey["TestMetricsLabels"].GetProperty("value")));
     }
 
     [Fact]
@@ -104,7 +106,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task Emit_SelectedLabels_RideAlong_UnselectedDoNot()
     {
-        await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = "[\"node_id\",\"node_labels\"]" });
+        await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "node_id", "node_labels" } });
         try
         {
             var node = await CreateNodeAsync("selection-node", "edge");
@@ -127,14 +129,14 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = DefaultLabels });
+            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
         }
     }
 
     [Fact]
     public async Task Emit_EmptySelection_StillCarriesTheForcedFloor()
     {
-        await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = "[]" });
+        await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = Array.Empty<string>() });
         try
         {
             var node = await CreateNodeAsync("floor-node");
@@ -149,7 +151,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = DefaultLabels });
+            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
         }
     }
 
@@ -169,7 +171,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = DefaultLabels });
+            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
         }
     }
 

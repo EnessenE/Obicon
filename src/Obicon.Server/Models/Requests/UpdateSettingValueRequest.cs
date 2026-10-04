@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Obicon.Server.Models.Requests;
 
 /// <summary>
@@ -6,7 +8,8 @@ namespace Obicon.Server.Models.Requests;
 public class UpdateSettingValueRequest
 {
     /// <summary>
-    /// New value as string; converted to the setting's type. Required.
+    /// New value as raw JSON: a string for scalar settings, a native array for
+    /// collection settings. Converted to the setting's type. Required.
     /// </summary>
-    public string Value { get; set; } = string.Empty;
+    public JsonElement Value { get; set; }
 }

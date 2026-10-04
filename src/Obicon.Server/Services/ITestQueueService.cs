@@ -23,8 +23,7 @@ public interface ITestQueueService
     /// </summary>
     Task<TestJob?> UpdateJobStatusAsync(Guid jobId, TestJobStatus status, TestResult? result = null, string? errorMessage = null);
     Task<TestJob?> GetJobAsync(Guid jobId);
-    Task<IEnumerable<TestJob>> GetJobsForNodeAsync(Guid nodeId);
-    Task<IEnumerable<TestJob>> GetAllJobsAsync();
+    Task<TestRunPage> GetRunsAsync(TestRunQuery query);
     Task<IEnumerable<TestJob>> GetPendingJobsAsync();
     Task<IEnumerable<TestJob>> GetActiveJobsAsync();
     Task<int> GetQueueLengthAsync();

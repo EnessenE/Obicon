@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Obicon.Server.Configuration;
@@ -286,8 +284,7 @@ public partial class TestService : ITestService
     /// </summary>
     private async Task<List<int>> GetFrequencyPresetsAsync()
     {
-        var raw = await _settingsService.GetAsync<string>("FrequencyPresetsSeconds");
-        return FrequencyPresets.Parse(raw);
+        return FrequencyPresets.Normalize(await _settingsService.GetAsync<List<int>>("FrequencyPresetsSeconds"));
     }
 
     private async Task ValidateFrequencyAsync(int frequency)
@@ -301,13 +298,9 @@ public partial class TestService : ITestService
 
     /// <summary>
     /// Rejects test types the server has disabled through the EnabledTestTypes setting,
-    /// a JSON array of TestType values such as ["Ping","Http","Dns"]. An empty or
-    /// missing setting enables every type.
+    /// a list of TestType names such as ["Ping","Http","Dns"]. An empty list enables
+    /// every type.
     /// </summary>
-    private static readonly JsonSerializerOptions TestTypeListOptions = new()
-    {
-        Converters = { new JsonStringEnumConverter() }
-    };
 
     /// <inheritdoc />
     public async Task<List<Models.Responses.TestTypeInfo>> GetTestTypesAsync()
@@ -335,29 +328,28 @@ public partial class TestService : ITestService
     }
 
     /// <summary>
-    /// Parses the EnabledTestTypes setting into the enabled set; null means every type
-    /// (a missing setting or an empty array). Throws ArgumentException when the setting
-    /// holds something other than a JSON array of type names.
+    /// Resolves the EnabledTestTypes setting into the enabled set; an empty list (or
+    /// unknown names) means every type is enabled. Unknown names are ignored: the
+    /// setting holds TestType names such as "Ping" or "Dns".
     /// </summary>
     private async Task<HashSet<TestType>?> ResolveEnabledTestTypesAsync()
     {
-        var raw = await _settingsService.GetAsync<string>("EnabledTestTypes");
-        if (string.IsNullOrWhiteSpace(raw))
+        var enabledNames = await _settingsService.GetAsync<List<string>>("EnabledTestTypes");
+        if (enabledNames is not { Count: > 0 })
         {
             return null;
         }
 
-        List<TestType>? enabled;
-        try
+        var enabled = new HashSet<TestType>();
+        foreach (var name in enabledNames)
         {
-            enabled = JsonSerializer.Deserialize<List<TestType>>(raw, TestTypeListOptions);
-        }
-        catch (JsonException)
-        {
-            throw new ArgumentException("EnabledTestTypes must be a JSON array of test type names, e.g. [\"Ping\",\"Http\",\"Dns\"]");
+            if (Enum.TryParse(name, out TestType type))
+            {
+                enabled.Add(type);
+            }
         }
 
-        return enabled is { Count: > 0 } ? enabled.ToHashSet() : null;
+        return enabled.Count > 0 ? enabled : null;
     }
 
     /// <summary>

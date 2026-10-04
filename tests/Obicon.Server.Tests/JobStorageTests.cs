@@ -238,7 +238,7 @@ public class JobStorageTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var byKey = settings.EnumerateArray().ToDictionary(s => s.GetProperty("key").GetString()!, s => s);
 
         Assert.Equal("Full", byKey["TestResultStorageMode"].GetProperty("value").GetString());
-        Assert.Equal("30", byKey["JobRetentionDays"].GetProperty("value").GetString());
+        Assert.Equal(30, byKey["JobRetentionDays"].GetProperty("value").GetInt32());
     }
 
     /// <summary>

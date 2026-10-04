@@ -48,10 +48,9 @@ async function loadFrequencyPresets() {
     try {
         const settings = await apiCall('GET', '/v1/settings');
         const setting = settings.find(s => s.key === 'FrequencyPresetsSeconds');
-        const parsed = (setting ? setting.value : '')
-            .split(',')
-            .map(part => parseInt(part.trim(), 10))
-            .filter(seconds => Number.isFinite(seconds) && seconds > 0);
+        const parsed = Array.isArray(setting?.value)
+            ? setting.value.filter(seconds => Number.isFinite(seconds) && seconds > 0)
+            : [];
         if (parsed.length > 0) {
             frequencyPresets = [...new Set(parsed)].sort((a, b) => a - b);
         }
@@ -671,7 +670,7 @@ async function pollJob(jobId, maxSeconds) {
     const deadline = Date.now() + maxSeconds * 1000;
     while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const job = await apiCall('GET', `/v1/queue/${jobId}`);
+        const job = await apiCall('GET', `/v1/testruns/${jobId}`);
         if (job.status >= 3) {
             return job;
         }

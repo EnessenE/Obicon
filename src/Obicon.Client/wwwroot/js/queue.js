@@ -1,7 +1,11 @@
-// Queue page functionality
-let jobs = [];
+// Queue page functionality: paginated test runs with server-side filters
+let currentPageOffset = 0;
+let currentTotal = 0;
 let nodes = [];
 let autoRefreshTimer = null;
+
+// Runs per page; the pager steps through the total with this window
+const pageSize = 50;
 
 // DOM elements
 const queueList = document.getElementById('queueList');
@@ -14,6 +18,8 @@ const statusFilter = document.getElementById('statusFilter');
 const nodeFilter = document.getElementById('nodeFilter');
 const searchFilter = document.getElementById('searchFilter');
 const queueFilterCount = document.getElementById('queueFilterCount');
+const prevPageButton = document.getElementById('prevPageButton');
+const nextPageButton = document.getElementById('nextPageButton');
 
 // Job status to badge class
 const jobStatusMap = {
@@ -36,7 +42,7 @@ const jobStatusBadgeMap = {
     6: 'bg-dark'
 };
 
-// Load queue on page load
+// Load the queue on page load
 toggleAutoRefresh();
 loadQueue();
 loadNodes();
@@ -51,11 +57,34 @@ function toggleAutoRefresh() {
     }
 }
 
+// Any filter change returns to the first page and reloads
+function applyFilters() {
+    currentPageOffset = 0;
+    loadQueue();
+}
+
+function changePage(delta) {
+    currentPageOffset = Math.max(0, currentPageOffset + delta * pageSize);
+    loadQueue();
+}
+
 async function loadQueue() {
     showQueueLoading();
     try {
-        jobs = await apiCall('GET', '/v1/queue');
-        renderJobs();
+        const params = new URLSearchParams({ limit: pageSize, offset: currentPageOffset });
+        if (statusFilter.value !== '') {
+            params.set('status', statusFilter.value);
+        }
+        if (nodeFilter.value !== '') {
+            params.set('nodeId', nodeFilter.value);
+        }
+        if (searchFilter.value.trim() !== '') {
+            params.set('search', searchFilter.value.trim());
+        }
+
+        const page = await apiCall('GET', `/v1/testruns?${params}`);
+        currentTotal = page.total;
+        renderJobs(page);
         showQueueContent();
     } catch (error) {
         showQueueError(error.message);
@@ -76,38 +105,17 @@ async function loadNodes() {
     }
 }
 
-function jobMatchesFilters(job) {
-    if (statusFilter.value !== '' && job.status !== Number(statusFilter.value)) {
-        return false;
-    }
-    if (nodeFilter.value !== '' && job.nodeId !== nodeFilter.value) {
-        return false;
-    }
-    const term = searchFilter.value.trim().toLowerCase();
-    if (term !== '') {
-        const haystack = [job.id, job.testId, job.nodeId, job.target, job.output, job.errorMessage]
-            .filter(v => v != null)
-            .join(' ').toLowerCase();
-        if (!haystack.includes(term)) {
-            return false;
-        }
-    }
-    return true;
-}
+function renderJobs(page) {
+    const start = page.total === 0 ? 0 : page.offset + 1;
+    const end = page.offset + page.items.length;
+    queueFilterCount.textContent = `${start}-${end} of ${page.total}`;
 
-function renderJobs() {
-    if (jobs.length === 0) {
-        queueFilterCount.textContent = '';
-        noJobsMessage.textContent = 'Queue is empty.';
-        noJobsMessage.style.display = 'block';
-        queueList.style.display = 'none';
-        return;
-    }
+    prevPageButton.disabled = page.offset === 0;
+    nextPageButton.disabled = end >= page.total;
 
-    const filtered = jobs.filter(jobMatchesFilters);
-    queueFilterCount.textContent = `${filtered.length} of ${jobs.length}`;
-    if (filtered.length === 0) {
-        noJobsMessage.textContent = 'No jobs match the current filters.';
+    if (page.total === 0) {
+        const filtered = statusFilter.value !== '' || nodeFilter.value !== '' || searchFilter.value.trim() !== '';
+        noJobsMessage.textContent = filtered ? 'No runs match the current filters.' : 'Queue is empty.';
         noJobsMessage.style.display = 'block';
         queueList.style.display = 'none';
         return;
@@ -116,7 +124,7 @@ function renderJobs() {
     noJobsMessage.style.display = 'none';
     queueList.style.display = 'block';
 
-    queueList.innerHTML = filtered.map(job => `
+    queueList.innerHTML = page.items.map(job => `
         <div class="row g-2 g-lg-3 list-row px-3">
             <div class="col-12 col-lg-2">
                 <div class="field-label">Job ID</div>
