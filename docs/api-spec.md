@@ -11,6 +11,26 @@ All endpoints require the `Authorization` header carrying the configured API key
 Authorization: secureobiconkey
 ```
 
+## Conventions
+
+- Routes are lowercase and plural, hyphenating multi-word resources: `/v1/nodes`, `/v1/pools`, `/v1/tests`, `/v1/test-runs`, `/v1/enroll-tokens`, `/v1/settings`. Exceptions: `/v1/enroll` (the node self-enrollment action) and `/v1/health`
+- Responses are `application/json` only, camelCased
+- Enums travel as camelCase strings (`"ping"`, `"ipv4"`, `"completed"`), never as bare integers; unknown values are rejected on the way in
+- Every list endpoint returns a page envelope: `{ "items": [...], "total": <rows matching the query across all pages>, "limit": <page size>, "offset": <page start> }`. List requests accept `limit` (default 100, range 1-500) and `offset` (default 0, zero-based)
+- Errors use RFC 9457 ProblemDetails (`application/problem+json`): `type`, `title`, `detail`, `status`, `instance`:
+
+```json
+{
+  "title": "Bad request",
+  "detail": "Target is required",
+  "status": 400,
+  "instance": "/v1/tests"
+}
+```
+
+Status mapping: 400 invalid input, 401 missing or wrong API key, 403 understood but not allowed for the caller (enrollment disabled, foreign nodes), 404 unknown resource, 409 conflicts (duplicate names, forced settings, editing an enrolled node)
+- `PATCH` changes only the fields present in the body; `PUT` replaces the resource wholesale
+
 ## Endpoints
 
 ### Health
@@ -27,7 +47,7 @@ Returns server health status via the ASP.NET Core health checks middleware.
   "Entries": {
     "database": {
       "Data": {},
-      "Description": "SQLite database is reachable",
+      "Description": "PostgreSQL database is reachable",
       "Duration": "00:00:00.0015032",
       "Status": "Healthy"
     }
@@ -77,38 +97,43 @@ Creates a new node and returns its authentication token.
 
 #### List Nodes
 ```
-GET /v1/nodes
+GET /v1/nodes?limit={limit}&offset={offset}
 ```
-Returns all registered nodes.
+Returns one page of registered nodes, oldest first, in the page envelope described under Conventions. `limit` defaults to 100 (range 1-500); `offset` is zero-based.
 
 **Response:** 200 OK
 ```json
-[
-  {
-    "id": "00000000-0000-0000-0000-000000000000",
-    "name": "My Node",
-    "authToken": "",
-    "isActive": true,
-    "createdAt": "2024-01-01T00:00:00Z",
-    "lastSeenAt": "2024-01-01T00:00:01Z",
-    "enrollmentType": "manual",
-    "labels": [],
-    "version": "0.2.0",
-    "versionSupported": true,
-    "ipAddress": "192.168.1.42",
-    "internalIpv4": "192.168.1.42",
-    "internalIpv6": null,
-    "externalIpv4": "77.166.248.192",
-    "externalIpv6": null,
-    "settings": {
-      "MaxConcurrentTests": "4",
-      "HeartbeatIntervalSeconds": "1",
-      "DefaultTestTimeoutSeconds": "60",
-      "MaxTestTimeoutSeconds": "60",
-      "ReconnectDelaySeconds": "5"
+{
+  "items": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "name": "My Node",
+      "authToken": "",
+      "isActive": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "lastSeenAt": "2024-01-01T00:00:01Z",
+      "enrollmentType": "manual",
+      "labels": [],
+      "version": "0.2.0",
+      "versionSupported": true,
+      "ipAddress": "192.168.1.42",
+      "internalIpv4": "192.168.1.42",
+      "internalIpv6": null,
+      "externalIpv4": "77.166.248.192",
+      "externalIpv6": null,
+      "settings": {
+        "MaxConcurrentTests": "4",
+        "HeartbeatIntervalSeconds": "1",
+        "DefaultTestTimeoutSeconds": "60",
+        "MaxTestTimeoutSeconds": "60",
+        "ReconnectDelaySeconds": "5"
+      }
     }
-  }
-]
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
 ```
 `authToken` is empty here: the plain token is only returned on creation, token regeneration, or enrollment, and only its SHA-256 hash is stored. `ipAddress` is the address the server observed on the WebSocket; the four reported addresses are the node's own resolved LAN and public addresses per family, null when unavailable.
 
@@ -196,7 +221,7 @@ Returns the live status of every node: its active flag and whether it currently 
 ```
 DELETE /v1/nodes/{id}
 ```
-Deletes a node and removes it from every pool it belongs to.
+Deletes a node, removes it from every pool it belongs to, and removes it from every test that directly targets it (pool-targeted tests are unaffected; a test left with no targets simply stops producing runs).
 
 **Response:** 204 No Content
 
@@ -231,9 +256,11 @@ POST /v1/pools
 
 #### List Pools
 ```
-GET /v1/pools
+GET /v1/pools?limit={limit}&offset={offset}
 ```
-**Response:** 200 OK - list of pools
+Returns one page of pools in the page envelope described under Conventions (`limit` default 100, range 1-500; `offset` zero-based).
+
+**Response:** 200 OK - page of pools
 
 #### Get Pool
 ```
@@ -291,11 +318,11 @@ Returns every test type with whether the server currently offers it, resolved fr
 **Response:** 200 OK
 ```json
 [
-  { "type": 0, "name": "Ping", "enabled": true },
-  { "type": 1, "name": "Traceroute", "enabled": false }
+  { "type": "ping", "name": "Ping", "enabled": true },
+  { "type": "traceroute", "name": "Traceroute", "enabled": false }
 ]
 ```
-**Errors:** 400 Bad Request when `EnabledTestTypes` holds something other than a JSON array of type names.
+**Errors:** 400 Bad Request when `EnabledTestTypes` holds something other than a list of type names.
 
 #### Create Test
 ```
@@ -307,13 +334,13 @@ Creates a new test.
 ```json
 {
   "name": "My HTTP Test",
-  "type": 2,  // Http = 2, see TestType enum below
+  "type": "http",  // string enum, see TestType below
   "target": "http://example.com/health",
   "nodeIds": ["11111111-1111-1111-1111-111111111111"],
   "poolIds": ["55555555-5555-5555-5555-555555555555"],
   "frequency": 120,  // interval in seconds; must be one of the FrequencyPresetsSeconds presets
   "isActive": true,
-  "ipVersion": 0,  // Any = 0, Ipv4 = 1, Ipv6 = 2
+  "ipVersion": "any",  // string enum: any, ipv4, ipv6, both
   "timeoutSeconds": 30,  // max execution time per run, seconds
   "expectedStatusCodes": "200-399",
   "checkCertificateExpiryDays": 14,
@@ -336,7 +363,7 @@ Creates a new test.
 }
 ```
 
-Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `10,30,60,120,300,600,3600`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL, and the traceroute settings must be in range (max hops 1-64, queries per hop 1-10, query timeout 100-60000 ms), as must the ping settings (count 1-100, probe timeout 100-60000 ms, interval 0-10000 ms), `httpMethod` must be one of GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, TRACE, and `dnsQueryType` must be A, AAAA, CNAME, TXT, MX, CAA, or ANY. The test type must also be enabled on this server: the `EnabledTestTypes` setting — a JSON array of test type names, e.g. `["Ping","Http","Dns"]` (default empty = all types) — rejects create, edit, and run-once requests for disabled types with 400.
+Validation (returns 400 with details on failure): `name` and `target` are required, at least one node ID or pool ID must be given, `type` must be a valid enum value, `frequency` is the interval in seconds and must be one of the `FrequencyPresetsSeconds` server setting values (default `[10,30,60,120,300,600,3600]`), `timeoutSeconds` must be 1-3600 (capped by the server's MaxTestTimeoutSeconds), `expectedStatusCodes` must match `\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*` (e.g. `200-399` or `200,301`), `checkCertificateExpiryDays` must be 0-3650, `expectedBodyPattern` must be a valid regular expression, `headers` names must be non-empty without whitespace or colons, and `proxyUrl` must be an absolute `http://` or `https://` URL, and the traceroute settings must be in range (max hops 1-64, queries per hop 1-10, query timeout 100-60000 ms), as must the ping settings (count 1-100, probe timeout 100-60000 ms, interval 0-10000 ms), `httpMethod` must be one of GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS, TRACE, and `dnsQueryType` must be A, AAAA, CNAME, TXT, MX, CAA, or ANY. The test type must also be enabled on this server: the `EnabledTestTypes` setting — a list of test type names, e.g. `["Ping","Http","Dns"]` (default empty = all types) — rejects create, edit, and ad-hoc run requests for disabled types with 400.
 
 Targeting: the test runs on the union of `nodeIds` and all members of `poolIds` (deduplicated).
 
@@ -354,13 +381,13 @@ Expectations, evaluated by the node:
 {
   "id": "22222222-2222-2222-2222-222222222222",
   "name": "My HTTP Test",
-  "type": 2,
+  "type": "http",
   "target": "http://example.com/health",
   "nodeIds": ["11111111-1111-1111-1111-111111111111"],
   "poolIds": ["55555555-5555-5555-5555-555555555555"],
   "frequency": 120,
   "isActive": true,
-  "ipVersion": 0,
+  "ipVersion": "any",
   "timeoutSeconds": 30,
   "expectedStatusCodes": "200-399",
   "checkCertificateExpiryDays": 14,
@@ -376,24 +403,29 @@ Expectations, evaluated by the node:
 
 #### List Tests
 ```
-GET /v1/tests
+GET /v1/tests?limit={limit}&offset={offset}
 ```
-Returns all tests.
+Returns one page of tests, oldest first, in the page envelope described under Conventions (`limit` default 100, range 1-500; `offset` zero-based).
 
 **Response:** 200 OK
 ```json
-[
-  {
-    "id": "22222222-2222-2222-2222-222222222222",
-    "name": "My HTTP Test",
-    "type": 2,
-    "nodeIds": ["11111111-1111-1111-1111-111111111111"],
-    "frequency": 120,
-    "isActive": true,
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": null
-  }
-]
+{
+  "items": [
+    {
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "My HTTP Test",
+      "type": "http",
+      "nodeIds": ["11111111-1111-1111-1111-111111111111"],
+      "frequency": 120,
+      "isActive": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": null
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
 ```
 
 #### Get Test
@@ -421,13 +453,15 @@ Updates a test.
 **Request Body:**
 ```json
 {
-  "type": 2,
+  "name": "My HTTP Test",
+  "type": "http",
   "target": "http://example.com/health",
   "nodeIds": ["11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"],
   "frequency": 60,
   "isActive": true
 }
 ```
+`name` is required and renames the test; the remaining fields replace the test wholesale, like on create.
 
 **Response:** 200 OK (same structure as Create Test)
 
@@ -439,37 +473,37 @@ Deletes a test.
 
 **Response:** 204 No Content
 
-#### Toggle Test
+#### Change Test Active State
 ```
-POST /v1/tests/{id}/toggle
+PATCH /v1/tests/{id}
 ```
-Flips a test between active and inactive without deleting it. Inactive tests are not run.
+Partial update of a test. `isActive` is the only patchable field and is required in the body; inactive tests are not run by the scheduler.
 
-**Response:** 200 OK (same structure as Create Test, with flipped `isActive`)
+**Request Body:**
+```json
+{ "isActive": false }
+```
+
+**Response:** 200 OK (same structure as Create Test, with the new `isActive`)
 
 #### Trigger Test Run
 ```
-POST /v1/tests/{id}/run
+POST /v1/tests/{id}/runs
 ```
-Triggers immediate execution of a test. Enqueues one job per targeted node (direct node IDs plus all pool members); the queue processor sends each job to its node and stores the reported result on the job.
+Triggers immediate execution of a test. Enqueues one job per targeted node (direct node IDs plus all pool members, one per IP family for `ipVersion: "both"`); the queue processor sends each job to its node and stores the reported result on the job.
 
-**Response:** 200 OK
-```json
-{
-  "message": "Test run triggered"
-}
-```
+**Response:** 200 OK - the created jobs, in enqueue order (same structure as the items of List Test Runs)
 
 #### Run Test Once (dry run)
 ```
-POST /v1/tests/run-once
+POST /v1/test-runs
 ```
 Runs a single test immediately on a selection of nodes without creating a test first. Accepts explicit `nodeIds` and/or `poolIds`: the explicit nodes always run, and each pool contributes its top 3 connected members — least busy first (fewest queued/assigned/running jobs). All referenced nodes and pools must exist; jobs only go to connected nodes among the selection.
 
 **Request Body:**
 ```json
 {
-  "type": 5,  // Dns
+  "type": "dns",
   "target": "example.com",
   "nodeIds": ["11111111-1111-1111-1111-111111111111"],
   "poolIds": ["55555555-5555-5555-5555-555555555555"],
@@ -496,7 +530,7 @@ Runs a single test immediately on a selection of nodes without creating a test f
 ```
 `timeoutSeconds` is optional (default 60, range 1-60). Accepts the same HTTP expectation fields as a test (`expectedStatusCodes`, `expectedBodyPattern`, `headers`, `proxyUrl`, `cacheBust`, `checkCertificateExpiryDays`, `expectedDnsResult`) and the same traceroute, ping, HTTP, and DNS settings. At least one node ID or pool ID is required.
 
-**Response:** 200 OK - one job per selected node and IP family (a request with `ipVersion` 3 schedules two jobs per node), in the order of the request; poll each at `GET /v1/queue/{id}` until `status` is 3 (Completed), 4 (Failed), or 5 (Timeout).
+**Response:** 200 OK - one job per selected node and IP family (a request with `ipVersion: "both"` schedules two jobs per node), in the order of the request; poll each at `GET /v1/test-runs/{id}` until `status` is `"completed"`, `"failed"`, or `"timeout"`.
 
 **Errors:** 400 Bad Request for invalid expectations, unknown node or pool IDs, an empty selection, or when none of the selected nodes are connected.
 
@@ -508,7 +542,7 @@ Runs a single test immediately on a selection of nodes without creating a test f
 GET /metrics
 ```
 Prometheus scrape endpoint (no auth). Exposes:
-- `obicon.tests.runs` (counter, dims `status`, `test_type`, `test_id`, `test_name`, `node_id`, `node_name`, and `node_labels` while the `TestMetricsIncludeNodeLabels` setting is on) and `obicon.tests.duration_ms` (histogram, same dims minus `status`) from the `Obicon.Tests` meter. One label set per test and node combination; both are exported only while the `TestMetricsEnabled` setting is on
+- `obicon.tests.runs` (counter) and `obicon.tests.duration_ms` (histogram) from the `Obicon.Tests` meter, one label set per test and node combination, exported only while the `TestMetricsEnabled` setting is on. Labels come from the `TestMetricsLabels` setting (default `["test_type","test_name","node_name","node_labels"]`); `test_id` and the counter's `status` are always attached, and the histogram omits `status`
 - `obicon.server.actions` (counter, dim `action`), `obicon.server.noruns` (counter, dim `reason`: `never_acknowledged` / `never_started` / `node_offline`), and `obicon.server.nodelogs` (counter, dims `level`, `source_context`, `node_id`, `node_name`) counting received node log entries, from the `Obicon.Server` meter. The NoRun scenario is checked every 10 seconds
 - Standard ASP.NET Core and HttpClient instrumentation metrics
 
@@ -517,6 +551,8 @@ Nodes expose their `Obicon.Node` meter (`obicon.node.tests_executed`, `obicon.no
 ### Settings
 
 Server settings resolve as: forced by appsettings/env (read-only) → database override → default. Read-only derived settings (e.g. `SchedulerLoopIntervalSeconds`) are computed from other settings: `PUT` returns 409 for them, and their `source` is `Derived`. Each setting carries a `group` naming the section it is displayed under in the settings UI, e.g. `General` or `Observability`.
+
+Values are typed on the wire: booleans as `true`/`false`, integers as numbers, and collection settings (`EnabledTestTypes`, `FrequencyPresetsSeconds`, `TestMetricsLabels`) as native JSON arrays - never JSON-encoded strings. `PUT` accepts the same native forms (a plain string is also accepted for scalar settings), and forced configuration in appsettings or environment variables uses native arrays the same way.
 
 #### List Settings
 ```
@@ -528,7 +564,7 @@ GET /v1/settings
   {
     "key": "NodeAutoEnrollmentEnabled",
     "description": "If enabled, nodes can register themselves with a valid enroll token...",
-    "value": "false",
+    "value": false,
     "isForced": false,
     "isReadOnly": false,
     "source": "Default",
@@ -544,7 +580,7 @@ PUT /v1/settings/{key}
 ```
 **Request Body:**
 ```json
-{ "value": "true" }
+{ "value": true }
 ```
 **Response:** 200 OK (the updated setting)
 **Errors:** 409 when the setting is forced by configuration, 400 for unknown keys or invalid values.
@@ -569,9 +605,11 @@ Both fields optional. **Response:** 201 Created, includes the plain `token` once
 
 #### List Tokens
 ```
-GET /v1/enroll-tokens
+GET /v1/enroll-tokens?limit={limit}&offset={offset}
 ```
-**Response:** 200 OK - list without plain tokens, with `createdAt`, `expiresAt`, `revokedAt`.
+Returns one page of tokens in the page envelope described under Conventions (`limit` default 100, range 1-500; `offset` zero-based).
+
+**Response:** 200 OK - page without plain tokens, with `createdAt`, `expiresAt`, `revokedAt`.
 
 #### Revoke Token
 ```
@@ -623,7 +661,7 @@ Authenticates with the enroll token in the body instead of the API Authorization
 
 #### Stats
 ```
-GET /v1/server/stats
+GET /v1/stats
 ```
 Returns aggregated statistics about the server.
 
@@ -648,87 +686,108 @@ Returns aggregated statistics about the server.
 
 ---
 
-### Queue
+### Test Runs
 
-#### List Queue
+#### List Test Runs
 ```
-GET /v1/queue
+GET /v1/test-runs?limit={limit}&offset={offset}&status={status}&nodeId={nodeId}&testId={testId}&search={search}&sortBy={sortBy}&sortOrder={sortOrder}
 ```
-Returns all test jobs in the queue, newest first.
+Returns one page of test runs plus the total number of runs matching the filters across all pages. All query parameters are optional.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `limit` | `50` | Page size, range 1 to 500 |
+| `offset` | `0` | Zero-based offset of the first run in the page |
+| `status` | *(all)* | Only runs with this TestJobStatus value (string, e.g. `completed`) |
+| `nodeId` | *(all)* | Only runs executed by this node |
+| `testId` | *(all)* | Only runs of this test |
+| `search` | *(none)* | Case-insensitive text matched against target, output, and error message |
+| `sortBy` | `createdAt` | Sort column: `createdAt`, `durationMs`, or `status` |
+| `sortOrder` | `desc` | Sort direction: `asc` or `desc` |
 
 **Response:** 200 OK
 ```json
-[
-  {
-    "id": "44444444-4444-4444-4444-444444444444",
-    "testId": "22222222-2222-2222-2222-222222222222",
-    "nodeId": "11111111-1111-1111-1111-111111111111",
-    "testType": 5,
-    "target": "example.com",
-    "timeoutSeconds": 60,
-    "ipVersion": 3,
-    "status": 0,
-    "createdAt": "2024-01-01T00:00:00Z",
-    "acknowledgedAt": null,
-    "startedAt": null,
-    "completedAt": null,
-    "success": null,
-    "durationMs": null,
-    "output": null,
-    "errorMessage": null,
-    "details": null
-  }
-]
+{
+  "items": [
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "testId": "22222222-2222-2222-2222-222222222222",
+      "nodeId": "11111111-1111-1111-1111-111111111111",
+      "testType": "dns",
+      "target": "example.com",
+      "timeoutSeconds": 60,
+      "ipVersion": "both",
+      "status": "queued",
+      "createdAt": "2024-01-01T00:00:00Z",
+      "acknowledgedAt": null,
+      "startedAt": null,
+      "completedAt": null,
+      "success": null,
+      "durationMs": null,
+      "output": null,
+      "errorMessage": null,
+      "details": null
+    }
+  ],
+  "total": 423,
+  "limit": 50,
+  "offset": 0
+}
 ```
-For one-off runs (from `POST /v1/tests/run-once`), `testId` is `00000000-0000-0000-0000-000000000000`. `details` carries the structured result sections described under the TestResult message; it is null for results reported by nodes older than 0.4.0 (which also lose their old flat metrics).
+For one-off runs (from `POST /v1/test-runs`), `testId` is `00000000-0000-0000-0000-000000000000`. `details` carries the structured result sections described under the TestResult message; it is null for results reported by nodes older than 0.4.0 (which also lose their old flat metrics).
 
-#### Get Job
+The runs are a bounded window, not a history: finished jobs are governed by the `TestResultStorageMode` setting (`Full` keeps the payload, `MetadataOnly` keeps the row without it, `None` deletes the row on completion — so with `None` only in-flight jobs are ever listed) and the `JobRetentionDays` sweep deletes finished jobs after the window (default 30 days). Anything older lives in the user's metrics and log backend.
+
+#### Get Run
 ```
-GET /v1/queue/{id}
+GET /v1/test-runs/{id}
 ```
-Returns a single test job.
+Returns a single test run.
 
-**Response:** 200 OK (same structure as List Queue entries)
+**Response:** 200 OK (same structure as the items of List Test Runs)
 
-## TestJobStatus Enum
-| Value | Description |
-|-------|-------------|
-| 0 | Queued |
-| 1 | Assigned - dispatched; the node acknowledged receipt but has not started it |
-| 2 | Running |
-| 3 | Completed |
-| 4 | Failed |
-| 5 | Timeout |
-| 6 | NoRun - the job never ran: assigned but never acknowledged within [test timeout] / NoRunGraceFactor, acknowledged but never started within [test timeout] + 15s, or the node was never connected within [test timeout] + 15s while the job sat queued |
+## TestJobStatus
+Reported on the wire as a camelCase string:
+| Wire value | Description |
+|------------|-------------|
+| `queued` | Waiting in the queue to be assigned to a node |
+| `assigned` | Dispatched; the node acknowledged receipt but has not started it |
+| `running` | Currently executed by the node |
+| `completed` | Ran successfully |
+| `failed` | Ran and failed |
+| `timeout` | Exceeded its execution time |
+| `noRun` | The job never ran: assigned but never acknowledged within [test timeout] / NoRunGraceFactor, acknowledged but never started within [test timeout] + 15s, or the node was never connected within [test timeout] + 15s while the job sat queued |
 
 ---
 
-## TestType Enum
-| Value | Description |
-|-------|-------------|
-| 0 | Ping |
-| 1 | Traceroute |
-| 2 | Http |
-| 3 | Https |
-| 4 | Tcp |
-| 5 | Dns |
-| 6 | Tls - handshake against host:port (default 443), reporting the certificate and negotiated parameters; `checkCertificateExpiryDays` applies |
+## TestType
+Sent and returned as a camelCase string:
+| Wire value | Description |
+|------------|-------------|
+| `ping` | ICMP echo probe |
+| `traceroute` | Network path trace |
+| `http` | Plain HTTP request test |
+| `https` | TLS HTTP request test |
+| `tcp` | TCP connect test |
+| `dns` | DNS resolution test |
+| `tls` | Handshake against host:port (default 443), reporting the certificate and negotiated parameters; `checkCertificateExpiryDays` applies |
 
 ## Test Frequency
 
-`Frequency` is the interval between runs, in plain seconds (no enum). The allowed values come from the `FrequencyPresetsSeconds` server setting (default: `10,30,60,120,300,600,3600`); create and update reject any value outside it. Adjust the setting on the Settings page or via `PUT /v1/settings/FrequencyPresetsSeconds` to offer different intervals, e.g. `15,45,1800`.
+`Frequency` is the interval between runs, in plain seconds (no enum). The allowed values come from the `FrequencyPresetsSeconds` server setting (default: `[10,30,60,120,300,600,3600]`); create and update reject any value outside it. Adjust the setting on the Settings page or via `PUT /v1/settings/FrequencyPresetsSeconds` to offer different intervals, e.g. `[15,45,1800]`.
 
-Frequencies are enforced by the `TestScheduler` background loop, which wakes every `SchedulerLoopIntervalSeconds` (a read-only setting derived from the lowest `FrequencyPresetsSeconds` preset, default 10). Each wake runs one SQLite query plus an in-memory scan and then sleeps (`Task.Delay`), so the CPU cost is one short database burst per wake — a lower interval means proportionally more wakes per hour. Changing `FrequencyPresetsSeconds` takes effect on the next cycle without a restart. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
+Frequencies are enforced by the `TestScheduler` background loop, which wakes every `SchedulerLoopIntervalSeconds` (a read-only setting derived from the lowest `FrequencyPresetsSeconds` preset, default 10). Each wake runs one database query plus an in-memory scan and then sleeps (`Task.Delay`), so the CPU cost is one short database burst per wake — a lower interval means proportionally more wakes per hour. Changing `FrequencyPresetsSeconds` takes effect on the next cycle without a restart. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
 
 Databases from before this change stored `Frequency` as the old `TestFrequency` enum (0-6); the server converts those rows to seconds once at startup (`SchemaMigrations` table records it).
 
-## IpVersion Enum
-| Value | Description |
-|-------|-------------|
-| 0 | Any - use whatever the host resolves to |
-| 1 | Ipv4 - force IPv4, fail if no A record |
-| 2 | Ipv6 - force IPv6, fail if no AAAA record |
-| 3 | Both - the server schedules one job pinned to IPv4 and one pinned to IPv6 for every targeted node, so both families are tested independently |
+## IpVersion
+Sent and returned as a camelCase string:
+| Wire value | Description |
+|------------|-------------|
+| `any` | Use whatever the host resolves to |
+| `ipv4` | Force IPv4, fail if no A record |
+| `ipv6` | Force IPv6, fail if no AAAA record |
+| `both` | The server schedules one job pinned to IPv4 and one pinned to IPv6 for every targeted node, so both families are tested independently |
 
 ---
 
@@ -750,7 +809,7 @@ ws://localhost:5000/ws/nodes?token={authToken}
 ### Message Types
 
 #### ServerHello
-Sent by server immediately after accepting a node's WebSocket connection. The node logs the server version and checks compatibility: a server outside the node's supported range (same major.minor) closes the connection, unless the node's `AllowUnsupportedServerVersion` setting is enabled. Mirrored on the server: a node reporting an unsupported version is disconnected unless the `AllowUnsupportedNodeVersions` server setting is enabled.
+Sent by server immediately after accepting a node's WebSocket connection. The node logs the server version and checks compatibility: a server outside the node's supported range (same major.minor) always closes the connection — the node has no override. Mirrored on the server: a node reporting an unsupported version is disconnected unless the `AllowUnsupportedNodeVersions` server setting is enabled.
 
 The message also carries the server's observability policy: `LogShippingEnabled` mirrors the `NodeLogShippingEnabled` setting (nodes may ship log entries only while it is true), `NodeLocalLoggingEnabled` mirrors the `NodeLocalLoggingEnabled` default for whether nodes log locally — a node's own configuration takes precedence — and `ExternalIpResolvingEnabled` mirrors the `NodeExternalIpResolvingEnabled` setting (default false): while it is false, nodes do not contact any external-IP check service and report those addresses as unavailable.
 ```json

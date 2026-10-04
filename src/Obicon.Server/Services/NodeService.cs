@@ -12,14 +12,14 @@ namespace Obicon.Server.Services;
 public partial class NodeService : INodeService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly NodeConnectionManager _connectionManager;
     private readonly ILogger<NodeService> _logger;
 
-    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, NodeConnectionManager connectionManager, ILogger<NodeService> logger)
+    public NodeService(IDbContextFactory<ObiconDbContext> dbFactory, NodeConnectionManager connectionManager, ILogger<NodeService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _connectionManager = connectionManager;
         _logger = logger;
     }
@@ -40,7 +40,7 @@ public partial class NodeService : INodeService
             LastSeenAt = null
         };
 
-        var response = await _writeQueue.EnqueueAsync(async db =>
+        var response = await _dbFactory.ExecuteAsync(async db =>
         {
             db.Nodes.Add(node);
             await db.SaveChangesAsync();
@@ -54,17 +54,36 @@ public partial class NodeService : INodeService
         return response;
     }
 
-    public async Task<IEnumerable<NodeResponse>> GetAllNodesAsync()
+    /// <summary>
+    /// Number of nodes registered, for the stats endpoint; avoids loading a page.
+    /// </summary>
+    public async Task<int> GetNodeCountAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var nodes = await db.Nodes.OrderBy(n => n.CreatedAt).ToListAsync();
-        return nodes.Select(ToResponse);
+        return await db.Nodes.CountAsync();
+    }
+
+    public async Task<Page<NodeResponse>> GetNodesAsync(PageParameters page)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var total = await db.Nodes.CountAsync();
+        var nodes = await db.Nodes
+            .Include(n => n.Labels)
+            .Include(n => n.Settings)
+            .OrderBy(n => n.CreatedAt)
+            .Skip(page.Offset)
+            .Take(page.Limit)
+            .ToListAsync();
+        return new Page<NodeResponse>(nodes.Select(ToResponse).ToList(), total, page.Limit, page.Offset);
     }
 
     public async Task<NodeResponse?> GetNodeAsync(Guid id)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var node = await db.Nodes.FindAsync(id);
+        var node = await db.Nodes
+            .Include(n => n.Labels)
+            .Include(n => n.Settings)
+            .FirstOrDefaultAsync(n => n.Id == id);
         if (node == null)
         {
             LogNodeNotFound(id);
@@ -75,9 +94,12 @@ public partial class NodeService : INodeService
 
     public async Task<NodeResponse?> UpdateNodeAsync(Guid id, UpdateNodeRequest request)
     {
-        var (response, plainToken) = await _writeQueue.EnqueueAsync(async db =>
+        var (response, plainToken) = await _dbFactory.ExecuteAsync(async db =>
         {
-            var node = await db.Nodes.FindAsync(id);
+            var node = await db.Nodes
+                .Include(n => n.Labels)
+                .Include(n => n.Settings)
+                .FirstOrDefaultAsync(n => n.Id == id);
             if (node == null)
             {
                 LogCannotUpdateNode(id);
@@ -90,7 +112,7 @@ public partial class NodeService : INodeService
             }
 
             node.Name = request.Name;
-            node.Labels = request.Labels;
+            ReplaceLabels(db, node, request.Labels);
 
             string? plainToken = null;
             if (request.RegenerateToken)
@@ -121,7 +143,7 @@ public partial class NodeService : INodeService
 
     public async Task<bool> DeleteNodeAsync(Guid id)
     {
-        var deleted = await _writeQueue.EnqueueAsync(async db =>
+        var deleted = await _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(id);
             if (node == null)
@@ -130,17 +152,10 @@ public partial class NodeService : INodeService
                 return false;
             }
 
+            // The join rows (labels, reported settings, pool membership, direct test
+            // targets) go with the node through their cascading foreign keys, so a
+            // deleted node leaves no stale reference that keeps queueing jobs
             db.Nodes.Remove(node);
-
-            // Drop the node from every pool; NodeIds is a JSON column, so a new
-            // list is assigned for EF's change tracker to see the change
-            var memberPools = (await db.NodePools.ToListAsync())
-                .Where(p => p.NodeIds.Contains(id)).ToList();
-            foreach (var pool in memberPools)
-            {
-                pool.NodeIds = pool.NodeIds.Where(nodeId => nodeId != id).ToList();
-            }
-
             await db.SaveChangesAsync();
             return true;
         });
@@ -172,7 +187,7 @@ public partial class NodeService : INodeService
 
     public Task UpdateNodeLastSeenAsync(Guid nodeId)
     {
-        return _writeQueue.EnqueueAsync(async db =>
+        return _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(nodeId);
             if (node != null)
@@ -185,18 +200,26 @@ public partial class NodeService : INodeService
 
     public Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, string? ipAddress, Dictionary<string, string>? settings)
     {
-        return _writeQueue.EnqueueAsync(async db =>
+        return _dbFactory.ExecuteAsync(async db =>
         {
-            var node = await db.Nodes.FindAsync(nodeId);
+            var node = await db.Nodes
+                .Include(n => n.Settings)
+                .FirstOrDefaultAsync(n => n.Id == nodeId);
             if (node == null)
             {
                 return;
             }
 
             var reportedSettings = settings ?? new Dictionary<string, string>();
+            var storedSettings = node.Settings.OrderBy(s => s.Key, StringComparer.Ordinal)
+                .Select(s => (s.Key, s.Value))
+                .ToList();
+            var incomingSettings = reportedSettings.OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                .Select(kv => (kv.Key, kv.Value))
+                .ToList();
             var changed = node.Version != version ||
                           node.IpAddress != ipAddress ||
-                          !node.Settings.OrderBy(kv => kv.Key).SequenceEqual(reportedSettings.OrderBy(kv => kv.Key));
+                          !storedSettings.SequenceEqual(incomingSettings);
             if (!changed)
             {
                 return;
@@ -204,7 +227,13 @@ public partial class NodeService : INodeService
 
             node.Version = version;
             node.IpAddress = ipAddress;
-            node.Settings = reportedSettings;
+            db.NodeReportedSettings.RemoveRange(node.Settings);
+            db.NodeReportedSettings.AddRange(reportedSettings.Select(kv => new NodeReportedSetting
+            {
+                NodeId = node.Id,
+                Key = kv.Key,
+                Value = kv.Value
+            }));
             await db.SaveChangesAsync();
 
             LogConnectionInfoUpdated(nodeId, version, ipAddress);
@@ -213,7 +242,7 @@ public partial class NodeService : INodeService
 
     public Task UpdateNodeReportedAddressesAsync(Guid nodeId, string? internalIpv4, string? internalIpv6, string? externalIpv4, string? externalIpv6)
     {
-        return _writeQueue.EnqueueAsync(async db =>
+        return _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(nodeId);
             if (node == null ||
@@ -235,6 +264,21 @@ public partial class NodeService : INodeService
         });
     }
 
+    /// <summary>
+    /// Replaces the node's label rows with the given list, inside the caller's unit of work.
+    /// </summary>
+    private static void ReplaceLabels(ObiconDbContext db, Node node, List<string> labels)
+    {
+        db.NodeLabels.RemoveRange(node.Labels);
+        node.Labels = labels
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(l => l.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Select(l => new NodeLabel { NodeId = node.Id, Label = l })
+            .ToList();
+        db.NodeLabels.AddRange(node.Labels);
+    }
+
     private static NodeResponse ToResponse(Node node) => new()
     {
         Id = node.Id,
@@ -244,7 +288,7 @@ public partial class NodeService : INodeService
         IsActive = node.IsActive,
         CreatedAt = node.CreatedAt,
         LastSeenAt = node.LastSeenAt,
-        Labels = node.Labels,
+        Labels = node.Labels.Select(l => l.Label).ToList(),
         EnrollmentType = node.EnrollmentType == NodeEnrollmentType.AutoEnrollment ? "auto-enrollment" : "manual",
         Version = node.Version,
         VersionSupported = node.Version == null
@@ -255,7 +299,7 @@ public partial class NodeService : INodeService
         InternalIpv6 = node.InternalIpv6,
         ExternalIpv4 = node.ExternalIpv4,
         ExternalIpv6 = node.ExternalIpv6,
-        Settings = node.Settings
+        Settings = node.Settings.ToDictionary(s => s.Key, s => s.Value)
     };
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Creating a node with name: {NodeName}")]

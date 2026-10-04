@@ -35,28 +35,28 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var created = await _client.PostAsJsonAsync("/v1/tests", new
         {
             Name = "dual-stack",
-            Type = 4,
+            Type = "tcp",
             Target = "example.com",
             Frequency = 60,
-            IpVersion = 3, // Both
+            IpVersion = "both", // Both
             NodeIds = new[] { nodeId }
         });
         created.EnsureSuccessStatusCode();
         var test = await created.Content.ReadFromJsonAsync<JsonElement>();
         var testId = test.GetProperty("id").GetGuid();
 
-        var run = await _client.PostAsync($"/v1/tests/{testId}/run", null);
+        var run = await _client.PostAsync($"/v1/tests/{testId}/runs", null);
         run.EnsureSuccessStatusCode();
 
-        var jobs = await _client.GetFromJsonAsync<JsonElement>("/v1/queue");
+        var jobs = (await _client.GetFromJsonAsync<JsonElement>("/v1/test-runs?limit=500")).GetProperty("items");
         var forTest = jobs.EnumerateArray()
             .Where(j => j.GetProperty("testId").GetGuid() == testId)
             .ToList();
 
         // One IPv4 job and one IPv6 job for the single targeted node
         Assert.Equal(2, forTest.Count);
-        Assert.Equal(1, forTest.Count(j => j.GetProperty("ipVersion").GetInt32() == 1));
-        Assert.Equal(1, forTest.Count(j => j.GetProperty("ipVersion").GetInt32() == 2));
+        Assert.Equal(1, forTest.Count(j => j.GetProperty("ipVersion").GetString() == "ipv4"));
+        Assert.Equal(1, forTest.Count(j => j.GetProperty("ipVersion").GetString() == "ipv6"));
     }
 
     [Fact]
@@ -67,12 +67,12 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var create = await _client.PostAsJsonAsync("/v1/tests", new
         {
             Name = "original",
-            Type = 5,
+            Type = "dns",
             Target = "localhost",
             NodeIds = new[] { nodeId },
             Frequency = 60,
             IsActive = true,
-            IpVersion = 0,
+            IpVersion = "any",
             TimeoutSeconds = 30
         });
         create.EnsureSuccessStatusCode();
@@ -82,7 +82,8 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
         var update = await _client.PutAsJsonAsync($"/v1/tests/{testId}", new
         {
-            Type = 0,
+            Name = "edited",
+            Type = "ping",
             Target = "example.com",
             NodeIds = new[] { nodeId },
             PoolIds = Array.Empty<Guid>(),
@@ -91,19 +92,20 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
             ExpectedStatusCodes = "200,301",
             CheckCertificateExpiryDays = 30,
             ExpectedDnsResult = "1.2.3.4",
-            IpVersion = 1,
+            IpVersion = "ipv4",
             TimeoutSeconds = 15
         });
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
 
         var updated = await update.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("edited", updated.GetProperty("name").GetString());
         Assert.Equal("example.com", updated.GetProperty("target").GetString());
         Assert.Equal(120, updated.GetProperty("frequency").GetInt32());
         Assert.False(updated.GetProperty("isActive").GetBoolean());
         Assert.Equal("200,301", updated.GetProperty("expectedStatusCodes").GetString());
         Assert.Equal(30, updated.GetProperty("checkCertificateExpiryDays").GetInt32());
         Assert.Equal("1.2.3.4", updated.GetProperty("expectedDnsResult").GetString());
-        Assert.Equal(1, updated.GetProperty("ipVersion").GetInt32());
+        Assert.Equal("ipv4", updated.GetProperty("ipVersion").GetString());
         Assert.Equal(15, updated.GetProperty("timeoutSeconds").GetInt32());
     }
 
@@ -115,7 +117,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var response = await _client.PostAsJsonAsync("/v1/tests", new
         {
             Name = "bad-timeout",
-            Type = 5,
+            Type = "dns",
             Target = "localhost",
             NodeIds = new[] { nodeId },
             Frequency = 60,
@@ -133,7 +135,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var response = await _client.PostAsJsonAsync("/v1/tests", new
         {
             Name = "bad-frequency",
-            Type = 5,
+            Type = "dns",
             Target = "localhost",
             NodeIds = new[] { nodeId },
             Frequency = 45,
@@ -146,7 +148,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task Test_AcceptsFrequencyAfterPresetChange()
     {
-        var original = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "15,45" });
+        var original = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 15, 45 } });
         original.EnsureSuccessStatusCode();
         try
         {
@@ -155,7 +157,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
             var response = await _client.PostAsJsonAsync("/v1/tests", new
             {
                 Name = "custom-frequency",
-                Type = 5,
+                Type = "dns",
                 Target = "localhost",
                 NodeIds = new[] { nodeId },
                 Frequency = 45,
@@ -168,7 +170,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = "10,30,60,120,300,600,3600" });
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 10, 30, 60, 120, 300, 600, 3600 } });
         }
     }
 
@@ -178,7 +180,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var response = await _client.PostAsJsonAsync("/v1/tests", new
         {
             Name = "no-targets",
-            Type = 5,
+            Type = "dns",
             Target = "localhost",
             NodeIds = Array.Empty<Guid>(),
             PoolIds = Array.Empty<Guid>(),

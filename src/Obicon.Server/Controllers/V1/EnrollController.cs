@@ -11,6 +11,7 @@ namespace Obicon.Server.Controllers.V1;
 /// </summary>
 [ApiController]
 [Route("v1/enroll")]
+[Produces("application/json")]
 public class EnrollController : ControllerBase
 {
     private readonly INodeEnrollmentService _enrollmentService;
@@ -25,27 +26,12 @@ public class EnrollController : ControllerBase
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(EnrollResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Enroll([FromBody] EnrollRequest request)
     {
-        try
-        {
-            var result = await _enrollmentService.EnrollAsync(request);
-            return Ok(result);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Unauthorized(new { Message = "Invalid, revoked, or expired enroll token" });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new { Message = ex.Message });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { Message = ex.Message });
-        }
+        var result = await _enrollmentService.EnrollAsync(request);
+        return Ok(result);
     }
 }

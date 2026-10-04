@@ -9,13 +9,13 @@ namespace Obicon.Server.Services;
 public partial class NodePoolService : INodePoolService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly ILogger<NodePoolService> _logger;
 
-    public NodePoolService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<NodePoolService> logger)
+    public NodePoolService(IDbContextFactory<ObiconDbContext> dbFactory, ILogger<NodePoolService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _logger = logger;
     }
 
@@ -26,11 +26,11 @@ public partial class NodePoolService : INodePoolService
             Id = Guid.NewGuid(),
             Name = request.Name,
             Description = request.Description ?? string.Empty,
-            NodeIds = new List<Guid>(),
+            Members = new List<PoolMember>(),
             CreatedAt = DateTime.UtcNow
         };
 
-        await _writeQueue.EnqueueAsync(async db =>
+        await _dbFactory.ExecuteAsync(async db =>
         {
             db.NodePools.Add(pool);
             await db.SaveChangesAsync();
@@ -41,25 +41,35 @@ public partial class NodePoolService : INodePoolService
         return PoolResponse.From(pool);
     }
 
-    public async Task<IEnumerable<PoolResponse>> GetAllPoolsAsync()
+    public async Task<Page<PoolResponse>> GetPoolsAsync(PageParameters page)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var pools = await db.NodePools.OrderBy(p => p.CreatedAt).ToListAsync();
-        return pools.Select(PoolResponse.From);
+        var total = await db.NodePools.CountAsync();
+        var pools = await db.NodePools
+            .Include(p => p.Members)
+            .OrderBy(p => p.CreatedAt)
+            .Skip(page.Offset)
+            .Take(page.Limit)
+            .ToListAsync();
+        return new Page<PoolResponse>(pools.Select(PoolResponse.From).ToList(), total, page.Limit, page.Offset);
     }
 
     public async Task<PoolResponse?> GetPoolAsync(Guid id)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var pool = await db.NodePools.FindAsync(id);
+        var pool = await db.NodePools
+            .Include(p => p.Members)
+            .FirstOrDefaultAsync(p => p.Id == id);
         return pool == null ? null : PoolResponse.From(pool);
     }
 
     public async Task<PoolResponse?> UpdatePoolAsync(Guid id, UpdatePoolRequest request)
     {
-        var updated = await _writeQueue.EnqueueAsync(async db =>
+        var updated = await _dbFactory.ExecuteAsync(async db =>
         {
-            var pool = await db.NodePools.FindAsync(id);
+            var pool = await db.NodePools
+                .Include(p => p.Members)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (pool == null)
             {
                 return (NodePool?)null;
@@ -78,28 +88,32 @@ public partial class NodePoolService : INodePoolService
 
     public async Task<PoolResponse?> SetPoolMembersAsync(Guid id, PoolMembersRequest request)
     {
-        var updated = await _writeQueue.EnqueueAsync(async db =>
+        var updated = await _dbFactory.ExecuteAsync(async db =>
         {
-            // NodeIds is a JSON column, so validate membership against the Nodes table first
+            var memberIds = request.NodeIds.Distinct().ToList();
             var existingIds = await db.Nodes
-                .Where(n => request.NodeIds.Contains(n.Id))
+                .Where(n => memberIds.Contains(n.Id))
                 .Select(n => n.Id)
                 .ToListAsync();
-            if (existingIds.Count != request.NodeIds.Distinct().Count())
+            if (existingIds.Count != memberIds.Count)
             {
                 throw new ArgumentException("Pool members include unknown node IDs");
             }
 
-            var pool = await db.NodePools.FindAsync(id);
+            var pool = await db.NodePools
+                .Include(p => p.Members)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (pool == null)
             {
                 return (NodePool?)null;
             }
 
-            pool.NodeIds = request.NodeIds.Distinct().ToList();
+            db.PoolMembers.RemoveRange(pool.Members);
+            pool.Members = memberIds.Select(nodeId => new PoolMember { PoolId = pool.Id, NodeId = nodeId }).ToList();
+            db.PoolMembers.AddRange(pool.Members);
             await db.SaveChangesAsync();
 
-            LogPoolMembersSet(id, pool.NodeIds.Count);
+            LogPoolMembersSet(id, pool.Members.Count);
             return pool;
         });
 
@@ -108,7 +122,7 @@ public partial class NodePoolService : INodePoolService
 
     public async Task<bool> DeletePoolAsync(Guid id)
     {
-        var deleted = await _writeQueue.EnqueueAsync(async db =>
+        var deleted = await _dbFactory.ExecuteAsync(async db =>
         {
             var pool = await db.NodePools.FindAsync(id);
             if (pool == null)
@@ -131,10 +145,13 @@ public partial class NodePoolService : INodePoolService
 
     public async Task<IEnumerable<PoolResponse>> GetPoolsForNodeAsync(Guid nodeId)
     {
-        // NodeIds is a JSON column, so membership must be filtered in memory
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var pools = await db.NodePools.OrderBy(p => p.CreatedAt).ToListAsync();
-        return pools.Where(p => p.NodeIds.Contains(nodeId)).Select(PoolResponse.From);
+        var pools = await db.NodePools
+            .Include(p => p.Members)
+            .OrderBy(p => p.CreatedAt)
+            .Where(p => p.Members.Any(m => m.NodeId == nodeId))
+            .ToListAsync();
+        return pools.Select(PoolResponse.From);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Created pool {PoolId} with name {PoolName}")]

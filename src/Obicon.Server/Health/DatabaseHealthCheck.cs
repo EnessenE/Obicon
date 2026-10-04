@@ -5,7 +5,7 @@ using Obicon.Server.Data;
 namespace Obicon.Server.Health;
 
 /// <summary>
-/// Health check verifying the SQLite database answers a simple query.
+/// Health check verifying the PostgreSQL database answers a simple query.
 /// </summary>
 public class DatabaseHealthCheck : IHealthCheck
 {
@@ -23,12 +23,12 @@ public class DatabaseHealthCheck : IHealthCheck
             await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
             var canConnect = await db.Database.CanConnectAsync(cancellationToken);
             return canConnect
-                ? HealthCheckResult.Healthy("SQLite database is reachable")
-                : new HealthCheckResult(context.Registration.FailureStatus, "SQLite database is not reachable");
+                ? HealthCheckResult.Healthy("PostgreSQL database is reachable")
+                : new HealthCheckResult(context.Registration.FailureStatus, "PostgreSQL database is not reachable");
         }
         catch (Exception ex)
         {
-            return new HealthCheckResult(context.Registration.FailureStatus, $"SQLite database check failed: {ex.Message}");
+            return new HealthCheckResult(context.Registration.FailureStatus, $"PostgreSQL database check failed: {ex.Message}");
         }
     }
 }

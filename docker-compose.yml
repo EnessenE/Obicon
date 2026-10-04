@@ -1,0 +1,30 @@
+# Obicon server with its PostgreSQL database.
+# Start with: docker compose up -d
+# The API (with Swagger) is on http://localhost:5000 - see docs/api-spec.md.
+services:
+  server:
+    image: ghcr.io/enessene/obicon/server:latest
+    ports:
+      - "5000:5000"
+    environment:
+      ConnectionStrings__Default: "Host=database;Database=obicon;Username=postgres;Password=postgres"
+      # Optional OTLP egress for metrics and node logs to your observability backend:
+      # Otlp__Endpoint: "http://your-collector:4317"
+    depends_on:
+      - database
+    restart: unless-stopped
+
+  database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: obicon
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      # postgres 18+ expects a single mount at /var/lib/postgresql; data lands
+      # in a major-version subdirectory (e.g. 18/docker) inside it
+      - obicon-db:/var/lib/postgresql
+    restart: unless-stopped
+
+volumes:
+  obicon-db:

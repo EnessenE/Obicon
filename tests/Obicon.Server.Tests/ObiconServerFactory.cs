@@ -1,13 +1,16 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 
 namespace Obicon.Server.Tests;
 
 /// <summary>
-/// Boots the real server in-memory with an isolated SQLite database per instance.
-/// Derived classes can enable node auto-enrollment by forcing the setting through
-/// an environment variable, exactly like production configuration would.
+/// Boots the real server in-memory with an isolated PostgreSQL database per instance:
+/// one database on the shared test container (see <see cref="TestPostgres"/>), created
+/// up front and dropped on dispose. Derived classes can enable node auto-enrollment by
+/// forcing the setting through an environment variable, exactly like production
+/// configuration would.
 /// </summary>
 public class ObiconServerFactory : WebApplicationFactory<Program>
 {
@@ -17,6 +20,9 @@ public class ObiconServerFactory : WebApplicationFactory<Program>
     /// </summary>
     public const string AuthHeader = "obicon-test-auth";
 
+    private readonly string _databaseName = $"obicon_test_{Guid.NewGuid():N}";
+    private bool _databaseCreated;
+
     /// <summary>
     /// Whether NodeAutoEnrollmentEnabled is forced to true via environment variable.
     /// </summary>
@@ -24,8 +30,13 @@ public class ObiconServerFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // The database must exist before the server boots, because it applies its
+        // EF Core migrations on startup. The host can be built more than once per
+        // factory instance, so the creation is idempotent.
+        CreateDatabase();
+
         builder.UseEnvironment("Testing");
-        builder.UseSetting("ConnectionStrings:Default", $"Data Source={TempDbPath()}");
+        builder.UseSetting("ConnectionStrings:Default", TestPostgres.ConnectionStringFor(_databaseName));
         builder.UseSetting("ServerSettings:AuthHeader", AuthHeader);
 
         // Server logs go to the running test's output through the "Xunit" sink
@@ -44,9 +55,43 @@ public class ObiconServerFactory : WebApplicationFactory<Program>
             EnrollmentEnabled ? "true" : null);
     }
 
-    private static string TempDbPath()
+    protected override void Dispose(bool disposing)
     {
-        return Path.Combine(Path.GetTempPath(), $"obicon-test-{Guid.NewGuid():N}.db");
+        // Best effort: drop the database even when a test failed mid-flight
+        DropDatabase();
+        base.Dispose(disposing);
+    }
+
+    private void CreateDatabase()
+    {
+        if (_databaseCreated)
+        {
+            return;
+        }
+
+        _databaseCreated = true;
+        using var connection = new NpgsqlConnection(TestPostgres.MaintenanceConnectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"CREATE DATABASE \"{_databaseName}\"";
+        command.ExecuteNonQuery();
+    }
+
+    private void DropDatabase()
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(TestPostgres.MaintenanceConnectionString);
+            connection.Open();
+            using var command = connection.CreateCommand();
+            // Close the server's pooled connections first, or the drop is refused
+            command.CommandText = $"DROP DATABASE IF EXISTS \"{_databaseName}\" WITH (FORCE)";
+            command.ExecuteNonQuery();
+        }
+        catch (Exception)
+        {
+            // Swallow cleanup failures; the container is discarded after the run anyway
+        }
     }
 }
 

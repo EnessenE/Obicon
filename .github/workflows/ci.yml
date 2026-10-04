@@ -27,6 +27,8 @@ jobs:
       - name: Build
         run: dotnet build Obicon.slnx --configuration Release --no-restore
 
+      # The server tests spin up PostgreSQL via Testcontainers, which uses the Docker
+      # engine that ubuntu-latest runners provide out of the box
       - name: Test
         run: dotnet test tests/Obicon.Server.Tests --configuration Release --no-build
 

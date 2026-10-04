@@ -33,7 +33,7 @@ public partial class TestScheduler : BackgroundService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var settingsService = scope.ServiceProvider.GetRequiredService<IServerSettingsService>();
-                var presets = FrequencyPresets.Parse(await settingsService.GetAsync<string>("FrequencyPresetsSeconds"));
+                var presets = FrequencyPresets.Normalize(await settingsService.GetAsync<List<int>>("FrequencyPresetsSeconds"));
                 interval = Math.Max(1, presets.Min());
 
                 if (interval != _lastInterval)

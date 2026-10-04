@@ -21,6 +21,7 @@ public partial class WebSocketMiddleware
     private readonly ITestQueueService _queueService;
     private readonly IServerSettingsService _settingsService;
     private readonly ITestMetricsEmitter _testMetricsEmitter;
+    private readonly INodeLogFunnel _nodeLogFunnel;
     private readonly ILogger<WebSocketMiddleware> _logger;
 
     public WebSocketMiddleware(
@@ -31,6 +32,7 @@ public partial class WebSocketMiddleware
         ITestQueueService queueService,
         IServerSettingsService settingsService,
         ITestMetricsEmitter testMetricsEmitter,
+        INodeLogFunnel nodeLogFunnel,
         ILogger<WebSocketMiddleware> logger)
     {
         _next = next;
@@ -40,6 +42,7 @@ public partial class WebSocketMiddleware
         _queueService = queueService;
         _settingsService = settingsService;
         _testMetricsEmitter = testMetricsEmitter;
+        _nodeLogFunnel = nodeLogFunnel;
         _logger = logger;
     }
 
@@ -197,8 +200,10 @@ public partial class WebSocketMiddleware
 
     /// <summary>
     /// Handles a log entry shipped by a node. Entries are dropped while
-    /// NodeLogShippingEnabled is off; while ShipNodeLogsToConsole is on they are
-    /// written to the server's own console and log, tagged with the node's identity.
+    /// NodeLogShippingEnabled is off. Accepted entries are counted in OpenTelemetry and
+    /// forwarded into the OTel logging pipeline with their structure preserved (OTLP
+    /// egress); while ShipNodeLogsToConsole is on they are also written to the server's
+    /// own console and log, tagged with the node's identity.
     /// </summary>
     private async Task HandleNodeLogAsync(string nodeId, WebSocketMessage message)
     {
@@ -219,13 +224,17 @@ public partial class WebSocketMiddleware
         // also forwarded to the console
         var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
         var sourceContext = entry.Properties is { } props && props.TryGetValue("SourceContext", out var sc)
-            ? sc.ToString().Trim('"')
+            ? sc.Trim('"')
             : "unknown";
         Metrics.ServerMetrics.NodeLog(
             string.IsNullOrWhiteSpace(entry.Level) ? "unknown" : entry.Level,
             sourceContext,
             nodeId,
             node?.Name ?? "unknown");
+
+        // Structured egress: the entry flows into the OTel logging pipeline with the
+        // node's identity and the entry's own properties as first-class fields
+        _nodeLogFunnel.Forward(nodeId, entry);
 
         if (!await _settingsService.GetAsync<bool>("ShipNodeLogsToConsole"))
         {
@@ -411,9 +420,11 @@ public partial class WebSocketMiddleware
             Details = result.Details
         };
 
-        await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
+        // The service applies the TestResultStorageMode to terminal statuses and returns
+        // the job as of the update - including when the row was deleted - so the metrics
+        // below are always emitted, no matter the storage policy
+        var job = await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
 
-        var job = await _queueService.GetJobAsync(jobId);
         var test = job != null && job.TestId != Guid.Empty ? await _testService.GetTestAsync(job.TestId) : null;
         var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
 

@@ -22,7 +22,7 @@ public sealed class FullStackTests
     public async Task EnrolledNode_Connects_AndReportsItself()
     {
         var nodes = await _fixture.Api.GetFromJsonAsync<JsonElement>("/v1/nodes");
-        var node = nodes.EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == _fixture.NodeId);
+        var node = nodes.GetProperty("items").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == _fixture.NodeId);
 
         Assert.Equal("integration-node", node.GetProperty("name").GetString());
         Assert.Equal("auto-enrollment", node.GetProperty("enrollmentType").GetString());
@@ -41,7 +41,7 @@ public sealed class FullStackTests
         var test = await CreateTestAsync(new
         {
             Name = "server-metrics",
-            Type = 2,
+            Type = "http",
             Target = $"http://{_fixture.ServerContainerName}:5000/metrics",
             Frequency = 3600,
             NodeIds = new[] { _fixture.NodeId }
@@ -62,7 +62,7 @@ public sealed class FullStackTests
         // can send raw ICMP: loopback ping proves the runner works unprivileged-in-docker
         var job = await RunOnceAndAwaitJobAsync(new
         {
-            Type = 0,
+            Type = "ping",
             Target = "127.0.0.1",
             NodeIds = new[] { _fixture.NodeId }
         });
@@ -80,7 +80,7 @@ public sealed class FullStackTests
         // exercises the node's DNS runner against a real resolver
         var job = await RunOnceAndAwaitJobAsync(new
         {
-            Type = 5,
+            Type = "dns",
             Target = _fixture.ServerContainerName,
             NodeIds = new[] { _fixture.NodeId }
         });
@@ -96,7 +96,7 @@ public sealed class FullStackTests
         // One quick run so the test-run metrics are guaranteed to exist, then scrape
         await RunOnceAndAwaitJobAsync(new
         {
-            Type = 5,
+            Type = "dns",
             Target = "localhost",
             NodeIds = new[] { _fixture.NodeId }
         });
@@ -125,7 +125,7 @@ public sealed class FullStackTests
     private async Task<JsonElement> RunAndAwaitJobAsync(JsonElement test)
     {
         var testId = test.GetProperty("id").GetGuid();
-        var response = await _fixture.Api.PostAsync($"/v1/tests/{testId}/run", null);
+        var response = await _fixture.Api.PostAsync($"/v1/tests/{testId}/runs", null);
         response.EnsureSuccessStatusCode();
         return await AwaitJobAsync(testId);
     }
@@ -136,7 +136,7 @@ public sealed class FullStackTests
     /// </summary>
     private async Task<JsonElement> RunOnceAndAwaitJobAsync(object request)
     {
-        var response = await _fixture.Api.PostAsJsonAsync("/v1/tests/run-once", request);
+        var response = await _fixture.Api.PostAsJsonAsync("/v1/test-runs", request);
         response.EnsureSuccessStatusCode();
         var jobs = await response.Content.ReadFromJsonAsync<JsonElement>();
         var jobId = jobs.EnumerateArray().Single().GetProperty("id").GetGuid();
@@ -153,7 +153,7 @@ public sealed class FullStackTests
         JsonElement job = default;
         await ObiconStackFixture.RetryUntilAsync(async () =>
         {
-            var jobs = await _fixture.Api.GetFromJsonAsync<JsonElement>("/v1/queue");
+            var jobs = (await _fixture.Api.GetFromJsonAsync<JsonElement>("/v1/test-runs?limit=500")).GetProperty("items");
             var match = jobs.EnumerateArray()
                 .FirstOrDefault(j => exactId
                     ? j.GetProperty("id").GetGuid() == id
@@ -164,7 +164,7 @@ public sealed class FullStackTests
             }
 
             job = match;
-            return job.GetProperty("status").GetInt32() >= 3;
+            return new[] { "completed", "failed", "timeout", "noRun" }.Contains(job.GetProperty("status").GetString());
         }, TimeSpan.FromSeconds(60), $"the job {id} to finish");
 
         return job;

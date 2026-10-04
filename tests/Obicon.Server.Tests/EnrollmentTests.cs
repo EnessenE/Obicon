@@ -110,11 +110,11 @@ public class EnrollmentTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
         // The node exists, is auto-enrolled, and was put into its pool
         var nodes = await client.GetFromJsonAsync<JsonElement>("/v1/nodes");
-        var created = nodes.EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == nodeId);
+        var created = nodes.GetProperty("items").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == nodeId);
         Assert.Equal("auto-enrollment", created.GetProperty("enrollmentType").GetString());
 
         var pools = await client.GetFromJsonAsync<JsonElement>("/v1/pools");
-        Assert.Contains(pools.EnumerateArray(), p => p.GetProperty("name").GetString() == "lab-nodes");
+        Assert.Contains(pools.GetProperty("items").EnumerateArray(), p => p.GetProperty("name").GetString() == "lab-nodes");
 
         // Users cannot edit an enrolled node
         var put = await client.PutAsJsonAsync($"/v1/nodes/{nodeId}", new
@@ -132,7 +132,7 @@ public class EnrollmentTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var client = await GetEnabledClientAsync();
         var token = await CreateEnrollTokenAsync(client);
         var tokens = await client.GetFromJsonAsync<JsonElement>("/v1/enroll-tokens");
-        var tokenId = tokens.EnumerateArray().First().GetProperty("id").GetGuid();
+        var tokenId = tokens.GetProperty("items").EnumerateArray().First().GetProperty("id").GetGuid();
 
         var revoke = await client.PostAsync($"/v1/enroll-tokens/{tokenId}/revoke", null);
         Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);

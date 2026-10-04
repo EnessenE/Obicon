@@ -27,7 +27,7 @@ async function loadNodes() {
         ]);
 
         if (nodeResults.status === 'fulfilled') {
-            nodes = nodeResults.value;
+            nodes = nodeResults.value.items;
         }
 
         // Merge live connectivity into the node rows

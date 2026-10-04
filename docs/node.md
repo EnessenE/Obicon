@@ -32,7 +32,6 @@ dotnet run --project src/Obicon.Node
 | `MetricsHost` / `MetricsPort` | `localhost` / `9464` | Prometheus metrics listener |
 | `EnrollToken` | *(empty)* | Enroll token for auto-enrollment |
 | `Labels` / `Pools` | *(empty)* | Self-managed labels and pool names (used at enrollment) |
-| `AllowUnsupportedServerVersion` | `false` | Stay connected to a server outside the supported version range |
 | `LogShippingEnabled` | `true` | Ship this node's log entries to the server while the server allows it |
 | `LocalLoggingEnabled` | *(null)* | Override the server's local-logging policy: null follows the server, `true` always logs locally, `false` never does |
 | `LogShippingMinLevel` | `Information` | Minimum level of entries shipped: `Debug`, `Information`, `Warning`, or `Error` |
@@ -67,7 +66,7 @@ Endpoints the node exposes:
 
 ## Version compatibility
 
-On every connection (and reconnection) the node logs the server's version, plus a notice whenever it changed since the last connection. A server is supported while it shares the node's major and minor version (node 0.2.x supports server 0.2.y). An unsupported server connection is closed; set `Node:AllowUnsupportedServerVersion` to continue anyway. The server mirrors this gate with its own `AllowUnsupportedNodeVersions` setting.
+On every connection (and reconnection) the node logs the server's version, plus a notice whenever it changed since the last connection. A server is supported while it shares the node's major and minor version (node 0.2.x supports server 0.2.y). An unsupported server connection is always closed; whether version mismatches are tolerated is exclusively the server's decision (`AllowUnsupportedNodeVersions` on the server).
 
 ## Test execution
 
@@ -83,7 +82,7 @@ docker run -d \
   -e Node__Token="<auth token>" \
   -p 9464:9464 \
   --cap-add=NET_RAW \
-  ghcr.io/<owner>/<repo>/node
+  ghcr.io/enessene/obicon/node:latest
 ```
 
 `--cap-add=NET_RAW` is needed for ping/traceroute; add `-e Node__MetricsHost=+` to expose the metrics endpoint outside the container.

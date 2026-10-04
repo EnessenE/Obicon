@@ -5,8 +5,12 @@ using Obicon.Server.Services;
 
 namespace Obicon.Server.Controllers.V1;
 
+/// <summary>
+/// Node pool management: grouping nodes and replacing a pool's member list.
+/// </summary>
 [ApiController]
-[Route("v1/[controller]")]
+[Route("v1/pools")]
+[Produces("application/json")]
 public class PoolsController : ControllerBase
 {
     private readonly INodePoolService _poolService;
@@ -16,6 +20,26 @@ public class PoolsController : ControllerBase
         _poolService = poolService;
     }
 
+    /// <summary>
+    /// Returns one page of pools, oldest first.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(PageResponse<PoolResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPools([FromQuery] PageParameters page)
+    {
+        var result = await _poolService.GetPoolsAsync(page);
+        return Ok(new PageResponse<PoolResponse>
+        {
+            Items = result.Items,
+            Total = result.Total,
+            Limit = result.Limit,
+            Offset = result.Offset
+        });
+    }
+
+    /// <summary>
+    /// Creates a pool.
+    /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(PoolResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -25,77 +49,51 @@ public class PoolsController : ControllerBase
         return CreatedAtAction(nameof(GetPool), new { id = pool.Id }, pool);
     }
 
-    [HttpGet]
-    [ProducesResponseType(typeof(List<PoolResponse>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAllPools()
-    {
-        var pools = await _poolService.GetAllPoolsAsync();
-        return Ok(pools);
-    }
-
+    /// <summary>
+    /// Returns a single pool.
+    /// </summary>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(PoolResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPool(Guid id)
     {
         var pool = await _poolService.GetPoolAsync(id);
-        if (pool == null)
-        {
-            return NotFound();
-        }
-        return Ok(pool);
+        return pool == null ? NotFound() : Ok(pool);
     }
 
     /// <summary>
-    /// Renames a pool.
+    /// Updates a pool's name and description.
     /// </summary>
     [HttpPut("{id}")]
     [ProducesResponseType(typeof(PoolResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdatePool(Guid id, [FromBody] UpdatePoolRequest request)
     {
         var pool = await _poolService.UpdatePoolAsync(id, request);
-        if (pool == null)
-        {
-            return NotFound();
-        }
-        return Ok(pool);
+        return pool == null ? NotFound() : Ok(pool);
     }
 
     /// <summary>
-    /// Replaces the pool's member list. Unknown node IDs are rejected with 400.
+    /// Replaces the pool's member list.
     /// </summary>
     [HttpPut("{id}/nodes")]
     [ProducesResponseType(typeof(PoolResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SetPoolMembers(Guid id, [FromBody] PoolMembersRequest request)
     {
-        try
-        {
-            var pool = await _poolService.SetPoolMembersAsync(id, request);
-            if (pool == null)
-            {
-                return NotFound();
-            }
-            return Ok(pool);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { Message = ex.Message });
-        }
+        var pool = await _poolService.SetPoolMembersAsync(id, request);
+        return pool == null ? NotFound() : Ok(pool);
     }
 
+    /// <summary>
+    /// Deletes the pool; its member nodes are not affected.
+    /// </summary>
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeletePool(Guid id)
     {
-        var deleted = await _poolService.DeletePoolAsync(id);
-        if (!deleted)
-        {
-            return NotFound();
-        }
-        return NoContent();
+        return await _poolService.DeletePoolAsync(id) ? NoContent() : NotFound();
     }
 }

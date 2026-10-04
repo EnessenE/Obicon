@@ -37,8 +37,16 @@ async function apiCall(method, endpoint, body = null, isRetry = false) {
             }
         }
         if (!response.ok) {
-            const error = await response.text();
-            throw new Error(error || `HTTP ${response.status}`);
+            const text = await response.text();
+            // Errors are RFC 9457 ProblemDetails; surface the human-readable detail
+            let message = text;
+            try {
+                const problem = JSON.parse(text);
+                message = problem.detail || problem.title || text;
+            } catch {
+                // Not JSON (should not happen); keep the raw body
+            }
+            throw new Error(message || `HTTP ${response.status}`);
         }
         // 204 No Content (e.g. DELETE) has no body to parse
         if (response.status === 204) {
