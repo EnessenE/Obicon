@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Obicon.Server.Models.Requests;
 using Obicon.Server.Models.Responses;
 using Obicon.Server.Services;
 
@@ -51,15 +52,4 @@ public class SettingsController : ControllerBase
             return Conflict(new { Message = ex.Message });
         }
     }
-}
-
-/// <summary>
-/// New value for a server setting.
-/// </summary>
-public class UpdateSettingValueRequest
-{
-    /// <summary>
-    /// New value as string; converted to the setting's type. Required.
-    /// </summary>
-    public string Value { get; set; } = string.Empty;
 }

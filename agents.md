@@ -86,6 +86,7 @@ The node's console sink is configured in `appsettings.json` (`Serilog:ConsoleSin
   - New write paths go through `_dbFactory.ExecuteAsync(async db => ...)` and must do their whole read-modify-write inside the unit — entities never cross the context boundary
   - Code that already holds a context calls helpers that take the unit's `db` instead of opening another (e.g. `TestQueueService.CreateJobAsync(db, job)`)
   - Failures propagate to the caller, so controllers keep their 400/404 behavior
+- **One class per file:** a file holds at most one top-level class (or record), named after it - `PoolMember.cs` contains `PoolMember`. Nested private classes are fine; grouping several related types into one file is not. Request and response DTOs live in `Models/Requests/` and `Models/Responses/`, not beside the controller
 - **JSON casing differs by channel, on purpose:** HTTP API responses are camelCase (ASP.NET default); WebSocket payloads are PascalCase (`System.Text.Json` defaults + explicit `[JsonPropertyName]`). Keep both as they are — the node and frontend depend on them
 - **Validation:** all request DTOs use DataAnnotations → automatic 400 ProblemDetails naming the field. Add attributes for every new required/range-checked field
 - **Responses:** never return EF entities directly; map through DTOs in `Models/Responses/` (`TestJobResponse.From(job)` pattern)
