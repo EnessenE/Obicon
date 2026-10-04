@@ -96,6 +96,20 @@ The node's console sink is configured in `appsettings.json` (`Serilog:ConsoleSin
 - **Timestamps:** all persistence uses UTC; `ObiconDbContext` marks every persisted datetime as UTC on write and read so they serialize with `Z`
 - **DI cycle warning:** `ServerConnection` and `TestExecutor` mutually reference each other; the executor resolves `IServerConnection` lazily. Keep it that way when touching constructors
 
+## API Standard
+
+The HTTP API follows one set of conventions; new endpoints join them instead of inventing their own:
+
+- **Routes** are lowercase, plural, hyphenating multi-word resources: `/v1/nodes`, `/v1/pools`, `/v1/tests`, `/v1/test-runs`, `/v1/enroll-tokens`, `/v1/settings`. Exceptions: `/v1/enroll` (the node self-enrollment action) and `/v1/health`. No `[Route("v1/[controller]")]` magic — write the literal route so renames never surprise anyone
+- **Every list endpoint is paginated** with the shared `PageParameters` (limit default 100, range 1-500; offset zero-based) and returns the `PageResponse<T>` envelope `{items, total, limit, offset}` backed by the domain `Page<T>` record. Never serve an unbounded array
+- **Sorting** follows `sortBy` + `sortOrder` query parameters with a server-side whitelist of columns (see `TestRunsController`); default is newest first
+- **Enums travel as camelCase strings** on the wire — `JsonStringEnumConverter(JsonNamingPolicy.CamelCase)` is registered globally in `Program.cs`. Never send or accept bare integer enum values in the HTTP API
+- **Actions stay RESTful:** state changes are `PATCH` with the changed fields (`PATCH /v1/tests/{id}` with `{"isActive": bool}`), triggering creation is a `POST` on the collection (`POST /v1/tests/{id}/runs` returns the created jobs). No `/toggle`, `/run`-style RPC endpoints
+- **Errors are RFC 9457 ProblemDetails everywhere.** Controllers have no try/catch: services throw (`ArgumentException` → 400, `UnauthorizedAccessException` → 401, `ForbiddenException` → 403, `KeyNotFoundException` → 404, `InvalidOperationException` → 409) and `ApiExceptionMiddleware` renders the ProblemDetails. Never return ad-hoc error objects
+- **Create and update share one request DTO** per resource when the fields overlap (e.g. `TestRequest` for `POST` and `PUT /v1/tests`) — no 90%-duplicated DTO pairs
+- **One content type:** controllers declare `[Produces("application/json")]`; no `text/plain` or `text/json` variants
+- **Update `docs/api-spec.md`** in the same change whenever any of the above changes — a spec that lags the code is a bug
+
 ## Database Standard
 
 The schema is plain, fully relational PostgreSQL, designed to be queried by hand:

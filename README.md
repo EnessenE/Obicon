@@ -32,7 +32,7 @@ docker run -d --cap-add=NET_RAW \
   ghcr.io/enessene/obicon/node:latest
 ```
 
-The API is at http://localhost:5000 with Swagger at `/swagger` — create a node with `POST /v1/nodes`, a test with `POST /v1/tests`, and watch the runs land in `GET /v1/queue`; the full reference is the [API specification](docs/api-spec.md). (The web UI that ships in the repo is not published as an image and is not needed to run Obicon.) The server serves Prometheus metrics at `/metrics` on port 5000 and each node at `/metrics` on its own port (default 9464), and the Grafana dashboards in [`observability/`](observability/) import as-is.
+The API is at http://localhost:5000 with Swagger at `/swagger` — create a node with `POST /v1/nodes`, a test with `POST /v1/tests`, and watch the runs land in `GET /v1/test-runs`; the full reference is the [API specification](docs/api-spec.md). (The web UI that ships in the repo is not published as an image and is not needed to run Obicon.) The server serves Prometheus metrics at `/metrics` on port 5000 and each node at `/metrics` on its own port (default 9464), and the Grafana dashboards in [`observability/`](observability/) import as-is.
 
 ## Documentation
 
