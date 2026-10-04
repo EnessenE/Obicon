@@ -37,7 +37,9 @@ public class ServerController : ControllerBase
     {
         var nodes = await _nodeService.GetAllNodesAsync();
         var tests = await _testService.GetAllTestsAsync();
-        var jobs = await _queueService.GetAllJobsAsync();
+        var statusCounts = await _queueService.GetStatusCountsAsync();
+
+        int Count(TestJobStatus status) => statusCounts.TryGetValue(status, out var count) ? count : 0;
 
         return Ok(new ServerStatsResponse
         {
@@ -46,12 +48,12 @@ public class ServerController : ControllerBase
             ConnectedNodes = _connectionManager.GetAllConnections().Count(),
             TotalTests = tests.Count(),
             ActiveTests = tests.Count(t => t.IsActive),
-            QueuedJobs = jobs.Count(j => j.Status == TestJobStatus.Queued),
-            RunningJobs = jobs.Count(j => j.Status is TestJobStatus.Assigned or TestJobStatus.Running),
-            CompletedJobs = jobs.Count(j => j.Status == TestJobStatus.Completed),
-            FailedJobs = jobs.Count(j => j.Status == TestJobStatus.Failed),
-            TimedOutJobs = jobs.Count(j => j.Status == TestJobStatus.Timeout),
-            NoRunJobs = jobs.Count(j => j.Status == TestJobStatus.NoRun),
+            QueuedJobs = Count(TestJobStatus.Queued),
+            RunningJobs = Count(TestJobStatus.Assigned) + Count(TestJobStatus.Running),
+            CompletedJobs = Count(TestJobStatus.Completed),
+            FailedJobs = Count(TestJobStatus.Failed),
+            TimedOutJobs = Count(TestJobStatus.Timeout),
+            NoRunJobs = Count(TestJobStatus.NoRun),
             Uptime = DateTimeOffset.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime(),
             Timestamp = DateTime.UtcNow
         });

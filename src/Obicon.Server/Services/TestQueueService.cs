@@ -30,10 +30,15 @@ public class TestQueueService : ITestQueueService
     }
 
     /// <summary>
-    /// Loads jobs with their header rows and every details section, so responses and
-    /// dispatches see the complete job in one query.
+    /// Loads jobs with their header rows and every details section, for building API
+    /// responses. Split queries, so the collection includes never form one wide
+    /// cartesian join (its inflated plan cost would push postgres over its JIT
+    /// threshold and cost hundreds of milliseconds of compilation per execution),
+    /// and no tracking, because response mapping never mutates the entities.
     /// </summary>
     private static IQueryable<TestJob> WithFullLoad(ObiconDbContext db) => db.TestJobs
+        .AsNoTracking()
+        .AsSplitQuery()
         .Include(j => j.Headers)
         .Include(j => j.Traceroute!).ThenInclude(d => d.Hops!)
         .ThenInclude(h => h.Probes)
@@ -43,6 +48,13 @@ public class TestQueueService : ITestQueueService
         .Include(j => j.Dns!).ThenInclude(d => d.Records)
         .Include(j => j.Tls)
         .Include(j => j.Certificate);
+
+    /// <summary>
+    /// Loads jobs with just their header rows, for dispatch and transitions; the
+    /// structured details of a queued or running job are always empty.
+    /// </summary>
+    private static IQueryable<TestJob> WithDispatchLoad(ObiconDbContext db) => db.TestJobs
+        .Include(j => j.Headers);
 
     public async Task<TestJob> EnqueueJobAsync(TestJob job)
     {
@@ -71,7 +83,7 @@ public class TestQueueService : ITestQueueService
     {
         return _dbFactory.ExecuteAsync(async db =>
         {
-            var job = await WithFullLoad(db)
+            var job = await WithDispatchLoad(db)
                 .Where(j => j.NodeId == nodeId && j.Status == TestJobStatus.Queued)
                 .OrderBy(j => j.CreatedAt)
                 .FirstOrDefaultAsync();
@@ -166,7 +178,7 @@ public class TestQueueService : ITestQueueService
     public async Task<IEnumerable<TestJob>> GetPendingJobsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await WithFullLoad(db)
+        return await WithDispatchLoad(db)
             .Where(j => j.Status == TestJobStatus.Queued)
             .OrderBy(j => j.CreatedAt)
             .ToListAsync();
@@ -175,7 +187,7 @@ public class TestQueueService : ITestQueueService
     public async Task<IEnumerable<TestJob>> GetActiveJobsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await WithFullLoad(db)
+        return await WithDispatchLoad(db)
             .Where(j => j.Status == TestJobStatus.Assigned || j.Status == TestJobStatus.Running)
             .ToListAsync();
     }
