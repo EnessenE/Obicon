@@ -174,6 +174,21 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     }
 
     [Fact]
+    public async Task QueueGauge_ExportsEveryStatus_EvenWithoutJobs()
+    {
+        // The gauge zero-fills every status, so the family is exported from the very
+        // first boot - before any job ever existed - instead of being absent
+        var scrape = await ScrapeUntilAsync(b =>
+            Enum.GetValues<TestJobStatus>().Select(s => s.ToString())
+                .All(status => b.Contains($"obicon_tests_queue_jobs{{otel_scope_name=\"Obicon.Tests\",status=\"{status}\"}}")));
+
+        foreach (var status in Enum.GetValues<TestJobStatus>().Select(s => s.ToString()))
+        {
+            Assert.Contains($"obicon_tests_queue_jobs{{otel_scope_name=\"Obicon.Tests\",status=\"{status}\"}}", scrape);
+        }
+    }
+
+    [Fact]
     public async Task Emit_IsNotExported_WhenMetricsDisabled()
     {
         var before = await CreateNodeAsync("before-disable-node");

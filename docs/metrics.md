@@ -14,7 +14,7 @@ No auth required. The per-run test metrics (`obicon.tests.runs` and `obicon.test
 |--------|------|--------|---------|
 | `obicon.tests.runs` | counter | `status`, `test_id` (forced) plus the selected labels | Completed test runs, one label set per test and node |
 | `obicon.tests.duration_ms` | histogram | `test_id` (forced) plus the selected labels | Test execution duration |
-| `obicon.tests.queue_jobs` | gauge | `status` (Queued, Assigned, Running, Completed, Failed, Timeout, NoRun) | Current test job count per status, sampled every 5 seconds |
+| `obicon.tests.queue_jobs` | gauge | `status` (Queued, Assigned, Running, Completed, Failed, Timeout, NoRun) | Current test job count per status, sampled every 5 seconds; always exported from the first boot, with 0 for statuses that have no jobs |
 | `obicon.tests.current_result` | gauge | `test_id`, `test_name`, `status` | Latest job status of every created test: 0=Queued 1=Assigned 2=Running 3=Completed 4=Failed 5=Timeout 6=NoRun, -1=never ran; sampled every 5 seconds |
 | `obicon.server.build_info` | gauge | `version` | Server build info; value is always 1, the label carries the version |
 | `obicon.server.actions` | counter | `action` | Server lifecycle actions (e.g. `created_pool`, `token_regenerated`) |
@@ -22,6 +22,8 @@ No auth required. The per-run test metrics (`obicon.tests.runs` and `obicon.test
 | `obicon.server.nodelogs` | counter | `level`, `source_context`, `node_id`, `node_name` | Log entries received from nodes |
 
 Standard ASP.NET Core and HttpClient instrumentation metrics are exported alongside them. The server also exposes a health check at `GET /v1/health`.
+
+On a fresh install, the per-run series (`obicon.tests.runs`, `obicon.tests.duration_ms`) first appear once a test finishes its first run — no series exist for instruments that have not recorded anything yet. `obicon.tests.queue_jobs` is visible from the first boot (all statuses at 0), and `obicon.tests.current_result` appears as soon as any test exists.
 
 ## Node — `http://localhost:9464/metrics`
 

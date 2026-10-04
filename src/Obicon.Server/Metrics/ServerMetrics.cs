@@ -83,8 +83,12 @@ public class ServerMetrics
 
     private static IEnumerable<Measurement<long>> ObserveQueueJobs()
     {
-        return _queueCounts.Select(kv =>
-            new Measurement<long>(kv.Value, new KeyValuePair<string, object?>("status", kv.Key)));
+        // Every status is always exported (0 when absent from the snapshot), so the gauge
+        // is visible on /metrics from the very first boot and dashboards show 0 instead of empty
+        return Enum.GetValues<Shared.Models.Enums.TestJobStatus>().Select(status =>
+            new Measurement<long>(
+                _queueCounts.TryGetValue(status.ToString(), out var count) ? count : 0,
+                new KeyValuePair<string, object?>("status", status.ToString())));
     }
 
     /// <summary>
