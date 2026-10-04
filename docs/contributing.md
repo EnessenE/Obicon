@@ -39,6 +39,18 @@ Alternatively, use the full stack compose in the repo root (`docker compose up -
 | Node — unit tests (log capture sink, logging policy, identity store) | `dotnet test tests/Obicon.Node.Tests` | No |
 | Integration — the full stack in Docker: server and node images built from the repo Dockerfiles, driven through the real API and WebSocket | `dotnet test tests/Obicon.Integration.Tests` | Yes |
 
+## Database conventions
+
+The schema is plain, fully relational PostgreSQL, meant to be queried by hand:
+
+- **Snake_case identifiers only** (`tests`, `node_id`, `created_at`) — every table, column, and constraint. No query ever needs a quoted identifier: `select * from tests`, not `select * from "Tests"`. The naming is applied centrally in `ObiconDbContext.OnModelCreating`, so new entities inherit it
+- **No `jsonb`, ever.** Relationships are junction tables (`pool_members`, `test_target_nodes`, `test_target_pools`), dictionaries are key-value rows (`node_labels`, `test_headers`), and structured payloads are normalized into their own tables (see the `test_job_*_details` family). Only native `text[]` columns hold plain string lists
+- **Cascading foreign keys** on every junction and child row, so deletes leave no stale references
+- **Index the hot paths:** anything a recurring query filters or sorts on gets an index in `ObiconDbContext` (token lookups, queue listing, per-test latest result)
+- **Query shape:** loads spanning multiple collection navigations use `AsSplitQuery()` (single-query includes over many joins produce huge plan costs that cross PostgreSQL's JIT threshold and slow every execution), read-only loads skip tracking, and list endpoints paginate server-side — never load an unbounded window
+- **Timestamps are UTC** throughout
+- **One migration while unreleased:** model changes regenerate the single `InitialCreate` instead of stacking increments (see agents.md for the exact procedure); incremental migrations begin with the first released schema
+
 ## Conventions
 
 - The C# Coding Guidelines ([csharpcodingguidelines.com](https://csharpcodingguidelines.com)) are enforced by the root `.editorconfig` and analyzer rules; the `coding-guidelines` CI job verifies formatting and builds with warnings as errors — keep new code violation-free
