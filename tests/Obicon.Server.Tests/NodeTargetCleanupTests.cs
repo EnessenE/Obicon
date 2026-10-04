@@ -82,10 +82,10 @@ public class NodeTargetCleanupTests : LoggedTest, IClassFixture<ObiconServerFact
 
         // A run of the now-empty test creates no jobs at all - before the fix this
         // queued a job for the deleted node on every due interval
-        var run = await _client.PostAsync($"/v1/tests/{testId}/run", content: null);
+        var run = await _client.PostAsync($"/v1/tests/{testId}/runs", content: null);
         Assert.True(run.IsSuccessStatusCode, $"Triggering the run failed: {run.StatusCode}");
 
-        var page = await _client.GetFromJsonAsync<JsonElement>($"/v1/testruns?limit=500&testId={testId}");
+        var page = await _client.GetFromJsonAsync<JsonElement>($"/v1/test-runs?limit=500&testId={testId}");
         Assert.Equal(0, page.GetProperty("total").GetInt32());
         Assert.Empty(page.GetProperty("items").EnumerateArray());
     }

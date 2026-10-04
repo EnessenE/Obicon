@@ -54,15 +54,27 @@ public partial class NodeService : INodeService
         return response;
     }
 
-    public async Task<IEnumerable<NodeResponse>> GetAllNodesAsync()
+    /// <summary>
+    /// Number of nodes registered, for the stats endpoint; avoids loading a page.
+    /// </summary>
+    public async Task<int> GetNodeCountAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Nodes.CountAsync();
+    }
+
+    public async Task<Page<NodeResponse>> GetNodesAsync(PageParameters page)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var total = await db.Nodes.CountAsync();
         var nodes = await db.Nodes
             .Include(n => n.Labels)
             .Include(n => n.Settings)
             .OrderBy(n => n.CreatedAt)
+            .Skip(page.Offset)
+            .Take(page.Limit)
             .ToListAsync();
-        return nodes.Select(ToResponse);
+        return new Page<NodeResponse>(nodes.Select(ToResponse).ToList(), total, page.Limit, page.Offset);
     }
 
     public async Task<NodeResponse?> GetNodeAsync(Guid id)

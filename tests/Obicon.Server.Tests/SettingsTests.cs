@@ -134,7 +134,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var create = await _client.PostAsJsonAsync("/v1/tests", new
         {
             Name = "clamp-test",
-            Type = 4,
+            Type = "tcp",
             Target = "localhost:80",
             NodeIds = new[] { nodeId },
             Frequency = 60,
@@ -143,10 +143,10 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         create.EnsureSuccessStatusCode();
         var testId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
-        var run = await _client.PostAsync($"/v1/tests/{testId}/run", null);
+        var run = await _client.PostAsync($"/v1/tests/{testId}/runs", null);
         run.EnsureSuccessStatusCode();
 
-        var page = await _client.GetFromJsonAsync<JsonElement>("/v1/testruns?limit=500");
+        var page = await _client.GetFromJsonAsync<JsonElement>("/v1/test-runs?limit=500");
         var job = page.GetProperty("items").EnumerateArray().First(j => j.GetProperty("testId").GetGuid() == testId);
         Assert.Equal(60, job.GetProperty("timeoutSeconds").GetInt32());
     }
@@ -280,7 +280,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
             var allowed = await _client.PostAsJsonAsync("/v1/tests", new
             {
                 Name = "preset-test",
-                Type = 4,
+                Type = "tcp",
                 Target = "localhost:80",
                 NodeIds = new[] { nodeId },
                 Frequency = 45,
@@ -291,7 +291,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
             var disallowed = await _client.PostAsJsonAsync("/v1/tests", new
             {
                 Name = "preset-test-2",
-                Type = 4,
+                Type = "tcp",
                 Target = "localhost:80",
                 NodeIds = new[] { nodeId },
                 Frequency = 60,

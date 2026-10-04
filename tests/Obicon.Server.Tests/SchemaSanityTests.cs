@@ -80,7 +80,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var payload = new Dictionary<string, object?>
         {
             ["name"] = $"sanity-{Guid.NewGuid():N}",
-            ["type"] = 2,
+            ["type"] = "http",
             ["target"] = "https://example.com",
             ["nodeIds"] = nodeIds.Select(id => id.ToString()).ToArray(),
             ["poolIds"] = poolIds.Select(id => id.ToString()).ToArray(),
@@ -377,7 +377,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var nodeId = await CreateNodeAsync("header-freeze-node");
         var testId = await CreateTestAsync([nodeId], [], new Dictionary<string, string> { ["X-Original"] = "first" });
 
-        var firstRun = await _client.PostAsync($"/v1/tests/{testId}/run", content: null);
+        var firstRun = await _client.PostAsync($"/v1/tests/{testId}/runs", content: null);
         Assert.True(firstRun.IsSuccessStatusCode);
 
         var firstJob = (await _queue.GetRunsAsync(new(50, 0, null, nodeId, null, null))).Items.First();
@@ -387,7 +387,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var payload = new Dictionary<string, object?>
         {
             ["name"] = $"sanity-{Guid.NewGuid():N}",
-            ["type"] = 2,
+            ["type"] = "http",
             ["target"] = "https://example.com",
             ["nodeIds"] = new[] { nodeId.ToString() },
             ["poolIds"] = Array.Empty<string>(),
@@ -399,7 +399,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var update = await _client.PutAsJsonAsync($"/v1/tests/{testId}", payload);
         update.EnsureSuccessStatusCode();
 
-        var secondRun = await _client.PostAsync($"/v1/tests/{testId}/run", content: null);
+        var secondRun = await _client.PostAsync($"/v1/tests/{testId}/runs", content: null);
         Assert.True(secondRun.IsSuccessStatusCode);
 
         var jobs = (await _queue.GetRunsAsync(new(500, 0, null, nodeId, null, null)))

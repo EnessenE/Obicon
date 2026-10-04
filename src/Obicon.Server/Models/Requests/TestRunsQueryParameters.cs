@@ -37,4 +37,15 @@ public class TestRunsQueryParameters
     /// Null or empty for no search. Default: null.
     /// </summary>
     public string? Search { get; set; }
+
+    /// <summary>
+    /// Column to sort by: createdAt, durationMs, or status. Unknown values fall
+    /// back to createdAt. Default: createdAt.
+    /// </summary>
+    public string? SortBy { get; set; }
+
+    /// <summary>
+    /// Sort direction: asc or desc. Unknown values fall back to desc. Default: desc.
+    /// </summary>
+    public string? SortOrder { get; set; }
 }

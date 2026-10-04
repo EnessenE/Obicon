@@ -10,7 +10,7 @@ namespace Obicon.Server.Services;
 public interface IEnrollTokenService
 {
     Task<Models.Responses.EnrollTokenResponse> CreateAsync(Models.Requests.CreateEnrollTokenRequest request);
-    Task<IEnumerable<Models.Responses.EnrollTokenResponse>> GetAllAsync();
+    Task<Models.Page<Models.Responses.EnrollTokenResponse>> GetAsync(Models.Requests.PageParameters page);
     Task<bool> RevokeAsync(Guid id);
     Task<bool> DeleteAsync(Guid id);
     Task<Models.EnrollToken?> FindValidAsync(string plainToken);
@@ -69,11 +69,16 @@ public partial class EnrollTokenService : IEnrollTokenService
         return response;
     }
 
-    public async Task<IEnumerable<EnrollTokenResponse>> GetAllAsync()
+    public async Task<Page<EnrollTokenResponse>> GetAsync(PageParameters page)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var tokens = await db.EnrollTokens.OrderByDescending(t => t.CreatedAt).ToListAsync();
-        return tokens.Select(EnrollTokenResponse.From);
+        var total = await db.EnrollTokens.CountAsync();
+        var tokens = await db.EnrollTokens
+            .OrderByDescending(t => t.CreatedAt)
+            .Skip(page.Offset)
+            .Take(page.Limit)
+            .ToListAsync();
+        return new Page<EnrollTokenResponse>(tokens.Select(EnrollTokenResponse.From).ToList(), total, page.Limit, page.Offset);
     }
 
     public async Task<bool> RevokeAsync(Guid id)

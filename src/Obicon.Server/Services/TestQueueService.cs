@@ -163,19 +163,36 @@ public class TestQueueService : ITestQueueService
     /// applied and the total number of matching runs across all pages. The page window
     /// is applied before the details load, so a page never loads more than its jobs.
     /// </summary>
-    public async Task<TestRunPage> GetRunsAsync(TestRunQuery query)
+    public async Task<Page<TestJob>> GetRunsAsync(TestRunQuery query)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
-        var items = await ApplyRunFilters(WithFullLoad(db), query)
-            .OrderByDescending(j => j.CreatedAt)
+        var items = await SortRuns(ApplyRunFilters(WithFullLoad(db), query), query)
             .Skip(query.Offset)
             .Take(query.Limit)
             .ToListAsync();
 
         var total = await ApplyRunFilters(db.TestJobs, query).CountAsync();
 
-        return new TestRunPage(items, total, query.Limit, query.Offset);
+        return new Page<TestJob>(items, total, query.Limit, query.Offset);
+    }
+
+    /// <summary>
+    /// Applies the query's sort to the filtered runs: createdAt, durationMs, or
+    /// status, each ascending or descending. Null durations sort before measured
+    /// durations so in-flight runs land next to each other instead of scattered.
+    /// </summary>
+    private static IOrderedQueryable<TestJob> SortRuns(IQueryable<TestJob> jobs, TestRunQuery query)
+    {
+        return (query.SortBy, query.Descending) switch
+        {
+            (TestRunSortBy.DurationMs, false) => jobs.OrderBy(j => j.DurationMs),
+            (TestRunSortBy.DurationMs, true) => jobs.OrderByDescending(j => j.DurationMs),
+            (TestRunSortBy.Status, false) => jobs.OrderBy(j => j.Status),
+            (TestRunSortBy.Status, true) => jobs.OrderByDescending(j => j.Status),
+            (_, false) => jobs.OrderBy(j => j.CreatedAt),
+            (_, true) => jobs.OrderByDescending(j => j.CreatedAt)
+        };
     }
 
     /// <summary>

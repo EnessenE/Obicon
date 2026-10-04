@@ -3,16 +3,16 @@ using Obicon.Shared.Models.Enums;
 
 namespace Obicon.Server.Models.Requests;
 
-public class UpdateTestRequest
+public class TestRequest
 {
     /// <summary>
-    /// New name of the test. Required.
+    /// Human-readable name of the test. Required, at least 1 character.
     /// </summary>
     [Required(AllowEmptyStrings = false), MinLength(1)]
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Type of test to execute. See <see cref="TestType"/> for available types.
+    /// Type of test to execute. See <see cref="TestType"/> for available types. Required.
     /// </summary>
     [EnumDataType(typeof(TestType))]
     public TestType Type { get; set; }
@@ -40,9 +40,9 @@ public class UpdateTestRequest
     public int Frequency { get; set; }
 
     /// <summary>
-    /// Indicates if the test should be active. Default: false.
+    /// Indicates if the test should be active immediately. Default: true.
     /// </summary>
-    public bool IsActive { get; set; }
+    public bool IsActive { get; set; } = true;
 
     /// <summary>
     /// HTTP/HTTPS: accepted status codes, e.g. "200-399" or "200,301,302". Default: "200-399".
@@ -51,13 +51,15 @@ public class UpdateTestRequest
     public string ExpectedStatusCodes { get; set; } = "200-399";
 
     /// <summary>
-    /// HTTPS: when set, the test fails if the TLS certificate expires within this many days. Null disables the check.
+    /// HTTPS: when set, the test fails if the TLS certificate expires within this many days.
+    /// Null disables the expiry check. Default: null.
     /// </summary>
     [Range(0, 3650)]
     public int? CheckCertificateExpiryDays { get; set; }
 
     /// <summary>
-    /// DNS: when set, the test only succeeds if this address is among the resolved addresses. Null accepts any result.
+    /// DNS: when set, the test only succeeds if this address is among the resolved addresses.
+    /// Null accepts any successfully resolved result. Default: null.
     /// </summary>
     public string? ExpectedDnsResult { get; set; }
 

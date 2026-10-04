@@ -23,7 +23,7 @@ public class ServerStatsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task Stats_ReportsServerVersion()
     {
-        var stats = await _client.GetFromJsonAsync<JsonElement>("/v1/server/stats");
+        var stats = await _client.GetFromJsonAsync<JsonElement>("/v1/stats");
 
         var version = stats.GetProperty("version").GetString();
         Assert.False(string.IsNullOrWhiteSpace(version));

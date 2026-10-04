@@ -40,7 +40,7 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
     {
         if (!await _settingsService.GetAsync<bool>("NodeAutoEnrollmentEnabled"))
         {
-            throw new InvalidOperationException("Node auto-enrollment is disabled on this server");
+            throw new ForbiddenException("Node auto-enrollment is disabled on this server");
         }
 
         var enrollToken = await _enrollTokenService.FindValidAsync(request.EnrollToken)
@@ -73,7 +73,7 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
                 }
                 if (node.EnrollmentType != NodeEnrollmentType.AutoEnrollment)
                 {
-                    throw new InvalidOperationException("Only nodes that enrolled themselves can update via enrollment");
+                    throw new ForbiddenException("Only nodes that enrolled themselves can update via enrollment");
                 }
 
                 node.Name = request.NodeName;

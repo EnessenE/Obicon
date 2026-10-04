@@ -5,8 +5,13 @@ using Obicon.Server.Services;
 
 namespace Obicon.Server.Controllers.V1;
 
+/// <summary>
+/// Server settings: the knobs the settings UI edits. Values forced by appsettings
+/// or environment variables are read-only.
+/// </summary>
 [ApiController]
-[Route("v1/[controller]")]
+[Route("v1/settings")]
+[Produces("application/json")]
 public class SettingsController : ControllerBase
 {
     private readonly IServerSettingsService _settingsService;
@@ -34,22 +39,11 @@ public class SettingsController : ControllerBase
     /// </summary>
     [HttpPut("{key}")]
     [ProducesResponseType(typeof(ServerSettingResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Set(string key, [FromBody] UpdateSettingValueRequest request)
     {
-        try
-        {
-            var setting = await _settingsService.SetAsync(key, request.Value);
-            return Ok(setting);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { Message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { Message = ex.Message });
-        }
+        var setting = await _settingsService.SetAsync(key, request.Value);
+        return Ok(setting);
     }
 }

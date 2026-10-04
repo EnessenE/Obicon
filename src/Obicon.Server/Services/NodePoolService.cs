@@ -41,14 +41,17 @@ public partial class NodePoolService : INodePoolService
         return PoolResponse.From(pool);
     }
 
-    public async Task<IEnumerable<PoolResponse>> GetAllPoolsAsync()
+    public async Task<Page<PoolResponse>> GetPoolsAsync(PageParameters page)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
+        var total = await db.NodePools.CountAsync();
         var pools = await db.NodePools
             .Include(p => p.Members)
             .OrderBy(p => p.CreatedAt)
+            .Skip(page.Offset)
+            .Take(page.Limit)
             .ToListAsync();
-        return pools.Select(PoolResponse.From);
+        return new Page<PoolResponse>(pools.Select(PoolResponse.From).ToList(), total, page.Limit, page.Offset);
     }
 
     public async Task<PoolResponse?> GetPoolAsync(Guid id)

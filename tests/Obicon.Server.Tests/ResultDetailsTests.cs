@@ -358,7 +358,7 @@ public class ResultDetailsTests : LoggedTest, IClassFixture<ObiconServerFactory>
             }
         });
 
-        var response = await _client.GetFromJsonAsync<JsonElement>($"/v1/testruns/{job.Id}");
+        var response = await _client.GetFromJsonAsync<JsonElement>($"/v1/test-runs/{job.Id}");
         Assert.True(response.GetProperty("success").GetBoolean());
         Assert.Equal(88, response.GetProperty("durationMs").GetInt64());
 

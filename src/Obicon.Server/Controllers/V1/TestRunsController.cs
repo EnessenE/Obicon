@@ -7,41 +7,50 @@ using Obicon.Server.Services;
 namespace Obicon.Server.Controllers.V1;
 
 /// <summary>
-/// Test runs: pages of in-flight and finished jobs with server-side filters.
+/// Test runs: pages of in-flight and finished jobs with server-side filters and
+/// sorting, plus an ad-hoc run-once endpoint that needs no saved test.
 /// </summary>
 [ApiController]
-[Route("v1/[controller]")]
+[Route("v1/test-runs")]
+[Produces("application/json")]
 public class TestRunsController : ControllerBase
 {
-    /// <summary>
-    /// Largest page the listing serves, so one request can never load the whole window.
-    /// </summary>
-    public const int MaxLimit = 500;
-
     private readonly ITestQueueService _queueService;
+    private readonly ITestService _testService;
 
-    public TestRunsController(ITestQueueService queueService)
+    public TestRunsController(ITestQueueService queueService, ITestService testService)
     {
         _queueService = queueService;
+        _testService = testService;
     }
 
     /// <summary>
-    /// Returns one page of test runs, newest first, with the total number of runs
-    /// matching the filters across all pages.
+    /// Returns one page of test runs with the total number of runs matching the
+    /// filters across all pages. Sort by createdAt, durationMs, or status.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(TestRunsPageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PageResponse<TestJobResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetRuns([FromQuery] TestRunsQueryParameters parameters)
     {
+        var sortBy = parameters.SortBy?.Trim().ToLowerInvariant() switch
+        {
+            "durationms" or "duration" => TestRunSortBy.DurationMs,
+            "status" => TestRunSortBy.Status,
+            _ => TestRunSortBy.CreatedAt
+        };
+        var descending = !string.Equals(parameters.SortOrder?.Trim(), "asc", StringComparison.OrdinalIgnoreCase);
+
         var page = await _queueService.GetRunsAsync(new TestRunQuery(
-            Limit: Math.Clamp(parameters.Limit < 1 ? 50 : parameters.Limit, 1, MaxLimit),
+            Limit: Math.Clamp(parameters.Limit < 1 ? 50 : parameters.Limit, 1, PageParameters.MaxLimit),
             Offset: Math.Max(0, parameters.Offset),
             Status: parameters.Status,
             NodeId: parameters.NodeId,
             TestId: parameters.TestId,
-            Search: string.IsNullOrWhiteSpace(parameters.Search) ? null : parameters.Search.Trim()));
+            Search: string.IsNullOrWhiteSpace(parameters.Search) ? null : parameters.Search.Trim(),
+            SortBy: sortBy,
+            Descending: descending));
 
-        return Ok(new TestRunsPageResponse
+        return Ok(new PageResponse<TestJobResponse>
         {
             Items = page.Items.Select(TestJobResponse.From).ToList(),
             Total = page.Total,
@@ -55,7 +64,7 @@ public class TestRunsController : ControllerBase
     /// </summary>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(TestJobResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetRun(Guid id)
     {
         var job = await _queueService.GetJobAsync(id);
@@ -64,5 +73,18 @@ public class TestRunsController : ControllerBase
             return NotFound();
         }
         return Ok(TestJobResponse.From(job));
+    }
+
+    /// <summary>
+    /// Runs a test immediately without creating a saved test first. Jobs go to the
+    /// connected nodes among the selected node and pool IDs; one job is created per node.
+    /// </summary>
+    [HttpPost]
+    [ProducesResponseType(typeof(List<TestJobResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RunOnce([FromBody] RunTestOnceRequest request)
+    {
+        var jobs = await _testService.RunOnceAsync(request);
+        return Ok(jobs.Select(TestJobResponse.From).ToList());
     }
 }

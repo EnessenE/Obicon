@@ -40,7 +40,7 @@ public partial class TestService : ITestService
         _connectionManager = connectionManager;
     }
 
-    public async Task<TestResponse> CreateTestAsync(CreateTestRequest request)
+    public async Task<TestResponse> CreateTestAsync(TestRequest request)
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
         await ValidateFrequencyAsync(request.Frequency);
@@ -87,16 +87,29 @@ public partial class TestService : ITestService
         return ToResponse(test);
     }
 
-    public async Task<IEnumerable<TestResponse>> GetAllTestsAsync()
+    /// <summary>
+    /// Number of tests, optionally only the active ones, for the stats endpoint;
+    /// avoids loading a page.
+    /// </summary>
+    public async Task<int> GetTestCountAsync(bool? isActive = null)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Tests.CountAsync(t => isActive == null || t.IsActive == isActive);
+    }
+
+    public async Task<Page<TestResponse>> GetTestsAsync(PageParameters page)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var total = await db.Tests.CountAsync();
         var tests = await db.Tests
             .Include(t => t.NodeTargets)
             .Include(t => t.PoolTargets)
             .Include(t => t.Headers)
             .OrderBy(t => t.CreatedAt)
+            .Skip(page.Offset)
+            .Take(page.Limit)
             .ToListAsync();
-        return tests.Select(ToResponse);
+        return new Page<TestResponse>(tests.Select(ToResponse).ToList(), total, page.Limit, page.Offset);
     }
 
     public async Task<TestResponse?> GetTestAsync(Guid id)
@@ -106,7 +119,7 @@ public partial class TestService : ITestService
         return test == null ? null : ToResponse(test);
     }
 
-    public async Task<TestResponse?> UpdateTestAsync(Guid id, UpdateTestRequest request)
+    public async Task<TestResponse?> UpdateTestAsync(Guid id, TestRequest request)
     {
         await ValidateTargetsAsync(request.NodeIds, request.PoolIds);
         await ValidateFrequencyAsync(request.Frequency);
@@ -169,9 +182,9 @@ public partial class TestService : ITestService
         return updated == null ? null : ToResponse(updated);
     }
 
-    public async Task<TestResponse?> ToggleTestAsync(Guid id)
+    public async Task<TestResponse?> SetTestActiveAsync(Guid id, bool isActive)
     {
-        var toggled = await _dbFactory.ExecuteAsync(async db =>
+        var updated = await _dbFactory.ExecuteAsync(async db =>
         {
             var test = await db.Tests.FindAsync(id);
             if (test == null)
@@ -179,15 +192,15 @@ public partial class TestService : ITestService
                 return (Test?)null;
             }
 
-            test.IsActive = !test.IsActive;
+            test.IsActive = isActive;
             test.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
-            LogTestToggled(test.Id, test.Name, test.IsActive ? "active" : "inactive");
+            LogTestToggled(test.Id, test.Name, isActive ? "active" : "inactive");
             return test;
         });
 
-        return toggled == null ? null : ToResponse(toggled);
+        return updated == null ? null : ToResponse(updated);
     }
 
     public async Task<bool> DeleteTestAsync(Guid id)
@@ -210,19 +223,24 @@ public partial class TestService : ITestService
         return deleted;
     }
 
-    public async Task<bool> TriggerTestRunAsync(Guid testId)
+    /// <summary>
+    /// Triggers an immediate run of a saved, active test and returns the created jobs -
+    /// one per targeted node and IP family.
+    /// </summary>
+    public async Task<List<TestJob>> RunTestAsync(Guid testId)
     {
         return await _dbFactory.ExecuteAsync(async db =>
         {
-            var test = await LoadTestAsync(db, testId);
-            if (test == null || !test.IsActive)
+            var test = await LoadTestAsync(db, testId)
+                ?? throw new KeyNotFoundException($"No test with id {testId}");
+            if (!test.IsActive)
             {
-                return false;
+                throw new InvalidOperationException($"Test {testId} is inactive; activate it to run it");
             }
 
-            await EnqueueJobsForTestAsync(db, test);
+            var jobs = await EnqueueJobsForTestAsync(db, test);
             LogManualRunTriggered(test.Id, test.Name);
-            return true;
+            return jobs;
         });
     }
 
@@ -425,15 +443,17 @@ public partial class TestService : ITestService
     /// Creates the test's jobs with the given context, so callers that already hold a
     /// context for their own read-modify-write unit reuse it instead of opening another.
     /// </summary>
-    private async Task EnqueueJobsForTestAsync(ObiconDbContext db, Test test)
+    private async Task<List<TestJob>> EnqueueJobsForTestAsync(ObiconDbContext db, Test test)
     {
+        var jobs = new List<TestJob>();
+
         // One job per targeted node and IP family: direct node IDs plus all pool
         // members, deduplicated; Both schedules one IPv4 and one IPv6 job per node
         foreach (var nodeId in await ResolveTargetNodesAsync(db, test))
         {
             foreach (var ipVersion in FamiliesFor(test.IpVersion))
             {
-                await _queueService.CreateJobAsync(db, new TestJob
+                jobs.Add(await _queueService.CreateJobAsync(db, new TestJob
                 {
                     TestId = test.Id,
                     NodeId = nodeId,
@@ -459,9 +479,11 @@ public partial class TestService : ITestService
                     FollowRedirects = test.FollowRedirects,
                     DnsNameserver = test.DnsNameserver,
                     DnsQueryType = test.DnsQueryType
-                });
+                }));
             }
         }
+
+        return jobs;
     }
 
     /// <summary>
@@ -608,16 +630,17 @@ public partial class TestService : ITestService
             .ToList();
     }
 
-    public async Task<IEnumerable<Test>> GetTestsForNodeAsync(Guid nodeId)
+    public async Task<List<TestResponse>> GetTestsForNodeAsync(Guid nodeId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Tests
+        var tests = await db.Tests
             .Include(t => t.NodeTargets)
             .Include(t => t.PoolTargets)
             .Include(t => t.Headers)
             .Where(t => t.IsActive && t.NodeTargets.Any(n => n.NodeId == nodeId))
             .OrderBy(t => t.CreatedAt)
             .ToListAsync();
+        return tests.Select(ToResponse).ToList();
     }
 
     private async Task ValidateTargetsAsync(List<Guid> nodeIds, List<Guid> poolIds)

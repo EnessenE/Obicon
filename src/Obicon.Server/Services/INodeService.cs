@@ -7,7 +7,11 @@ namespace Obicon.Server.Services;
 public interface INodeService
 {
     Task<NodeResponse> CreateNodeAsync(CreateNodeRequest request);
-    Task<IEnumerable<NodeResponse>> GetAllNodesAsync();
+    Task<Page<NodeResponse>> GetNodesAsync(PageParameters page);
+    /// <summary>
+    /// Number of nodes registered, for the stats endpoint; avoids loading a page.
+    /// </summary>
+    Task<int> GetNodeCountAsync();
     Task<NodeResponse?> GetNodeAsync(Guid id);
     Task<NodeResponse?> UpdateNodeAsync(Guid id, Models.Requests.UpdateNodeRequest request);
     Task<bool> DeleteNodeAsync(Guid id);

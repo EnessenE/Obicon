@@ -8,7 +8,8 @@ using Obicon.Shared.Models.Enums;
 namespace Obicon.Server.Controllers.V1;
 
 [ApiController]
-[Route("v1/server")]
+[Route("v1")]
+[Produces("application/json")]
 public class ServerController : ControllerBase
 {
     private readonly INodeService _nodeService;
@@ -35,8 +36,9 @@ public class ServerController : ControllerBase
     [ProducesResponseType(typeof(ServerStatsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetStats()
     {
-        var nodes = await _nodeService.GetAllNodesAsync();
-        var tests = await _testService.GetAllTestsAsync();
+        var totalNodes = await _nodeService.GetNodeCountAsync();
+        var totalTests = await _testService.GetTestCountAsync();
+        var activeTests = await _testService.GetTestCountAsync(isActive: true);
         var statusCounts = await _queueService.GetStatusCountsAsync();
 
         int Count(TestJobStatus status) => statusCounts.TryGetValue(status, out var count) ? count : 0;
@@ -44,10 +46,10 @@ public class ServerController : ControllerBase
         return Ok(new ServerStatsResponse
         {
             Version = ServerInfo.Version,
-            TotalNodes = nodes.Count(),
+            TotalNodes = totalNodes,
             ConnectedNodes = _connectionManager.GetAllConnections().Count(),
-            TotalTests = tests.Count(),
-            ActiveTests = tests.Count(t => t.IsActive),
+            TotalTests = totalTests,
+            ActiveTests = activeTests,
             QueuedJobs = Count(TestJobStatus.Queued),
             RunningJobs = Count(TestJobStatus.Assigned) + Count(TestJobStatus.Running),
             CompletedJobs = Count(TestJobStatus.Completed),

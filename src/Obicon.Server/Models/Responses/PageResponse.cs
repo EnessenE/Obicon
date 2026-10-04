@@ -1,18 +1,19 @@
-
 namespace Obicon.Server.Models.Responses;
 
 /// <summary>
-/// One page of test runs, as exposed by the API.
+/// One page of a list, as exposed by the API: the items of the requested window
+/// and the total number of rows matching the query across all pages.
 /// </summary>
-public class TestRunsPageResponse
+/// <typeparam name="T">Item type of the page.</typeparam>
+public class PageResponse<T>
 {
     /// <summary>
-    /// The runs of this page, newest first.
+    /// The items of this page, in the query's order.
     /// </summary>
-    public List<TestJobResponse> Items { get; set; } = [];
+    public List<T> Items { get; set; } = [];
 
     /// <summary>
-    /// Total runs matching the filters, across all pages.
+    /// Total rows matching the query, across all pages.
     /// </summary>
     public int Total { get; set; }
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -60,11 +61,23 @@ builder.Services.AddOpenTelemetry()
 
 builder.Services.AddCors();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    // Enums travel as readable camelCase strings (e.g. "http", "ipv4", "completed")
+    // instead of bare integers; unknown values are rejected on the way in.
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+});
 var authHeader = builder.Configuration["ServerSettings:AuthHeader"] ?? new ServerSettings().AuthHeader;
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Obicon API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Obicon API",
+        Version = $"v1 (server {ServerInfo.Version})",
+        Description = "Synthetic monitoring control plane API. All list endpoints return a page envelope: "
+            + "{ items, total, limit, offset }. Errors use RFC 9457 ProblemDetails. "
+            + "Authentication uses the Authorization header described by the scheme below."
+    });
     c.AddSecurityDefinition("Authorization", new OpenApiSecurityScheme
     {
         Type = SecuritySchemeType.ApiKey,
@@ -123,6 +136,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseWebSockets();
+app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseMiddleware<AuthMiddleware>();
 app.UseMiddleware<WebSocketMiddleware>();
 
