@@ -26,7 +26,7 @@ async function loadAll() {
 
     const [health, stats] = await Promise.allSettled([
         apiCall('GET', '/v1/health'),
-        apiCall('GET', '/v1/server/stats')
+        apiCall('GET', '/v1/stats')
     ]);
 
     if (health.status === 'fulfilled') {

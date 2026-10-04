@@ -370,7 +370,7 @@ async function saveSetting(key) {
 
 async function loadTokens() {
     try {
-        tokens = await apiCall('GET', '/v1/enroll-tokens');
+        tokens = (await apiCall('GET', '/v1/enroll-tokens')).items;
         renderTokens();
     } catch (error) {
         settingsError.textContent = error.message;

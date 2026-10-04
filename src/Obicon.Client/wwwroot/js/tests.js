@@ -18,18 +18,18 @@ const testTypeSelect = document.getElementById('testType');
 
 // Enum mappings
 const testTypeMap = {
-    0: 'Ping', 1: 'Traceroute', 2: 'HTTP', 3: 'HTTPS', 4: 'TCP', 5: 'DNS', 6: 'TLS'
+    ping: 'Ping', traceroute: 'Traceroute', http: 'HTTP', https: 'HTTPS', tcp: 'TCP', dns: 'DNS', tls: 'TLS'
 };
 
 // All selectable test types; hidden ones come from the EnabledTestTypes server setting
 const allTestTypes = [
-    { value: 0, label: 'Ping' }, { value: 1, label: 'Traceroute' }, { value: 2, label: 'HTTP' },
-    { value: 3, label: 'HTTPS' }, { value: 4, label: 'TCP' }, { value: 5, label: 'DNS' }, { value: 6, label: 'TLS' }
+    { value: 'ping', label: 'Ping' }, { value: 'traceroute', label: 'Traceroute' }, { value: 'http', label: 'HTTP' },
+    { value: 'https', label: 'HTTPS' }, { value: 'tcp', label: 'TCP' }, { value: 'dns', label: 'DNS' }, { value: 'tls', label: 'TLS' }
 ];
 let enabledTestTypes = null;
 
 const jobStatusMap = {
-    0: 'Queued', 1: 'Assigned', 2: 'Running', 3: 'Completed', 4: 'Failed', 5: 'Timeout'
+    queued: 'Queued', assigned: 'Assigned', running: 'Running', completed: 'Completed', failed: 'Failed', timeout: 'Timeout', noRun: 'No run'
 };
 
 // Allowed test frequencies in seconds; loaded from the FrequencyPresetsSeconds server setting,
@@ -82,8 +82,9 @@ function parseEnabledTestTypes(raw) {
 
     const enabled = new Set();
     for (const entry of raw) {
+        const entryName = String(entry).toLowerCase();
         const match = allTestTypes.find(t =>
-            t.value === entry || String(entry).toLowerCase() === t.label.toLowerCase());
+            t.value === entryName || entryName === t.label.toLowerCase());
         if (match) {
             enabled.add(match.value);
         }
@@ -99,7 +100,7 @@ function applyEnabledTestTypes(extraType = null) {
         enabled.add(extraType);
     }
     for (const option of document.querySelectorAll('#testType option, #editType option')) {
-        option.style.display = enabled.has(parseInt(option.value, 10)) ? '' : 'none';
+        option.style.display = enabled.has(option.value) ? '' : 'none';
     }
 }
 
@@ -113,7 +114,7 @@ function populateFrequencySelect(select, extraValue = null) {
 }
 
 const ipVersionMap = {
-    0: 'Any', 1: 'IPv4', 2: 'IPv6'
+    any: 'Any', ipv4: 'IPv4', ipv6: 'IPv6'
 };
 
 // Load tests, nodes, pools and the frequency presets on page load
@@ -195,7 +196,7 @@ function updateEstimate() {
 async function loadTests() {
     showTestsLoading();
     try {
-        tests = await apiCall('GET', '/v1/tests');
+        tests = (await apiCall('GET', '/v1/tests')).items;
         renderTests();
         showTestsContent();
     } catch (error) {
@@ -205,7 +206,7 @@ async function loadTests() {
 
 async function loadNodeCheckboxes() {
     try {
-        nodes = await apiCall('GET', '/v1/nodes');
+        nodes = (await apiCall('GET', '/v1/nodes')).items;
         renderNodeCheckboxes();
     } catch (error) {
         nodeSelectList.innerHTML = `<span class="text-danger">${escapeHtml(error.message)}</span>`;
@@ -214,7 +215,7 @@ async function loadNodeCheckboxes() {
 
 async function loadPoolCheckboxes() {
     try {
-        pools = await apiCall('GET', '/v1/pools');
+        pools = (await apiCall('GET', '/v1/pools')).items;
         renderPoolCheckboxes();
     } catch (error) {
         poolSelectList.innerHTML = `<span class="text-danger">${escapeHtml(error.message)}</span>`;
@@ -251,33 +252,33 @@ function renderPoolCheckboxes() {
 
 // Shows only the expectation inputs relevant for the selected test type
 function updateExpectationVisibility() {
-    const type = parseInt(testTypeSelect.value);
+    const type = testTypeSelect.value;
     document.querySelectorAll('.http-expectation').forEach(el =>
-        el.style.display = (type === 2 || type === 3) ? '' : 'none');
+        el.style.display = (['http', 'https'].includes(type)) ? '' : 'none');
     // The certificate expiry threshold applies to HTTPS and the TLS test type
     document.querySelectorAll('.https-expectation').forEach(el =>
-        el.style.display = (type === 3 || type === 6) ? '' : 'none');
+        el.style.display = (['https', 'tls'].includes(type)) ? '' : 'none');
     document.querySelectorAll('.dns-expectation').forEach(el =>
-        el.style.display = (type === 5) ? '' : 'none');
+        el.style.display = (type === 'dns') ? '' : 'none');
     document.querySelectorAll('.traceroute-expectation').forEach(el =>
-        el.style.display = (type === 1) ? '' : 'none');
+        el.style.display = (type === 'traceroute') ? '' : 'none');
     document.querySelectorAll('.ping-expectation').forEach(el =>
-        el.style.display = (type === 0) ? '' : 'none');
+        el.style.display = (type === 'ping') ? '' : 'none');
 }
 
 // Same for the edit modal, driven by its own type select
 function updateEditExpectationVisibility() {
-    const type = parseInt(document.getElementById('editType').value);
+    const type = document.getElementById('editType').value;
     document.querySelectorAll('#editTestModal .http-expectation').forEach(el =>
-        el.style.display = (type === 2 || type === 3) ? '' : 'none');
+        el.style.display = (['http', 'https'].includes(type)) ? '' : 'none');
     document.querySelectorAll('#editTestModal .https-expectation').forEach(el =>
-        el.style.display = (type === 3 || type === 6) ? '' : 'none');
+        el.style.display = (['https', 'tls'].includes(type)) ? '' : 'none');
     document.querySelectorAll('#editTestModal .dns-expectation').forEach(el =>
-        el.style.display = (type === 5) ? '' : 'none');
+        el.style.display = (type === 'dns') ? '' : 'none');
     document.querySelectorAll('#editTestModal .traceroute-expectation').forEach(el =>
-        el.style.display = (type === 1) ? '' : 'none');
+        el.style.display = (type === 'traceroute') ? '' : 'none');
     document.querySelectorAll('#editTestModal .ping-expectation').forEach(el =>
-        el.style.display = (type === 0) ? '' : 'none');
+        el.style.display = (type === 'ping') ? '' : 'none');
 }
 
 function getSelectedNodeIds() {
@@ -298,7 +299,7 @@ function showFormError(message) {
 function validateForm({ requireName = true, requireTargets = true } = {}) {
     const name = document.getElementById('testName').value.trim();
     const target = document.getElementById('testTarget').value.trim();
-    const type = parseInt(testTypeSelect.value);
+    const type = testTypeSelect.value;
     const frequency = parseInt(document.getElementById('testFrequency').value);
     const isActive = document.getElementById('testIsActive').checked;
     const nodeIds = getSelectedNodeIds();
@@ -312,7 +313,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         showFormError('Target is required.');
         return null;
     }
-    if (isNaN(type) || !testTypeMap[type]) {
+    if (!testTypeMap[type]) {
         showFormError('Invalid test type.');
         return null;
     }
@@ -329,7 +330,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
     }
 
     const expectedStatusCodes = document.getElementById('expectedStatusCodes').value.trim() || '200-399';
-    if ((type === 2 || type === 3) && !/^\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*$/.test(expectedStatusCodes)) {
+    if ((['http', 'https'].includes(type)) && !/^\d{3}(-\d{3})?(,\d{3}(-\d{3})?)*$/.test(expectedStatusCodes)) {
         showFormError('Expected status codes must look like 200-399 or 200,301.');
         return null;
     }
@@ -341,14 +342,14 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
         return null;
     }
 
-    const ipVersion = parseInt(document.getElementById("testIpVersion").value);
+    const ipVersion = document.getElementById("testIpVersion").value;
 
     // HTTP-only extras: body regex, headers, proxy, cache busting
     let expectedBodyPattern = null;
     let headers = null;
     let proxyUrl = null;
     let cacheBust = false;
-    if (type === 2 || type === 3) {
+    if (['http', 'https'].includes(type)) {
         expectedBodyPattern = document.getElementById('expectedBodyPattern').value.trim() || null;
         if (expectedBodyPattern) {
             try {
@@ -379,7 +380,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
     let tracerouteQueriesPerHop = null;
     let tracerouteQueryTimeoutMs = null;
     let tracerouteResolveHostnames = null;
-    if (type === 1) {
+    if (type === 'traceroute') {
         tracerouteMaxHops = parseIntOrNull(document.getElementById('tracerouteMaxHops').value);
         tracerouteQueriesPerHop = parseIntOrNull(document.getElementById('tracerouteQueriesPerHop').value);
         tracerouteQueryTimeoutMs = parseIntOrNull(document.getElementById('tracerouteQueryTimeoutMs').value);
@@ -390,7 +391,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
     let pingCount = null;
     let pingTimeoutMs = null;
     let pingIntervalMs = null;
-    if (type === 0) {
+    if (type === 'ping') {
         pingCount = parseIntOrNull(document.getElementById('pingCount').value);
         pingTimeoutMs = parseIntOrNull(document.getElementById('pingTimeoutMs').value);
         pingIntervalMs = parseIntOrNull(document.getElementById('pingIntervalMs').value);
@@ -399,7 +400,7 @@ function validateForm({ requireName = true, requireTargets = true } = {}) {
     // HTTP method and redirect handling ride along with the HTTP extras
     let httpMethod = null;
     let followRedirects = null;
-    if (type === 2 || type === 3) {
+    if (['http', 'https'].includes(type)) {
         httpMethod = document.getElementById('httpMethod').value || null;
         followRedirects = document.getElementById('followRedirects').checked ? null : false;
     }
@@ -486,7 +487,7 @@ function renderTests() {
             </div>
             <div class="col-6 col-lg-2">
                 <div class="field-label">Frequency</div>
-                ${formatFrequencyLabel(test.frequency)}${test.ipVersion ? ' <span class="text-muted">(' + (ipVersionMap[test.ipVersion] || '') + ')</span>' : ''}
+                ${formatFrequencyLabel(test.frequency)}${test.ipVersion && test.ipVersion !== 'any' ? ' <span class="text-muted">(' + (ipVersionMap[test.ipVersion] || '') + ')</span>' : ''}
             </div>
             <div class="col-6 col-lg-1">
                 <div class="field-label">Est. checks</div>
@@ -601,7 +602,7 @@ async function runOnRandomNode() {
     dryRunResult.innerHTML = `<strong>Running ${testTypeMap[values.type]}</strong> against <code>${escapeHtml(values.target)}</code> on ${nodesToRun.map(n => `<strong>${escapeHtml(n.name)}</strong>`).join(', ') || 'pool nodes'}${poolNote}...`;
 
     try {
-        const jobs = await apiCall('POST', '/v1/tests/run-once', {
+        const jobs = await apiCall('POST', '/v1/test-runs', {
             type: values.type,
             target: values.target,
             nodeIds: nodesToRun.map(n => n.id),
@@ -665,8 +666,8 @@ async function pollJob(jobId, maxSeconds) {
     const deadline = Date.now() + maxSeconds * 1000;
     while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const job = await apiCall('GET', `/v1/testruns/${jobId}`);
-        if (job.status >= 3) {
+        const job = await apiCall('GET', `/v1/test-runs/${jobId}`);
+        if (['completed', 'failed', 'timeout', 'noRun'].includes(job.status)) {
             return job;
         }
     }
@@ -683,13 +684,13 @@ function openTestEditModal(test) {
     document.getElementById('editTestName').textContent = `(${test.name})`;
     document.getElementById('editName').value = test.name;
     applyEnabledTestTypes(test.type);
-    document.getElementById('editType').value = String(test.type);
+    document.getElementById('editType').value = test.type;
     document.getElementById('editTarget').value = test.target;
     // Keep the test's frequency selectable even if it is no longer part of the presets
     populateFrequencySelect(document.getElementById('editFrequency'), test.frequency);
     document.getElementById('editFrequency').value = String(test.frequency);
     document.getElementById('editTimeout').value = test.timeoutSeconds || 60;
-    document.getElementById('editIpVersion').value = String(test.ipVersion || 0);
+    document.getElementById('editIpVersion').value = test.ipVersion || 'any';
     document.getElementById('editExpectedStatusCodes').value = test.expectedStatusCodes || '200-399';
     document.getElementById('editCertExpiryDays').value = test.checkCertificateExpiryDays ?? '';
     document.getElementById('editExpectedDnsResult').value = test.expectedDnsResult || '';
@@ -752,7 +753,7 @@ async function saveTestEdit() {
     const timeoutSeconds = parseInt(document.getElementById('editTimeout').value);
     const nodeIds = Array.from(document.querySelectorAll('.edit-node-checkbox:checked')).map(cb => cb.value);
     const poolIds = Array.from(document.querySelectorAll('.edit-pool-checkbox:checked')).map(cb => cb.value);
-    const type = parseInt(document.getElementById('editType').value);
+    const type = document.getElementById('editType').value;
 
     const error = document.getElementById('editError');
     if (!name) { error.textContent = 'Name is required.'; error.style.display = 'block'; return; }
@@ -765,7 +766,7 @@ async function saveTestEdit() {
     let headers = null;
     let proxyUrl = null;
     let cacheBust = false;
-    if (type === 2 || type === 3) {
+    if (['http', 'https'].includes(type)) {
         expectedBodyPattern = document.getElementById('editExpectedBodyPattern').value.trim() || null;
         if (expectedBodyPattern) {
             try {
@@ -799,7 +800,7 @@ async function saveTestEdit() {
     let tracerouteQueriesPerHop = null;
     let tracerouteQueryTimeoutMs = null;
     let tracerouteResolveHostnames = null;
-    if (type === 1) {
+    if (type === 'traceroute') {
         tracerouteMaxHops = parseIntOrNull(document.getElementById('editTracerouteMaxHops').value);
         tracerouteQueriesPerHop = parseIntOrNull(document.getElementById('editTracerouteQueriesPerHop').value);
         tracerouteQueryTimeoutMs = parseIntOrNull(document.getElementById('editTracerouteQueryTimeoutMs').value);
@@ -810,7 +811,7 @@ async function saveTestEdit() {
     let pingCount = null;
     let pingTimeoutMs = null;
     let pingIntervalMs = null;
-    if (type === 0) {
+    if (type === 'ping') {
         pingCount = parseIntOrNull(document.getElementById('editPingCount').value);
         pingTimeoutMs = parseIntOrNull(document.getElementById('editPingTimeoutMs').value);
         pingIntervalMs = parseIntOrNull(document.getElementById('editPingIntervalMs').value);
@@ -819,7 +820,7 @@ async function saveTestEdit() {
     // HTTP method and redirect handling, read from the modal's own fields
     let httpMethod = null;
     let followRedirects = null;
-    if (type === 2 || type === 3) {
+    if (['http', 'https'].includes(type)) {
         httpMethod = document.getElementById('editHttpMethod').value || null;
         followRedirects = document.getElementById('editFollowRedirects').checked ? null : false;
     }
@@ -841,7 +842,7 @@ async function saveTestEdit() {
                 ? null
                 : parseInt(document.getElementById('editCertExpiryDays').value),
             expectedDnsResult: document.getElementById('editExpectedDnsResult').value.trim() || null,
-            ipVersion: parseInt(document.getElementById('editIpVersion').value),
+            ipVersion: document.getElementById('editIpVersion').value,
             timeoutSeconds,
             expectedBodyPattern,
             headers,
@@ -879,7 +880,9 @@ async function deleteTest(id) {
 
 async function toggleTest(testId) {
     try {
-        await apiCall('POST', `/v1/tests/${testId}/toggle`);
+        // PATCH with the new active state replaces the old toggle action
+        const test = tests.find(t => t.id === testId);
+        await apiCall('PATCH', `/v1/tests/${testId}`, { isActive: !test.isActive });
         await loadTests();
     } catch (error) {
         showTestsError(error.message);
@@ -888,7 +891,7 @@ async function toggleTest(testId) {
 
 async function triggerRun(testId) {
     try {
-        await apiCall('POST', `/v1/tests/${testId}/run`);
+        await apiCall('POST', `/v1/tests/${testId}/runs`);
         await loadTests();
     } catch (error) {
         showTestsError(error.message);

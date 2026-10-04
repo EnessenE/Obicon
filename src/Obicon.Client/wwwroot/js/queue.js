@@ -23,23 +23,23 @@ const nextPageButton = document.getElementById('nextPageButton');
 
 // Job status to badge class
 const jobStatusMap = {
-    0: 'Queued',
-    1: 'Assigned',
-    2: 'Running',
-    3: 'Completed',
-    4: 'Failed',
-    5: 'Timeout',
-    6: 'No run'
+    queued: 'Queued',
+    assigned: 'Assigned',
+    running: 'Running',
+    completed: 'Completed',
+    failed: 'Failed',
+    timeout: 'Timeout',
+    noRun: 'No run'
 };
 
 const jobStatusBadgeMap = {
-    0: 'bg-secondary',
-    1: 'bg-info text-dark',
-    2: 'bg-primary',
-    3: 'bg-success',
-    4: 'bg-danger',
-    5: 'bg-warning text-dark',
-    6: 'bg-dark'
+    queued: 'bg-secondary',
+    assigned: 'bg-info text-dark',
+    running: 'bg-primary',
+    completed: 'bg-success',
+    failed: 'bg-danger',
+    timeout: 'bg-warning text-dark',
+    noRun: 'bg-dark'
 };
 
 // Load the queue on page load
@@ -82,7 +82,7 @@ async function loadQueue() {
             params.set('search', searchFilter.value.trim());
         }
 
-        const page = await apiCall('GET', `/v1/testruns?${params}`);
+        const page = await apiCall('GET', `/v1/test-runs?${params}`);
         currentTotal = page.total;
         renderJobs(page);
         showQueueContent();
@@ -94,7 +94,7 @@ async function loadQueue() {
 // Node names for the filter dropdown; the list rarely changes, so it loads once
 async function loadNodes() {
     try {
-        nodes = await apiCall('GET', '/v1/nodes');
+        nodes = (await apiCall('GET', '/v1/nodes')).items;
         const selected = nodeFilter.value;
         nodeFilter.innerHTML = '<option value="">All nodes</option>' + nodes.map(node =>
             `<option value="${node.id}">${escapeHtml(node.name)}</option>`).join('');
@@ -136,7 +136,7 @@ function renderJobs(page) {
                 <span title="${job.testId}">${job.testId === '00000000-0000-0000-0000-000000000000' ? 'run-once' : job.testId.substring(0, 8)}</span>
                 <span class="text-muted"> · </span>
                 <span title="${job.nodeId}">${job.nodeId.substring(0, 8)}</span>
-                ${job.ipVersion === 1 || job.ipVersion === 2 ? `<span class="badge bg-light text-dark border" title="This run is pinned to one IP family">${job.ipVersion === 1 ? 'v4' : 'v6'}</span>` : ''}
+                ${['ipv4', 'ipv6'].includes(job.ipVersion) ? `<span class="badge bg-light text-dark border" title="This run is pinned to one IP family">${job.ipVersion === 'ipv4' ? 'v4' : 'v6'}</span>` : ''}
             </div>
             <div class="col-6 col-lg-1">
                 <div class="field-label">Status</div>
