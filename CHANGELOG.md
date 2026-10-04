@@ -24,7 +24,8 @@ separate version; its changes are listed under the server release.
 
 ## [Node 0.5.0] - Unreleased
 
-- No functional changes; version bump only, so nodes stay within the server's supported version range (same major.minor as the server they connect to - server 0.5.0 disconnects 0.4.x nodes unless `AllowUnsupportedNodeVersions` is enabled)
+- **Breaking: the `Node:AllowUnsupportedServerVersion` setting is removed.** The node now always closes the connection to a server outside its supported version range; tolerating version mismatches is exclusively the server's decision (`AllowUnsupportedNodeVersions` on the server)
+- Version bump only otherwise, so nodes stay within the server's supported version range (same major.minor as the server they connect to - server 0.5.0 disconnects 0.4.x nodes unless `AllowUnsupportedNodeVersions` is enabled)
 
 ## [Server 0.4.0] - Unreleased
 

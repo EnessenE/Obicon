@@ -752,7 +752,7 @@ ws://localhost:5000/ws/nodes?token={authToken}
 ### Message Types
 
 #### ServerHello
-Sent by server immediately after accepting a node's WebSocket connection. The node logs the server version and checks compatibility: a server outside the node's supported range (same major.minor) closes the connection, unless the node's `AllowUnsupportedServerVersion` setting is enabled. Mirrored on the server: a node reporting an unsupported version is disconnected unless the `AllowUnsupportedNodeVersions` server setting is enabled.
+Sent by server immediately after accepting a node's WebSocket connection. The node logs the server version and checks compatibility: a server outside the node's supported range (same major.minor) always closes the connection — the node has no override. Mirrored on the server: a node reporting an unsupported version is disconnected unless the `AllowUnsupportedNodeVersions` server setting is enabled.
 
 The message also carries the server's observability policy: `LogShippingEnabled` mirrors the `NodeLogShippingEnabled` setting (nodes may ship log entries only while it is true), `NodeLocalLoggingEnabled` mirrors the `NodeLocalLoggingEnabled` default for whether nodes log locally — a node's own configuration takes precedence — and `ExternalIpResolvingEnabled` mirrors the `NodeExternalIpResolvingEnabled` setting (default false): while it is false, nodes do not contact any external-IP check service and report those addresses as unavailable.
 ```json

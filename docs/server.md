@@ -91,7 +91,7 @@ Accepted node log entries are also forwarded into the server's OpenTelemetry log
 
 ## Version compatibility
 
-The server announces its version to every node when it connects, and nodes report theirs. A node is supported when its version shares the server's major and minor version (e.g. node 0.2.x with server 0.2.y). Unsupported nodes are disconnected with a policy-violation close — enable the `AllowUnsupportedNodeVersions` setting to accept them with a warning instead. The node has its own flag for the same purpose: `Node:AllowUnsupportedServerVersion`.
+The server announces its version to every node when it connects, and nodes report theirs. A node is supported when its version shares the server's major and minor version (e.g. node 0.2.x with server 0.2.y). Unsupported nodes are disconnected with a policy-violation close — enable the `AllowUnsupportedNodeVersions` setting to accept them with a warning instead. The gate is exclusively the server's decision: the node always closes the connection to a server outside its own supported range and has no setting to override that.
 
 ## Scheduling and the queue
 

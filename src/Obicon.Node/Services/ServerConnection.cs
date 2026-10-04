@@ -269,7 +269,8 @@ public partial class ServerConnection : BackgroundService, IServerConnection
     /// <summary>
     /// Handles the server's hello message: logs the server version (and a notice when it
     /// changed since the last connection), then checks compatibility. An unsupported server
-    /// version closes the connection unless AllowUnsupportedServerVersion is enabled.
+    /// version closes the connection; accepting version mismatches is exclusively the
+    /// server's decision (AllowUnsupportedNodeVersions).
     /// </summary>
     private async Task HandleServerHelloAsync(ServerHelloMessage? hello)
     {
@@ -298,12 +299,6 @@ public partial class ServerConnection : BackgroundService, IServerConnection
         // Supported servers are within the same major.minor version as this node
         if (ObiconVersions.IsSupported(serverVersion, NodeInfo.Version))
         {
-            return;
-        }
-
-        if (_settings.AllowUnsupportedServerVersion)
-        {
-            LogUnsupportedVersionAllowed(serverVersion, NodeInfo.Version);
             return;
         }
 
@@ -529,10 +524,7 @@ public partial class ServerConnection : BackgroundService, IServerConnection
     [LoggerMessage(Level = LogLevel.Information, Message = "Connected to Obicon server v{ServerVersion}")]
     private partial void LogConnectedServerVersion(string? serverVersion);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Server v{ServerVersion} is outside this node's supported range (same major.minor as v{NodeVersion}); AllowUnsupportedServerVersion is enabled, continuing anyway")]
-    private partial void LogUnsupportedVersionAllowed(string? serverVersion, string nodeVersion);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "Server v{ServerVersion} is not supported by this node (v{NodeVersion}, same major.minor required). Disconnecting; upgrade the node or the server, or set Node:AllowUnsupportedServerVersion to continue anyway")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server v{ServerVersion} is not supported by this node (v{NodeVersion}, same major.minor required). Disconnecting; upgrade the node or the server to matching versions")]
     private partial void LogUnsupportedServerVersion(string? serverVersion, string nodeVersion);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Close handshake after unsupported server version failed")]
