@@ -324,6 +324,18 @@
                             <label class="form-label mb-1">Nameserver <span class="text-muted">(empty = system resolvers)</span></label>
                             <input id="editDnsNameserver" class="form-control" placeholder="8.8.8.8">
                         </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Record type <span class="text-muted">(empty = A + AAAA)</span></label>
+                            <select id="editDnsQueryType" class="form-select">
+                                <option value="">A + AAAA (default)</option>
+                                <option value="A">A</option>
+                                <option value="AAAA">AAAA</option>
+                                <option value="CNAME">CNAME</option>
+                                <option value="TXT">TXT</option>
+                                <option value="MX">MX</option>
+                                <option value="CAA">CAA</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="row g-3 mb-2 http-expectation">
                         <div class="col-md-3">
@@ -397,6 +409,6 @@
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=4"></script>
     <script src="js/testdetails.js?v=4"></script>
-    <script src="js/tests.js?v=16"></script>
+    <script src="js/tests.js?v=17"></script>
 </body>
 </html>

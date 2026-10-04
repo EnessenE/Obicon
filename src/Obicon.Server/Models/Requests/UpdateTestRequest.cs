@@ -6,6 +6,12 @@ namespace Obicon.Server.Models.Requests;
 public class UpdateTestRequest
 {
     /// <summary>
+    /// New name of the test. Required.
+    /// </summary>
+    [Required(AllowEmptyStrings = false), MinLength(1)]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
     /// Type of test to execute. See <see cref="TestType"/> for available types.
     /// </summary>
     [EnumDataType(typeof(TestType))]

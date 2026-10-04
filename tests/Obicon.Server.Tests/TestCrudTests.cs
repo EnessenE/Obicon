@@ -82,6 +82,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
 
         var update = await _client.PutAsJsonAsync($"/v1/tests/{testId}", new
         {
+            Name = "edited",
             Type = 0,
             Target = "example.com",
             NodeIds = new[] { nodeId },
@@ -97,6 +98,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
 
         var updated = await update.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("edited", updated.GetProperty("name").GetString());
         Assert.Equal("example.com", updated.GetProperty("target").GetString());
         Assert.Equal(120, updated.GetProperty("frequency").GetInt32());
         Assert.False(updated.GetProperty("isActive").GetBoolean());

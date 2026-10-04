@@ -121,6 +121,7 @@ public partial class TestService : ITestService
                 return (Test?)null;
             }
 
+            test.Name = request.Name;
             test.Type = request.Type;
             test.Target = request.Target;
             test.Frequency = request.Frequency;

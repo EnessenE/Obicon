@@ -421,6 +421,7 @@ Updates a test.
 **Request Body:**
 ```json
 {
+  "name": "My HTTP Test",
   "type": 2,
   "target": "http://example.com/health",
   "nodeIds": ["11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"],
@@ -428,6 +429,7 @@ Updates a test.
   "isActive": true
 }
 ```
+`name` is required and renames the test; the remaining fields replace the test wholesale, like on create.
 
 **Response:** 200 OK (same structure as Create Test)
 

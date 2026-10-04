@@ -45,9 +45,11 @@ function formatFrequencyLabel(seconds) {
 }
 
 async function loadFrequencyPresets() {
+    const settings = await apiCall('GET', '/v1/settings');
+    const byKey = key => settings.find(s => s.key === key);
+
     try {
-        const settings = await apiCall('GET', '/v1/settings');
-        const setting = settings.find(s => s.key === 'FrequencyPresetsSeconds');
+        const setting = byKey('FrequencyPresetsSeconds');
         const parsed = Array.isArray(setting?.value)
             ? setting.value.filter(seconds => Number.isFinite(seconds) && seconds > 0)
             : [];
@@ -58,7 +60,7 @@ async function loadFrequencyPresets() {
         console.error('Could not load frequency presets, using defaults:', error);
     }
 
-    const enabledSetting = settings.find(s => s.key === 'EnabledTestTypes');
+    const enabledSetting = byKey('EnabledTestTypes');
     enabledTestTypes = parseEnabledTestTypes(enabledSetting ? enabledSetting.value : '');
     applyEnabledTestTypes();
 
@@ -70,30 +72,23 @@ async function loadFrequencyPresets() {
 // Parses the EnabledTestTypes setting: a JSON array of TestType names or numbers,
 // e.g. ["Ping","Http","Dns"] or [0,2,5]. Null means all types (the default, an
 // empty array, or an unparseable value)
+// Parses the EnabledTestTypes setting: a native array of TestType names or numbers,
+// e.g. ["Ping","Http","Dns"] or [0,2,5]. Null means all types (the default, an
+// empty array, or an unrecognized value)
 function parseEnabledTestTypes(raw) {
-    if (!raw || !raw.trim()) {
+    if (!Array.isArray(raw) || raw.length === 0) {
         return null;
     }
 
-    try {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) {
-            return null;
+    const enabled = new Set();
+    for (const entry of raw) {
+        const match = allTestTypes.find(t =>
+            t.value === entry || String(entry).toLowerCase() === t.label.toLowerCase());
+        if (match) {
+            enabled.add(match.value);
         }
-
-        const enabled = new Set();
-        for (const entry of parsed) {
-            const match = allTestTypes.find(t =>
-                t.value === entry || String(entry).toLowerCase() === t.label.toLowerCase());
-            if (match) {
-                enabled.add(match.value);
-            }
-        }
-        return enabled.size > 0 ? enabled : null;
-    } catch (error) {
-        console.error('Could not parse EnabledTestTypes, using all types:', error);
-        return null;
     }
+    return enabled.size > 0 ? enabled : null;
 }
 
 // Hides type options the server disabled; an edit of an existing test of a disabled
@@ -834,6 +829,7 @@ async function saveTestEdit() {
 
     try {
         await apiCall('PUT', `/v1/tests/${editingTest.id}`, {
+            name,
             type,
             target,
             nodeIds,
