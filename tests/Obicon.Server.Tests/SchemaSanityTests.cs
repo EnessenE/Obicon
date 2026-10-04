@@ -173,6 +173,29 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         Assert.Equal(expectedCount, (int)(long)command.ExecuteScalar()!);
     }
 
+    /// <summary>
+    /// The hot paths must have their indexes: queue listing and the retention sweep
+    /// (created_at), per-test latest-result sampling (test_id, completed_at), enroll
+    /// token validation (token_hash), and pool-by-name resolution (name).
+    /// </summary>
+    [Theory]
+    [InlineData("test_jobs", "test_id, completed_at")]
+    [InlineData("test_jobs", "created_at")]
+    [InlineData("enroll_tokens", "token_hash")]
+    [InlineData("node_pools", "name")]
+    public async Task Schema_HotPathsHaveTheirIndexes(string table, string columns)
+    {
+        await using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            select count(*) from pg_indexes
+            where schemaname = 'public' and tablename = @table and indexdef like @def
+            """;
+        command.Parameters.AddWithValue("table", table);
+        command.Parameters.AddWithValue("def", $"%({columns})%");
+        Assert.Equal(1L, (long)command.ExecuteScalar()!);
+    }
+
     [Fact]
     public async Task DeleteNode_RemovesItsJoinRows()
     {

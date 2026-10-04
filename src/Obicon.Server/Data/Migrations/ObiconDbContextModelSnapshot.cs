@@ -58,6 +58,8 @@ namespace Obicon.Server.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TokenHash");
+
                     b.ToTable("enroll_tokens");
                 });
 
@@ -162,6 +164,8 @@ namespace Obicon.Server.Data.Migrations
                         .HasColumnName("name");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name");
 
                     b.ToTable("node_pools");
                 });
@@ -505,9 +509,13 @@ namespace Obicon.Server.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt");
+
                     b.HasIndex("NodeId", "Status");
 
                     b.HasIndex("Status", "CompletedAt");
+
+                    b.HasIndex("TestId", "CompletedAt");
 
                     b.ToTable("test_jobs");
                 });

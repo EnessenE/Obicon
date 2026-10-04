@@ -146,6 +146,15 @@ public class ObiconDbContext : DbContext
         modelBuilder.Entity<Node>()
             .HasIndex(n => n.AuthToken);
 
+        // Indexes for the hot paths: auth and enrollment token lookups, pool-by-name
+        // resolution at enrollment, and the queue's newest-first listing, retention
+        // sweep, and per-test latest-result sampling
+        modelBuilder.Entity<EnrollToken>()
+            .HasIndex(t => t.TokenHash);
+
+        modelBuilder.Entity<NodePool>()
+            .HasIndex(p => p.Name);
+
         modelBuilder.Entity<ServerSettingValue>()
             .HasKey(s => s.Key);
 
@@ -316,6 +325,10 @@ public class ObiconDbContext : DbContext
             .HasIndex(j => new { j.NodeId, j.Status });
         modelBuilder.Entity<TestJob>()
             .HasIndex(j => new { j.Status, j.CompletedAt });
+        modelBuilder.Entity<TestJob>()
+            .HasIndex(j => j.CreatedAt);
+        modelBuilder.Entity<TestJob>()
+            .HasIndex(j => new { j.TestId, j.CompletedAt });
 
         foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(e => e.GetProperties()))
         {
