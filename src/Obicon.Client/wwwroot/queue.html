@@ -35,6 +35,37 @@
         </div>
         <div id="queueErrorMessage" class="alert alert-danger" style="display:none;"></div>
 
+        <div class="card mb-3">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-center">
+                    <div class="col-6 col-lg-2">
+                        <select id="statusFilter" class="form-select form-select-sm" onchange="renderJobs()">
+                            <option value="">All statuses</option>
+                            <option value="0">Queued</option>
+                            <option value="1">Assigned</option>
+                            <option value="2">Running</option>
+                            <option value="3">Completed</option>
+                            <option value="4">Failed</option>
+                            <option value="5">Timeout</option>
+                            <option value="6">No run</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <select id="nodeFilter" class="form-select form-select-sm" onchange="renderJobs()">
+                            <option value="">All nodes</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                        <input id="searchFilter" type="search" class="form-control form-control-sm"
+                               placeholder="Search job, test, node, or target" oninput="renderJobs()">
+                    </div>
+                    <div class="col-12 col-lg-1 text-lg-end">
+                        <span id="queueFilterCount" class="small text-muted"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="card">
             <div id="queueList"></div>
         </div>
@@ -47,6 +78,6 @@
     <script src="js/layout.js?v=2"></script>
     <script src="js/api.js?v=4"></script>
     <script src="js/testdetails.js?v=4"></script>
-    <script src="js/queue.js?v=8"></script>
+    <script src="js/queue.js?v=9"></script>
 </body>
 </html>

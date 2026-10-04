@@ -1,5 +1,6 @@
 // Queue page functionality
 let jobs = [];
+let nodes = [];
 let autoRefreshTimer = null;
 
 // DOM elements
@@ -9,6 +10,10 @@ const queueLoadingMessage = document.getElementById('queueLoadingMessage');
 const queueErrorMessage = document.getElementById('queueErrorMessage');
 const queueRefreshSpinner = document.getElementById('queueRefreshSpinner');
 const autoRefreshCheckbox = document.getElementById('autoRefresh');
+const statusFilter = document.getElementById('statusFilter');
+const nodeFilter = document.getElementById('nodeFilter');
+const searchFilter = document.getElementById('searchFilter');
+const queueFilterCount = document.getElementById('queueFilterCount');
 
 // Job status to badge class
 const jobStatusMap = {
@@ -34,6 +39,7 @@ const jobStatusBadgeMap = {
 // Load queue on page load
 toggleAutoRefresh();
 loadQueue();
+loadNodes();
 
 function toggleAutoRefresh() {
     if (autoRefreshTimer) {
@@ -56,8 +62,52 @@ async function loadQueue() {
     }
 }
 
+// Node names for the filter dropdown; the list rarely changes, so it loads once
+async function loadNodes() {
+    try {
+        nodes = await apiCall('GET', '/v1/nodes');
+        const selected = nodeFilter.value;
+        nodeFilter.innerHTML = '<option value="">All nodes</option>' + nodes.map(node =>
+            `<option value="${node.id}">${escapeHtml(node.name)}</option>`).join('');
+        nodeFilter.value = selected;
+    } catch (error) {
+        // The queue itself still works without the node filter
+        nodeFilter.innerHTML = '<option value="">All nodes</option>';
+    }
+}
+
+function jobMatchesFilters(job) {
+    if (statusFilter.value !== '' && job.status !== Number(statusFilter.value)) {
+        return false;
+    }
+    if (nodeFilter.value !== '' && job.nodeId !== nodeFilter.value) {
+        return false;
+    }
+    const term = searchFilter.value.trim().toLowerCase();
+    if (term !== '') {
+        const haystack = [job.id, job.testId, job.nodeId, job.target, job.output, job.errorMessage]
+            .filter(v => v != null)
+            .join(' ').toLowerCase();
+        if (!haystack.includes(term)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function renderJobs() {
     if (jobs.length === 0) {
+        queueFilterCount.textContent = '';
+        noJobsMessage.textContent = 'Queue is empty.';
+        noJobsMessage.style.display = 'block';
+        queueList.style.display = 'none';
+        return;
+    }
+
+    const filtered = jobs.filter(jobMatchesFilters);
+    queueFilterCount.textContent = `${filtered.length} of ${jobs.length}`;
+    if (filtered.length === 0) {
+        noJobsMessage.textContent = 'No jobs match the current filters.';
         noJobsMessage.style.display = 'block';
         queueList.style.display = 'none';
         return;
@@ -66,7 +116,7 @@ function renderJobs() {
     noJobsMessage.style.display = 'none';
     queueList.style.display = 'block';
 
-    queueList.innerHTML = jobs.map(job => `
+    queueList.innerHTML = filtered.map(job => `
         <div class="row g-2 g-lg-3 list-row px-3">
             <div class="col-12 col-lg-2">
                 <div class="field-label">Job ID</div>
