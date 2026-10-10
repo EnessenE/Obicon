@@ -23,7 +23,7 @@ dotnet run --project src/Obicon.Server
 | Prometheus metrics | `GET /metrics` (no auth) |
 | WebSocket hub | `ws://localhost:5000/ws/nodes` (nodes connect here) |
 
-In Docker, the published image is `ghcr.io/enessene/obicon/server` (port 5000; tags `latest` and the per-release version, e.g. `0.4.0`). The repo root's `docker-compose.yml` runs the server next to a PostgreSQL container.
+In Docker, the published image is `ghcr.io/enessene/obicon/server` (port 5000; tags `latest` and the per-release version, e.g. `0.5.0`). The repo root's `docker-compose.yml` runs the server next to a PostgreSQL container.
 
 ## Storage
 
@@ -59,9 +59,9 @@ The `Serilog` section configures logging: `MinimumLevel` (per-source overrides) 
 
 ## Server settings (runtime, editable)
 
-Separate from the static config above, the server has runtime settings editable from the UI's Settings page or `PUT /v1/settings/{key}`. They resolve in three layers:
+Separate from the static config above, the server has runtime settings editable via `PUT /v1/settings/{key}` (the settings UI from a source checkout exposes the same). They resolve in three layers:
 
-1. **Forced** — set via `ServerSettings__*` env vars or appsettings; read-only, the UI shows a "Forced by configuration" badge
+1. **Forced** — set via `ServerSettings__*` env vars or appsettings; read-only (`PUT` returns 409), the UI shows a "Forced by configuration" badge
 2. **Database override** — set via the API/UI, stored in the database
 3. **Default** — built-in defaults
 
@@ -74,7 +74,7 @@ Two settings in the **General** group control what test results the database kee
 | `TestResultStorageMode` | `Full` | What a finished job leaves behind: `Full` (complete payload), `MetadataOnly` (row without the payload), or `None` (row deleted on completion). Metrics are always emitted before deletion |
 | `JobRetentionDays` | `30` | Days a finished job stays in the database before the sweep deletes it. Want history? Check your metric store |
 
-The settings UI groups settings into sections; the **Observability** section controls node log handling:
+Every setting carries a `group` naming the section it belongs to; the **Observability** group controls node log handling:
 
 | Setting | Default | Meaning |
 |---------|---------|---------|
@@ -91,7 +91,7 @@ Accepted node log entries are also forwarded into the server's OpenTelemetry log
 
 ## Version compatibility
 
-The server announces its version to every node when it connects, and nodes report theirs. A node is supported when its version shares the server's major and minor version (e.g. node 0.2.x with server 0.2.y). Unsupported nodes are disconnected with a policy-violation close — enable the `AllowUnsupportedNodeVersions` setting to accept them with a warning instead. The gate is exclusively the server's decision: the node always closes the connection to a server outside its own supported range and has no setting to override that.
+The server announces its version to every node when it connects, and nodes report theirs. A node is supported when its version shares the server's major and minor version (e.g. node 0.5.x with server 0.5.y). Unsupported nodes are disconnected with a policy-violation close — enable the `AllowUnsupportedNodeVersions` setting to accept them with a warning instead. The gate is exclusively the server's decision: the node always closes the connection to a server outside its own supported range and has no setting to override that.
 
 ## Scheduling and the queue
 

@@ -51,7 +51,7 @@ curl -X POST http://localhost:5000/v1/tests \
   -H "Content-Type: application/json" \
   -d '{
     "name": "example.com reachable",
-    "type": 3,
+    "type": "https",
     "target": "https://example.com",
     "nodeIds": ["<node id>"],
     "frequency": 60,
