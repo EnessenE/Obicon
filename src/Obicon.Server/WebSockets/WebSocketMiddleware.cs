@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -70,7 +71,7 @@ public partial class WebSocketMiddleware
 
             var webSocket = await context.WebSockets.AcceptWebSocketAsync();
             var connectionId = Guid.NewGuid().ToString();
-            var remoteIp = context.Connection.RemoteIpAddress?.ToString();
+            var remoteIp = context.Connection.RemoteIpAddress;
 
             var added = _connectionManager.TryAddConnection(node.Id.ToString(), node.Name, webSocket);
             if (!added)
@@ -79,7 +80,7 @@ public partial class WebSocketMiddleware
                 return;
             }
 
-            LogNodeConnected(node.Id, remoteIp ?? "unknown");
+            LogNodeConnected(node.Id, remoteIp?.ToString() ?? "unknown");
 
             try
             {
@@ -121,7 +122,7 @@ public partial class WebSocketMiddleware
         await webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
     }
 
-    private async Task HandleWebSocketConnection(string nodeId, string? remoteIp, WebSocket webSocket)
+    private async Task HandleWebSocketConnection(string nodeId, IPAddress? remoteIp, WebSocket webSocket)
     {
         var buffer = new byte[1024 * 4];
         var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
@@ -166,7 +167,7 @@ public partial class WebSocketMiddleware
     /// Processes one message from a node. Returns false when the connection must be closed,
     /// e.g. because the node version is unsupported.
     /// </summary>
-    private async Task<bool> ProcessMessage(string nodeId, string? remoteIp, WebSocket webSocket, WebSocketMessage message)
+    private async Task<bool> ProcessMessage(string nodeId, IPAddress? remoteIp, WebSocket webSocket, WebSocketMessage message)
     {
         LogProcessingMessage(message.Type, nodeId);
 
@@ -281,7 +282,7 @@ public partial class WebSocketMiddleware
         return string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength] + "…";
     }
 
-    private async Task<bool> HandleNodeRegistration(string nodeId, string? remoteIp, WebSocketMessage message)
+    private async Task<bool> HandleNodeRegistration(string nodeId, IPAddress? remoteIp, WebSocketMessage message)
     {
         var registration = (message.Data as JsonElement?)?.Deserialize<NodeRegistrationMessage>();
         var nodeVersion = string.IsNullOrWhiteSpace(registration?.NodeVersion) ? null : registration!.NodeVersion;
@@ -308,7 +309,8 @@ public partial class WebSocketMiddleware
         await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
         await _nodeService.UpdateNodeConnectionInfoAsync(Guid.Parse(nodeId), nodeVersion, remoteIp, CollectReportedSettings(registration));
         await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
-            registration?.InternalIpv4, registration?.InternalIpv6, registration?.ExternalIpv4, registration?.ExternalIpv6);
+            ParseAddress(registration?.InternalIpv4), ParseAddress(registration?.InternalIpv6),
+            ParseAddress(registration?.ExternalIpv4), ParseAddress(registration?.ExternalIpv6));
         return true;
     }
 
@@ -326,7 +328,17 @@ public partial class WebSocketMiddleware
         }
 
         await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
-            update.InternalIpv4, update.InternalIpv6, update.ExternalIpv4, update.ExternalIpv6);
+            ParseAddress(update.InternalIpv4), ParseAddress(update.InternalIpv6),
+            ParseAddress(update.ExternalIpv4), ParseAddress(update.ExternalIpv6));
+    }
+
+    /// <summary>
+    /// Parses a wire-reported address into a native inet value. Null and unparseable
+    /// values both stay null, matching the "family unavailable" reporting contract.
+    /// </summary>
+    private static IPAddress? ParseAddress(string? address)
+    {
+        return address is null || !IPAddress.TryParse(address, out var parsed) ? null : parsed;
     }
 
     /// <summary>

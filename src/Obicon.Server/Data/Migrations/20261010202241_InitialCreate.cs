@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -36,11 +37,11 @@ public partial class InitialCreate : Migration
                 last_seen_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                 enrollment_type = table.Column<int>(type: "integer", nullable: false),
                 version = table.Column<string>(type: "text", nullable: true),
-                ip_address = table.Column<string>(type: "text", nullable: true),
-                internal_ipv4 = table.Column<string>(type: "text", nullable: true),
-                internal_ipv6 = table.Column<string>(type: "text", nullable: true),
-                external_ipv4 = table.Column<string>(type: "text", nullable: true),
-                external_ipv6 = table.Column<string>(type: "text", nullable: true)
+                ip_address = table.Column<IPAddress>(type: "inet", nullable: true),
+                internal_ipv4 = table.Column<IPAddress>(type: "inet", nullable: true),
+                internal_ipv6 = table.Column<IPAddress>(type: "inet", nullable: true),
+                external_ipv4 = table.Column<IPAddress>(type: "inet", nullable: true),
+                external_ipv6 = table.Column<IPAddress>(type: "inet", nullable: true)
             },
             constraints: table =>
             {
@@ -218,7 +219,7 @@ public partial class InitialCreate : Migration
             name: "test_jobs",
             columns: table => new
             {
-                id = table.Column<Guid>(type: "uuid", nullable: false),
+                id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuidv7()"),
                 test_id = table.Column<Guid>(type: "uuid", nullable: true),
                 node_id = table.Column<Guid>(type: "uuid", nullable: false),
                 test_type = table.Column<int>(type: "integer", nullable: false),
@@ -529,7 +530,7 @@ public partial class InitialCreate : Migration
             name: "test_job_dns_records",
             columns: table => new
             {
-                id = table.Column<Guid>(type: "uuid", nullable: false),
+                id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuidv7()"),
                 job_id = table.Column<Guid>(type: "uuid", nullable: false),
                 ordinal = table.Column<int>(type: "integer", nullable: false),
                 record_type = table.Column<string>(type: "text", nullable: false),
@@ -551,7 +552,7 @@ public partial class InitialCreate : Migration
             name: "test_job_ping_replies",
             columns: table => new
             {
-                id = table.Column<Guid>(type: "uuid", nullable: false),
+                id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuidv7()"),
                 job_id = table.Column<Guid>(type: "uuid", nullable: false),
                 ordinal = table.Column<int>(type: "integer", nullable: false),
                 reply_address = table.Column<string>(type: "text", nullable: true),
@@ -574,7 +575,7 @@ public partial class InitialCreate : Migration
             name: "test_job_traceroute_hops",
             columns: table => new
             {
-                id = table.Column<Guid>(type: "uuid", nullable: false),
+                id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "uuidv7()"),
                 job_id = table.Column<Guid>(type: "uuid", nullable: false),
                 hop = table.Column<int>(type: "integer", nullable: false),
                 address = table.Column<string>(type: "text", nullable: true),

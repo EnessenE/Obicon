@@ -348,6 +348,22 @@ public class ObiconDbContext : DbContext
             .HasForeignKey(t => t.PoolId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Insert-heavy tables get database-generated UUIDv7 keys (PostgreSQL 18's
+        // uuidv7()): time-ordered ids keep the primary-key B-tree append-mostly
+        // instead of splitting random leaves on every insert
+        modelBuilder.Entity<TestJob>()
+            .Property(j => j.Id)
+            .HasDefaultValueSql("uuidv7()");
+        modelBuilder.Entity<TestJobTracerouteHop>()
+            .Property(h => h.Id)
+            .HasDefaultValueSql("uuidv7()");
+        modelBuilder.Entity<TestJobPingReply>()
+            .Property(r => r.Id)
+            .HasDefaultValueSql("uuidv7()");
+        modelBuilder.Entity<TestJobDnsRecord>()
+            .Property(r => r.Id)
+            .HasDefaultValueSql("uuidv7()");
+
         modelBuilder.Entity<TestJob>()
             .HasIndex(j => new { j.NodeId, j.Status });
         modelBuilder.Entity<TestJob>()

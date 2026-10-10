@@ -69,7 +69,6 @@ public class TestQueueService : ITestQueueService
     public async Task<TestJob> CreateJobAsync(ObiconDbContext db, TestJob job)
     {
         job.TimeoutSeconds = Math.Clamp(job.TimeoutSeconds, 1, Math.Max(1, await _settingsService.GetAsync<int>("MaxTestTimeoutSeconds")));
-        job.Id = job.Id == Guid.Empty ? Guid.NewGuid() : job.Id;
         job.CreatedAt = job.CreatedAt == default ? DateTime.UtcNow : job.CreatedAt;
         job.Status = TestJobStatus.Queued;
 
@@ -314,20 +313,42 @@ public class TestQueueService : ITestQueueService
 
     public async Task<int> PruneJobsAsync(DateTime finishedBefore, DateTime stuckBefore)
     {
-        return await _dbFactory.ExecuteAsync(async db =>
+        // Deleted in bounded batches so no single pass holds a long transaction or
+        // spikes the WAL, no matter how much outlived history the window holds
+        const int batchSize = 500;
+        var deleted = 0;
+
+        for (; ; )
         {
-            var finished = await db.TestJobs
+            var finished = await _dbFactory.ExecuteAsync(async db => await db.TestJobs
                 .Where(j => TerminalStatuses.Contains(j.Status) && (j.CompletedAt ?? j.CreatedAt) < finishedBefore)
-                .ExecuteDeleteAsync();
+                .OrderBy(j => j.Id)
+                .Take(batchSize)
+                .ExecuteDeleteAsync());
+            deleted += finished;
+            if (finished < batchSize)
+            {
+                break;
+            }
+        }
 
-            // Safety cap: a job stuck in a live status for far longer than any test
-            // timeout can never finish; it would pin disk forever without this sweep
-            var stuck = await db.TestJobs
+        // Safety cap: a job stuck in a live status for far longer than any test
+        // timeout can never finish; it would pin disk forever without this sweep
+        for (; ; )
+        {
+            var stuck = await _dbFactory.ExecuteAsync(async db => await db.TestJobs
                 .Where(j => !TerminalStatuses.Contains(j.Status) && j.CreatedAt < stuckBefore)
-                .ExecuteDeleteAsync();
+                .OrderBy(j => j.Id)
+                .Take(batchSize)
+                .ExecuteDeleteAsync());
+            deleted += stuck;
+            if (stuck < batchSize)
+            {
+                break;
+            }
+        }
 
-            return finished + stuck;
-        });
+        return deleted;
     }
 
     /// <summary>

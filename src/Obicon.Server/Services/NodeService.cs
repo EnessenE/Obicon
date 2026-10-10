@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Obicon.Server.Configuration;
 using Obicon.Server.Data;
@@ -198,7 +199,7 @@ public partial class NodeService : INodeService
         });
     }
 
-    public Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, string? ipAddress, Dictionary<string, string>? settings)
+    public Task UpdateNodeConnectionInfoAsync(Guid nodeId, string? version, IPAddress? ipAddress, Dictionary<string, string>? settings)
     {
         return _dbFactory.ExecuteAsync(async db =>
         {
@@ -218,7 +219,7 @@ public partial class NodeService : INodeService
                 .Select(kv => (kv.Key, kv.Value))
                 .ToList();
             var changed = node.Version != version ||
-                          node.IpAddress != ipAddress ||
+                          node.IpAddress?.ToString() != ipAddress?.ToString() ||
                           !storedSettings.SequenceEqual(incomingSettings);
             if (!changed)
             {
@@ -236,18 +237,20 @@ public partial class NodeService : INodeService
             }));
             await db.SaveChangesAsync();
 
-            LogConnectionInfoUpdated(nodeId, version, ipAddress);
+            LogConnectionInfoUpdated(nodeId, version, ipAddress?.ToString());
         });
     }
 
-    public Task UpdateNodeReportedAddressesAsync(Guid nodeId, string? internalIpv4, string? internalIpv6, string? externalIpv4, string? externalIpv6)
+    public Task UpdateNodeReportedAddressesAsync(Guid nodeId, IPAddress? internalIpv4, IPAddress? internalIpv6, IPAddress? externalIpv4, IPAddress? externalIpv6)
     {
         return _dbFactory.ExecuteAsync(async db =>
         {
             var node = await db.Nodes.FindAsync(nodeId);
             if (node == null ||
-                (node.InternalIpv4 == internalIpv4 && node.InternalIpv6 == internalIpv6 &&
-                 node.ExternalIpv4 == externalIpv4 && node.ExternalIpv6 == externalIpv6))
+                (node.InternalIpv4?.ToString() == internalIpv4?.ToString() &&
+                 node.InternalIpv6?.ToString() == internalIpv6?.ToString() &&
+                 node.ExternalIpv4?.ToString() == externalIpv4?.ToString() &&
+                 node.ExternalIpv6?.ToString() == externalIpv6?.ToString()))
             {
                 return;
             }
@@ -259,8 +262,8 @@ public partial class NodeService : INodeService
             await db.SaveChangesAsync();
 
             LogAddressesUpdated(nodeId,
-                internalIpv4 ?? "unavailable", internalIpv6 ?? "unavailable",
-                externalIpv4 ?? "unavailable", externalIpv6 ?? "unavailable");
+                internalIpv4?.ToString() ?? "unavailable", internalIpv6?.ToString() ?? "unavailable",
+                externalIpv4?.ToString() ?? "unavailable", externalIpv6?.ToString() ?? "unavailable");
         });
     }
 
@@ -294,11 +297,11 @@ public partial class NodeService : INodeService
         VersionSupported = node.Version == null
             ? null
             : ObiconVersions.IsSupported(ServerInfo.Version, node.Version),
-        IpAddress = node.IpAddress,
-        InternalIpv4 = node.InternalIpv4,
-        InternalIpv6 = node.InternalIpv6,
-        ExternalIpv4 = node.ExternalIpv4,
-        ExternalIpv6 = node.ExternalIpv6,
+        IpAddress = node.IpAddress?.ToString(),
+        InternalIpv4 = node.InternalIpv4?.ToString(),
+        InternalIpv6 = node.InternalIpv6?.ToString(),
+        ExternalIpv4 = node.ExternalIpv4?.ToString(),
+        ExternalIpv6 = node.ExternalIpv6?.ToString(),
         Settings = node.Settings.ToDictionary(s => s.Key, s => s.Value)
     };
 
