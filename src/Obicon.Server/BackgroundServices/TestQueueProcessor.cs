@@ -89,7 +89,7 @@ public partial class TestQueueProcessor : BackgroundService
                 Data = new TestAssignmentMessage
                 {
                     JobId = job.Id.ToString(),
-                    TestId = job.TestId.ToString(),
+                    TestId = job.TestId?.ToString() ?? Guid.Empty.ToString(),
                     TestType = job.TestType,
                     Target = job.Target,
                     TimeoutSeconds = job.TimeoutSeconds,

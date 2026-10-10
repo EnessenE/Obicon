@@ -133,7 +133,7 @@ function renderJobs(page) {
             </div>
             <div class="col-6 col-lg-2">
                 <div class="field-label">Test / Node</div>
-                <span title="${job.testId}">${job.testId === '00000000-0000-0000-0000-000000000000' ? 'run-once' : job.testId.substring(0, 8)}</span>
+                <span title="${job.testId ?? 'run-once'}">${job.testId ? job.testId.substring(0, 8) : 'run-once'}</span>
                 <span class="text-muted"> · </span>
                 <span title="${job.nodeId}">${job.nodeId.substring(0, 8)}</span>
                 ${['ipv4', 'ipv6'].includes(job.ipVersion) ? `<span class="badge bg-light text-dark border" title="This run is pinned to one IP family">${job.ipVersion === 'ipv4' ? 'v4' : 'v6'}</span>` : ''}

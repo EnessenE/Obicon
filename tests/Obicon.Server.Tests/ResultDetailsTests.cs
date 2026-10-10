@@ -29,14 +29,25 @@ public class ResultDetailsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     }
 
     /// <summary>
+    /// Creates a node through the API so seeded jobs satisfy the node foreign key.
+    /// </summary>
+    private async Task<Guid> CreateNodeIdAsync()
+    {
+        var created = await _client.PostAsJsonAsync("/v1/nodes", new { name = $"seed-node-{Guid.NewGuid():N}" });
+        created.EnsureSuccessStatusCode();
+        var body = await created.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("id").GetGuid();
+    }
+
+    /// <summary>
     /// Enqueues a job, completes it with the given details, and returns the stored job.
     /// </summary>
     private async Task<TestJob> CompleteWithDetailsAsync(TestResultDetails details)
     {
         var job = await _queue.EnqueueJobAsync(new TestJob
         {
-            TestId = Guid.NewGuid(),
-            NodeId = Guid.NewGuid(),
+            TestId = null,
+            NodeId = await CreateNodeIdAsync(),
             Target = "example.com",
             TestType = TestType.Ping
         });
@@ -336,8 +347,8 @@ public class ResultDetailsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     {
         var job = await _queue.EnqueueJobAsync(new TestJob
         {
-            TestId = Guid.NewGuid(),
-            NodeId = Guid.NewGuid(),
+            TestId = null,
+            NodeId = await CreateNodeIdAsync(),
             Target = "example.com",
             TestType = TestType.Traceroute
         });

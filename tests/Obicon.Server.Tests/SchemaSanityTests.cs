@@ -33,6 +33,17 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
     }
 
     /// <summary>
+    /// Creates a node through the API so seeded jobs satisfy the node foreign key.
+    /// </summary>
+    private async Task<Guid> CreateNodeIdAsync()
+    {
+        var created = await _client.PostAsJsonAsync("/v1/nodes", new { name = $"seed-node-{Guid.NewGuid():N}" });
+        created.EnsureSuccessStatusCode();
+        var body = await created.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("id").GetGuid();
+    }
+
+    /// <summary>
     /// Opens a direct connection to the fixture database, for row-level assertions.
     /// </summary>
     private NpgsqlConnection OpenConnection()
@@ -323,8 +334,8 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         {
             var job = await _queue.EnqueueJobAsync(new TestJob
             {
-                TestId = Guid.NewGuid(),
-                NodeId = Guid.NewGuid(),
+                TestId = null,
+                NodeId = await CreateNodeIdAsync(),
                 Target = "example.com",
                 TestType = TestType.Ping,
                 Headers = [new TestJobHeader { Name = "X-Trace", Value = "abc" }]
@@ -369,8 +380,8 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         {
             var job = await _queue.EnqueueJobAsync(new TestJob
             {
-                TestId = Guid.NewGuid(),
-                NodeId = Guid.NewGuid(),
+                TestId = null,
+                NodeId = await CreateNodeIdAsync(),
                 Target = "example.com",
                 TestType = TestType.Dns
             });

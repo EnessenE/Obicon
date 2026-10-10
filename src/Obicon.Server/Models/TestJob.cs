@@ -13,9 +13,9 @@ public class TestJob
     public Guid Id { get; set; }
 
     /// <summary>
-    /// ID of the test this job belongs to.
+    /// ID of the test this job belongs to. Null for one-off runs without a saved test.
     /// </summary>
-    public Guid TestId { get; set; }
+    public Guid? TestId { get; set; }
 
     /// <summary>
     /// ID of the node assigned to execute this job.

@@ -11,23 +11,6 @@ public partial class InitialCreate : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.CreateTable(
-            name: "enroll_tokens",
-            columns: table => new
-            {
-                id = table.Column<Guid>(type: "uuid", nullable: false),
-                name = table.Column<string>(type: "text", nullable: false),
-                token_hash = table.Column<string>(type: "text", nullable: false),
-                created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                expires_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                revoked_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                pool_id = table.Column<Guid>(type: "uuid", nullable: true)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_enroll_tokens", x => x.id);
-            });
-
-        migrationBuilder.CreateTable(
             name: "node_pools",
             columns: table => new
             {
@@ -91,49 +74,6 @@ public partial class InitialCreate : Migration
             });
 
         migrationBuilder.CreateTable(
-            name: "test_jobs",
-            columns: table => new
-            {
-                id = table.Column<Guid>(type: "uuid", nullable: false),
-                test_id = table.Column<Guid>(type: "uuid", nullable: false),
-                node_id = table.Column<Guid>(type: "uuid", nullable: false),
-                test_type = table.Column<int>(type: "integer", nullable: false),
-                target = table.Column<string>(type: "text", nullable: false),
-                timeout_seconds = table.Column<int>(type: "integer", nullable: false),
-                expected_status_codes = table.Column<string>(type: "text", nullable: false),
-                check_certificate_expiry_days = table.Column<int>(type: "integer", nullable: true),
-                expected_dns_result = table.Column<string>(type: "text", nullable: true),
-                ip_version = table.Column<int>(type: "integer", nullable: false),
-                expected_body_pattern = table.Column<string>(type: "text", nullable: true),
-                proxy_url = table.Column<string>(type: "text", nullable: true),
-                cache_bust = table.Column<bool>(type: "boolean", nullable: false),
-                traceroute_max_hops = table.Column<int>(type: "integer", nullable: true),
-                traceroute_queries_per_hop = table.Column<int>(type: "integer", nullable: true),
-                traceroute_query_timeout_ms = table.Column<int>(type: "integer", nullable: true),
-                traceroute_resolve_hostnames = table.Column<bool>(type: "boolean", nullable: true),
-                ping_count = table.Column<int>(type: "integer", nullable: true),
-                ping_timeout_ms = table.Column<int>(type: "integer", nullable: true),
-                ping_interval_ms = table.Column<int>(type: "integer", nullable: true),
-                http_method = table.Column<string>(type: "text", nullable: true),
-                follow_redirects = table.Column<bool>(type: "boolean", nullable: true),
-                dns_nameserver = table.Column<string>(type: "text", nullable: true),
-                dns_query_type = table.Column<string>(type: "text", nullable: true),
-                status = table.Column<int>(type: "integer", nullable: false),
-                created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                started_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                acknowledged_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                completed_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                success = table.Column<bool>(type: "boolean", nullable: true),
-                duration_ms = table.Column<long>(type: "bigint", nullable: true),
-                output = table.Column<string>(type: "text", nullable: true),
-                error_message = table.Column<string>(type: "text", nullable: true)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_test_jobs", x => x.id);
-            });
-
-        migrationBuilder.CreateTable(
             name: "tests",
             columns: table => new
             {
@@ -169,6 +109,29 @@ public partial class InitialCreate : Migration
             constraints: table =>
             {
                 table.PrimaryKey("PK_tests", x => x.id);
+            });
+
+        migrationBuilder.CreateTable(
+            name: "enroll_tokens",
+            columns: table => new
+            {
+                id = table.Column<Guid>(type: "uuid", nullable: false),
+                name = table.Column<string>(type: "text", nullable: false),
+                token_hash = table.Column<string>(type: "text", nullable: false),
+                created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                expires_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                revoked_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                pool_id = table.Column<Guid>(type: "uuid", nullable: true)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_enroll_tokens", x => x.id);
+                table.ForeignKey(
+                    name: "FK_enroll_tokens_node_pools_pool_id",
+                    column: x => x.pool_id,
+                    principalTable: "node_pools",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
             });
 
         migrationBuilder.CreateTable(
@@ -228,6 +191,128 @@ public partial class InitialCreate : Migration
                     name: "FK_pool_members_nodes_node_id",
                     column: x => x.node_id,
                     principalTable: "nodes",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
+            });
+
+        migrationBuilder.CreateTable(
+            name: "test_headers",
+            columns: table => new
+            {
+                test_id = table.Column<Guid>(type: "uuid", nullable: false),
+                name = table.Column<string>(type: "text", nullable: false),
+                value = table.Column<string>(type: "text", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_test_headers", x => new { x.test_id, x.name });
+                table.ForeignKey(
+                    name: "FK_test_headers_tests_test_id",
+                    column: x => x.test_id,
+                    principalTable: "tests",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
+            });
+
+        migrationBuilder.CreateTable(
+            name: "test_jobs",
+            columns: table => new
+            {
+                id = table.Column<Guid>(type: "uuid", nullable: false),
+                test_id = table.Column<Guid>(type: "uuid", nullable: true),
+                node_id = table.Column<Guid>(type: "uuid", nullable: false),
+                test_type = table.Column<int>(type: "integer", nullable: false),
+                target = table.Column<string>(type: "text", nullable: false),
+                timeout_seconds = table.Column<int>(type: "integer", nullable: false),
+                expected_status_codes = table.Column<string>(type: "text", nullable: false),
+                check_certificate_expiry_days = table.Column<int>(type: "integer", nullable: true),
+                expected_dns_result = table.Column<string>(type: "text", nullable: true),
+                ip_version = table.Column<int>(type: "integer", nullable: false),
+                expected_body_pattern = table.Column<string>(type: "text", nullable: true),
+                proxy_url = table.Column<string>(type: "text", nullable: true),
+                cache_bust = table.Column<bool>(type: "boolean", nullable: false),
+                traceroute_max_hops = table.Column<int>(type: "integer", nullable: true),
+                traceroute_queries_per_hop = table.Column<int>(type: "integer", nullable: true),
+                traceroute_query_timeout_ms = table.Column<int>(type: "integer", nullable: true),
+                traceroute_resolve_hostnames = table.Column<bool>(type: "boolean", nullable: true),
+                ping_count = table.Column<int>(type: "integer", nullable: true),
+                ping_timeout_ms = table.Column<int>(type: "integer", nullable: true),
+                ping_interval_ms = table.Column<int>(type: "integer", nullable: true),
+                http_method = table.Column<string>(type: "text", nullable: true),
+                follow_redirects = table.Column<bool>(type: "boolean", nullable: true),
+                dns_nameserver = table.Column<string>(type: "text", nullable: true),
+                dns_query_type = table.Column<string>(type: "text", nullable: true),
+                status = table.Column<int>(type: "integer", nullable: false),
+                created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                started_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                acknowledged_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                completed_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                success = table.Column<bool>(type: "boolean", nullable: true),
+                duration_ms = table.Column<long>(type: "bigint", nullable: true),
+                output = table.Column<string>(type: "text", nullable: true),
+                error_message = table.Column<string>(type: "text", nullable: true)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_test_jobs", x => x.id);
+                table.ForeignKey(
+                    name: "FK_test_jobs_nodes_node_id",
+                    column: x => x.node_id,
+                    principalTable: "nodes",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
+                table.ForeignKey(
+                    name: "FK_test_jobs_tests_test_id",
+                    column: x => x.test_id,
+                    principalTable: "tests",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
+            });
+
+        migrationBuilder.CreateTable(
+            name: "test_target_nodes",
+            columns: table => new
+            {
+                test_id = table.Column<Guid>(type: "uuid", nullable: false),
+                node_id = table.Column<Guid>(type: "uuid", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_test_target_nodes", x => new { x.test_id, x.node_id });
+                table.ForeignKey(
+                    name: "FK_test_target_nodes_nodes_node_id",
+                    column: x => x.node_id,
+                    principalTable: "nodes",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
+                table.ForeignKey(
+                    name: "FK_test_target_nodes_tests_test_id",
+                    column: x => x.test_id,
+                    principalTable: "tests",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
+            });
+
+        migrationBuilder.CreateTable(
+            name: "test_target_pools",
+            columns: table => new
+            {
+                test_id = table.Column<Guid>(type: "uuid", nullable: false),
+                pool_id = table.Column<Guid>(type: "uuid", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_test_target_pools", x => new { x.test_id, x.pool_id });
+                table.ForeignKey(
+                    name: "FK_test_target_pools_node_pools_pool_id",
+                    column: x => x.pool_id,
+                    principalTable: "node_pools",
+                    principalColumn: "id",
+                    onDelete: ReferentialAction.Cascade);
+                table.ForeignKey(
+                    name: "FK_test_target_pools_tests_test_id",
+                    column: x => x.test_id,
+                    principalTable: "tests",
                     principalColumn: "id",
                     onDelete: ReferentialAction.Cascade);
             });
@@ -441,73 +526,6 @@ public partial class InitialCreate : Migration
             });
 
         migrationBuilder.CreateTable(
-            name: "test_headers",
-            columns: table => new
-            {
-                test_id = table.Column<Guid>(type: "uuid", nullable: false),
-                name = table.Column<string>(type: "text", nullable: false),
-                value = table.Column<string>(type: "text", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_test_headers", x => new { x.test_id, x.name });
-                table.ForeignKey(
-                    name: "FK_test_headers_tests_test_id",
-                    column: x => x.test_id,
-                    principalTable: "tests",
-                    principalColumn: "id",
-                    onDelete: ReferentialAction.Cascade);
-            });
-
-        migrationBuilder.CreateTable(
-            name: "test_target_nodes",
-            columns: table => new
-            {
-                test_id = table.Column<Guid>(type: "uuid", nullable: false),
-                node_id = table.Column<Guid>(type: "uuid", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_test_target_nodes", x => new { x.test_id, x.node_id });
-                table.ForeignKey(
-                    name: "FK_test_target_nodes_nodes_node_id",
-                    column: x => x.node_id,
-                    principalTable: "nodes",
-                    principalColumn: "id",
-                    onDelete: ReferentialAction.Cascade);
-                table.ForeignKey(
-                    name: "FK_test_target_nodes_tests_test_id",
-                    column: x => x.test_id,
-                    principalTable: "tests",
-                    principalColumn: "id",
-                    onDelete: ReferentialAction.Cascade);
-            });
-
-        migrationBuilder.CreateTable(
-            name: "test_target_pools",
-            columns: table => new
-            {
-                test_id = table.Column<Guid>(type: "uuid", nullable: false),
-                pool_id = table.Column<Guid>(type: "uuid", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_test_target_pools", x => new { x.test_id, x.pool_id });
-                table.ForeignKey(
-                    name: "FK_test_target_pools_node_pools_pool_id",
-                    column: x => x.pool_id,
-                    principalTable: "node_pools",
-                    principalColumn: "id",
-                    onDelete: ReferentialAction.Cascade);
-                table.ForeignKey(
-                    name: "FK_test_target_pools_tests_test_id",
-                    column: x => x.test_id,
-                    principalTable: "tests",
-                    principalColumn: "id",
-                    onDelete: ReferentialAction.Cascade);
-            });
-
-        migrationBuilder.CreateTable(
             name: "test_job_dns_records",
             columns: table => new
             {
@@ -595,6 +613,11 @@ public partial class InitialCreate : Migration
                     principalColumn: "id",
                     onDelete: ReferentialAction.Cascade);
             });
+
+        migrationBuilder.CreateIndex(
+            name: "IX_enroll_tokens_pool_id",
+            table: "enroll_tokens",
+            column: "pool_id");
 
         migrationBuilder.CreateIndex(
             name: "IX_enroll_tokens_token_hash",
@@ -726,18 +749,18 @@ public partial class InitialCreate : Migration
             name: "test_job_traceroute_hops");
 
         migrationBuilder.DropTable(
-            name: "nodes");
-
-        migrationBuilder.DropTable(
             name: "node_pools");
-
-        migrationBuilder.DropTable(
-            name: "tests");
 
         migrationBuilder.DropTable(
             name: "test_job_traceroute_details");
 
         migrationBuilder.DropTable(
             name: "test_jobs");
+
+        migrationBuilder.DropTable(
+            name: "nodes");
+
+        migrationBuilder.DropTable(
+            name: "tests");
     }
 }

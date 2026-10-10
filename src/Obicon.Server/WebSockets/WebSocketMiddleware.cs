@@ -425,7 +425,7 @@ public partial class WebSocketMiddleware
         // below are always emitted, no matter the storage policy
         var job = await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
 
-        var test = job != null && job.TestId != Guid.Empty ? await _testService.GetTestAsync(job.TestId) : null;
+        var test = job != null && job.TestId is { } testId ? await _testService.GetTestAsync(testId) : null;
         var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
 
         await _testMetricsEmitter.EmitAsync(job, test, node, status, result.DurationMs);

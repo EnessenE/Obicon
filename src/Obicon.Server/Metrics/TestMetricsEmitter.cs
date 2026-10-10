@@ -55,8 +55,10 @@ public class TestMetricsEmitter : ITestMetricsEmitter
         var selected = await GetSelectedLabelsAsync();
         var labels = new List<KeyValuePair<string, object?>>
         {
-            // Forced floor: without test_id no series can be attributed
-            new("test_id", job?.TestId.ToString() ?? "unknown")
+            // Forced floor: without test_id no series can be attributed. A dry run
+            // (test id null) keeps the all-zeros id it always had, so its series and
+            // the node's log entries stay joinable and no new series fork appears
+            new("test_id", job is null ? "unknown" : job.TestId?.ToString() ?? Guid.Empty.ToString())
         };
 
         if (selected.Contains("test_type"))

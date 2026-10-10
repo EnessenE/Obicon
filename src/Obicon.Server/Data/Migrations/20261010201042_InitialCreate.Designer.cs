@@ -13,7 +13,7 @@ using Obicon.Server.Data;
 namespace Obicon.Server.Data.Migrations
 {
     [DbContext(typeof(ObiconDbContext))]
-    [Migration("20261004212501_InitialCreate")]
+    [Migration("20261010201042_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -60,6 +60,8 @@ namespace Obicon.Server.Data.Migrations
                         .HasColumnName("token_hash");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PoolId");
 
                     b.HasIndex("TokenHash");
 
@@ -502,7 +504,7 @@ namespace Obicon.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("target");
 
-                    b.Property<Guid>("TestId")
+                    b.Property<Guid?>("TestId")
                         .HasColumnType("uuid")
                         .HasColumnName("test_id");
 
@@ -1110,6 +1112,14 @@ namespace Obicon.Server.Data.Migrations
                     b.ToTable("test_target_pools");
                 });
 
+            modelBuilder.Entity("Obicon.Server.Models.EnrollToken", b =>
+                {
+                    b.HasOne("Obicon.Server.Models.NodePool", null)
+                        .WithMany()
+                        .HasForeignKey("PoolId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
             modelBuilder.Entity("Obicon.Server.Models.NodeLabel", b =>
                 {
                     b.HasOne("Obicon.Server.Models.Node", null)
@@ -1150,6 +1160,20 @@ namespace Obicon.Server.Data.Migrations
                         .HasForeignKey("TestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Obicon.Server.Models.TestJob", b =>
+                {
+                    b.HasOne("Obicon.Server.Models.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Obicon.Server.Models.Test", null)
+                        .WithMany()
+                        .HasForeignKey("TestId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Obicon.Server.Models.TestJobCertificate", b =>

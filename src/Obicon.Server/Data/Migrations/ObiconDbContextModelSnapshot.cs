@@ -58,6 +58,8 @@ namespace Obicon.Server.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PoolId");
+
                     b.HasIndex("TokenHash");
 
                     b.ToTable("enroll_tokens");
@@ -499,7 +501,7 @@ namespace Obicon.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("target");
 
-                    b.Property<Guid>("TestId")
+                    b.Property<Guid?>("TestId")
                         .HasColumnType("uuid")
                         .HasColumnName("test_id");
 
@@ -1107,6 +1109,14 @@ namespace Obicon.Server.Data.Migrations
                     b.ToTable("test_target_pools");
                 });
 
+            modelBuilder.Entity("Obicon.Server.Models.EnrollToken", b =>
+                {
+                    b.HasOne("Obicon.Server.Models.NodePool", null)
+                        .WithMany()
+                        .HasForeignKey("PoolId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
             modelBuilder.Entity("Obicon.Server.Models.NodeLabel", b =>
                 {
                     b.HasOne("Obicon.Server.Models.Node", null)
@@ -1147,6 +1157,20 @@ namespace Obicon.Server.Data.Migrations
                         .HasForeignKey("TestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Obicon.Server.Models.TestJob", b =>
+                {
+                    b.HasOne("Obicon.Server.Models.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Obicon.Server.Models.Test", null)
+                        .WithMany()
+                        .HasForeignKey("TestId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Obicon.Server.Models.TestJobCertificate", b =>

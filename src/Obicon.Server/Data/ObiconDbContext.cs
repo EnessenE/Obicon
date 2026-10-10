@@ -326,6 +326,28 @@ public class ObiconDbContext : DbContext
             .HasForeignKey<TestJobCertificate>(c => c.JobId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Jobs reference their test and executing node with cascading foreign keys,
+        // so deleting a test or node takes its run history with it instead of
+        // leaving orphaned ids behind. One-off runs have no test: test_id is null
+        modelBuilder.Entity<TestJob>()
+            .HasOne<Test>()
+            .WithMany()
+            .HasForeignKey(j => j.TestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<TestJob>()
+            .HasOne<Node>()
+            .WithMany()
+            .HasForeignKey(j => j.NodeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A pool-scoped enroll token dies with its pool: cascading, never set null,
+        // because a null pool id would silently widen the token's scope to the server
+        modelBuilder.Entity<EnrollToken>()
+            .HasOne<NodePool>()
+            .WithMany()
+            .HasForeignKey(t => t.PoolId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<TestJob>()
             .HasIndex(j => new { j.NodeId, j.Status });
         modelBuilder.Entity<TestJob>()

@@ -572,7 +572,7 @@ public partial class TestService : ITestService
                 {
                     created.Add(await _queueService.CreateJobAsync(db, new TestJob
                     {
-                        TestId = Guid.Empty,
+                        TestId = null,
                         NodeId = nodeId,
                         TestType = request.Type,
                         Target = request.Target,
