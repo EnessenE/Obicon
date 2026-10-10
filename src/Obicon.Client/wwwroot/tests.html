@@ -35,13 +35,13 @@
                     <div class="col-md-2">
                         <label class="form-label">Type</label>
                         <select id="testType" class="form-select">
-                            <option value="0">Ping</option>
-                            <option value="2">HTTP</option>
-                            <option value="3">HTTPS</option>
-                            <option value="4">TCP</option>
-                            <option value="5">DNS</option>
-                            <option value="6">TLS</option>
-                            <option value="1">Traceroute</option>
+                            <option value="ping">Ping</option>
+                            <option value="http">HTTP</option>
+                            <option value="https">HTTPS</option>
+                            <option value="tcp">TCP</option>
+                            <option value="dns">DNS</option>
+                            <option value="tls">TLS</option>
+                            <option value="traceroute">Traceroute</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -63,10 +63,10 @@
                     <div class="col-md-2">
                         <label class="form-label">IP version</label>
                         <select id="testIpVersion" class="form-select">
-                            <option value="0">IPv4 or IPv6</option>
-                            <option value="1">IPv4 only</option>
-                            <option value="2">IPv6 only</option>
-                            <option value="3">IPv4 and IPv6 (two runs)</option>
+                            <option value="any">IPv4 or IPv6</option>
+                            <option value="ipv4">IPv4 only</option>
+                            <option value="ipv6">IPv6 only</option>
+                            <option value="both">IPv4 and IPv6 (two runs)</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -232,13 +232,13 @@
                         <div class="col-md-2">
                             <label class="form-label mb-1">Type</label>
                             <select id="editType" class="form-select">
-                                <option value="6">TLS</option>
-                                <option value="0">Ping</option>
-                                <option value="2">HTTP</option>
-                                <option value="3">HTTPS</option>
-                                <option value="4">TCP</option>
-                                <option value="5">DNS</option>
-                                <option value="1">Traceroute</option>
+                                <option value="tls">TLS</option>
+                                <option value="ping">Ping</option>
+                                <option value="http">HTTP</option>
+                                <option value="https">HTTPS</option>
+                                <option value="tcp">TCP</option>
+                                <option value="dns">DNS</option>
+                                <option value="traceroute">Traceroute</option>
                             </select>
                         </div>
                         <div class="col-md-3">
@@ -266,10 +266,10 @@
                         <div class="col-md-3">
                             <label class="form-label mb-1">IP version</label>
                             <select id="editIpVersion" class="form-select">
-                                <option value="0">IPv4 or IPv6</option>
-                                <option value="1">IPv4 only</option>
-                                <option value="2">IPv6 only</option>
-                                <option value="3">IPv4 and IPv6 (two runs)</option>
+                                <option value="any">IPv4 or IPv6</option>
+                                <option value="ipv4">IPv4 only</option>
+                                <option value="ipv6">IPv6 only</option>
+                                <option value="both">IPv4 and IPv6 (two runs)</option>
                             </select>
                         </div>
                         <div class="col-md-3">
@@ -323,6 +323,18 @@
                         <div class="col-md-4">
                             <label class="form-label mb-1">Nameserver <span class="text-muted">(empty = system resolvers)</span></label>
                             <input id="editDnsNameserver" class="form-control" placeholder="8.8.8.8">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Record type <span class="text-muted">(empty = A + AAAA)</span></label>
+                            <select id="editDnsQueryType" class="form-select">
+                                <option value="">A + AAAA (default)</option>
+                                <option value="A">A</option>
+                                <option value="AAAA">AAAA</option>
+                                <option value="CNAME">CNAME</option>
+                                <option value="TXT">TXT</option>
+                                <option value="MX">MX</option>
+                                <option value="CAA">CAA</option>
+                            </select>
                         </div>
                     </div>
                     <div class="row g-3 mb-2 http-expectation">
@@ -395,8 +407,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/layout.js?v=2"></script>
-    <script src="js/api.js?v=4"></script>
+    <script src="js/api.js?v=5"></script>
     <script src="js/testdetails.js?v=4"></script>
-    <script src="js/tests.js?v=16"></script>
+    <script src="js/tests.js?v=18"></script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Obicon.Server.Models;
 
 public class Node
@@ -34,9 +36,10 @@ public class Node
     public DateTime? LastSeenAt { get; set; }
 
     /// <summary>
-    /// Free-form labels attached to this node, used later for test targeting. Default: empty list.
+    /// Free-form labels attached to this node, used later for test targeting; one row
+    /// per label in the node_labels table. Default: empty list.
     /// </summary>
-    public List<string> Labels { get; set; } = new();
+    public List<NodeLabel> Labels { get; set; } = new();
 
     /// <summary>
     /// How this node came to exist: Manual (created by a user) or AutoEnrollment (enrolled itself).
@@ -50,35 +53,39 @@ public class Node
     public string? Version { get; set; }
 
     /// <summary>
-    /// IP address the server observed on the node's WebSocket connection. Null if it never connected.
+    /// IP address the server observed on the node's WebSocket connection, stored as a native inet.
+    /// Null if it never connected.
     /// </summary>
-    public string? IpAddress { get; set; }
+    public IPAddress? IpAddress { get; set; }
 
     /// <summary>
-    /// Internal (LAN) IPv4 address the node reported about itself. Null when unavailable.
-    /// </summary>
-    public string? InternalIpv4 { get; set; }
-
-    /// <summary>
-    /// Internal (LAN) IPv6 address the node reported about itself. Null when unavailable.
-    /// </summary>
-    public string? InternalIpv6 { get; set; }
-
-    /// <summary>
-    /// External (public internet) IPv4 address the node reported about itself.
-    /// Null when its check has not succeeded yet.
-    /// </summary>
-    public string? ExternalIpv4 { get; set; }
-
-    /// <summary>
-    /// External (public internet) IPv6 address the node reported about itself.
+    /// Internal (LAN) IPv4 address the node reported about itself, stored as a native inet.
     /// Null when unavailable.
     /// </summary>
-    public string? ExternalIpv6 { get; set; }
+    public IPAddress? InternalIpv4 { get; set; }
 
     /// <summary>
-    /// Operating settings the node reported on its last connection, e.g. MaxConcurrentTests.
-    /// Keys match the NodeRegistrationMessage field names. Default: empty dictionary.
+    /// Internal (LAN) IPv6 address the node reported about itself, stored as a native inet.
+    /// Null when unavailable.
     /// </summary>
-    public Dictionary<string, string> Settings { get; set; } = new();
+    public IPAddress? InternalIpv6 { get; set; }
+
+    /// <summary>
+    /// External (public internet) IPv4 address the node reported about itself, stored as a native inet.
+    /// Null when its check has not succeeded yet.
+    /// </summary>
+    public IPAddress? ExternalIpv4 { get; set; }
+
+    /// <summary>
+    /// External (public internet) IPv6 address the node reported about itself, stored as a native inet.
+    /// Null when unavailable.
+    /// </summary>
+    public IPAddress? ExternalIpv6 { get; set; }
+
+    /// <summary>
+    /// Operating settings the node reported on its last connection, e.g. MaxConcurrentTests;
+    /// one row per key in the node_reported_settings table. Keys match the
+    /// NodeRegistrationMessage field names. Default: empty list.
+    /// </summary>
+    public List<NodeReportedSetting> Settings { get; set; } = new();
 }

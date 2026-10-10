@@ -25,14 +25,16 @@ public class Test
     public string Target { get; set; } = string.Empty;
 
     /// <summary>
-    /// List of node IDs that should execute this test. Default: empty list.
+    /// Nodes that directly execute this test; one row per targeted node in the
+    /// test_target_nodes table. Default: empty list.
     /// </summary>
-    public List<Guid> NodeIds { get; set; } = new();
+    public List<TestTargetNode> NodeTargets { get; set; } = new();
 
     /// <summary>
-    /// List of pool IDs this test targets; all member nodes of these pools execute it too. Default: empty list.
+    /// Pools this test targets; all member nodes of these pools execute it too. One row
+    /// per targeted pool in the test_target_pools table. Default: empty list.
     /// </summary>
-    public List<Guid> PoolIds { get; set; } = new();
+    public List<TestTargetPool> PoolTargets { get; set; } = new();
 
     /// <summary>
     /// How often the test should be executed, in seconds. Must be one of the FrequencyPresetsSeconds server setting values.
@@ -73,9 +75,10 @@ public class Test
     public string? ExpectedBodyPattern { get; set; }
 
     /// <summary>
-    /// HTTP/HTTPS: custom headers sent with the request. Default: empty dictionary.
+    /// HTTP/HTTPS: custom headers sent with the request; one row per header in the
+    /// test_headers table. Default: empty list.
     /// </summary>
-    public Dictionary<string, string> Headers { get; set; } = new();
+    public List<TestHeader> Headers { get; set; } = new();
 
     /// <summary>
     /// HTTP/HTTPS: URL of an HTTP proxy the request goes through. Null connects directly. Default: null.

@@ -1,0 +1,22 @@
+# Standalone PostgreSQL database for the Obicon server.
+# Matches the server's default connection string
+# (Host=localhost;Port=5432;Database=obicon;Username=obicon;Password=obicon),
+# so the server connects with zero configuration.
+# Start with: docker compose up -d   (from this folder)
+services:
+  database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: obicon
+      POSTGRES_USER: obicon
+      POSTGRES_PASSWORD: obicon
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres 18+ expects a single mount at /var/lib/postgresql; data lands
+      # in a major-version subdirectory (e.g. 18/docker) inside it
+      - obicon-database:/var/lib/postgresql
+    restart: unless-stopped
+
+volumes:
+  obicon-database:

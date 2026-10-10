@@ -24,11 +24,11 @@ async function loadAll() {
         ]);
 
         if (poolResults.status === 'fulfilled') {
-            pools = poolResults.value;
+            pools = poolResults.value.items;
             renderPools();
         }
         if (nodeResults.status === 'fulfilled') {
-            allNodes = nodeResults.value;
+            allNodes = nodeResults.value.items;
         }
 
         const failures = [poolResults, nodeResults].filter(r => r.status === 'rejected');

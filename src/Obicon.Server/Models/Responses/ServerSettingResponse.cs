@@ -18,7 +18,7 @@ public class ServerSettingResponse
     /// <summary>
     /// Effective value of the setting as string.
     /// </summary>
-    public string Value { get; set; } = string.Empty;
+    public object Value { get; set; } = string.Empty;
 
     /// <summary>
     /// Indicates if appsettings or an environment variable pins this setting, making it read-only.

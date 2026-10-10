@@ -5,8 +5,13 @@ using Obicon.Server.Services;
 
 namespace Obicon.Server.Controllers.V1;
 
+/// <summary>
+/// Enroll token management: creating, listing, revoking, and deleting the tokens
+/// nodes use to enroll themselves. Plain tokens are returned exactly once, at creation.
+/// </summary>
 [ApiController]
 [Route("v1/enroll-tokens")]
+[Produces("application/json")]
 public class EnrollTokensController : ControllerBase
 {
     private readonly IEnrollTokenService _enrollTokenService;
@@ -21,29 +26,28 @@ public class EnrollTokensController : ControllerBase
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(EnrollTokenResponse), StatusCodes.Status201Created)]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateEnrollTokenRequest request)
     {
-        try
-        {
-            var token = await _enrollTokenService.CreateAsync(request);
-            return CreatedAtAction(nameof(GetAll), new { id = token.Id }, token);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { Message = ex.Message });
-        }
+        var token = await _enrollTokenService.CreateAsync(request);
+        return CreatedAtAction(nameof(Get), new { id = token.Id }, token);
     }
 
     /// <summary>
-    /// Returns all enroll tokens with their state. Plain tokens are never included.
+    /// Returns one page of enroll tokens with their state. Plain tokens are never included.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(List<EnrollTokenResponse>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll()
+    [ProducesResponseType(typeof(PageResponse<EnrollTokenResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Get([FromQuery] PageParameters page)
     {
-        var tokens = await _enrollTokenService.GetAllAsync();
-        return Ok(tokens);
+        var result = await _enrollTokenService.GetAsync(page);
+        return Ok(new PageResponse<EnrollTokenResponse>
+        {
+            Items = result.Items,
+            Total = result.Total,
+            Limit = result.Limit,
+            Offset = result.Offset
+        });
     }
 
     /// <summary>
@@ -51,7 +55,7 @@ public class EnrollTokensController : ControllerBase
     /// </summary>
     [HttpPost("{id}/revoke")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Revoke(Guid id)
     {
         var revoked = await _enrollTokenService.RevokeAsync(id);
@@ -63,7 +67,7 @@ public class EnrollTokensController : ControllerBase
     /// </summary>
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var deleted = await _enrollTokenService.DeleteAsync(id);

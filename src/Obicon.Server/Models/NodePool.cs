@@ -22,9 +22,9 @@ public class NodePool
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
-    /// IDs of the nodes in this pool. Default: empty list.
+    /// The pool's member nodes; one row per member in the pool_members table. Default: empty list.
     /// </summary>
-    public List<Guid> NodeIds { get; set; } = new();
+    public List<PoolMember> Members { get; set; } = new();
 
     /// <summary>
     /// Timestamp when the pool was created.

@@ -39,7 +39,7 @@ public class PoolResponse
         Id = pool.Id,
         Name = pool.Name,
         Description = pool.Description,
-        NodeIds = pool.NodeIds,
+        NodeIds = pool.Members.Select(m => m.NodeId).ToList(),
         CreatedAt = pool.CreatedAt
     };
 }

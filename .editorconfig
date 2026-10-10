@@ -118,10 +118,10 @@ dotnet_diagnostic.CA1707.severity = none
 [src/Obicon.Shared/**]
 dotnet_diagnostic.CA1716.severity = none
 
-# CA1711: SqliteWriteQueue really is a queue of serialized write units; the
-#         suffix rule guards System.Collections-style collection types
-[src/Obicon.Server/Data/SqliteWriteQueue.cs]
-dotnet_diagnostic.CA1711.severity = none
+# CA1861: EF Core generates the column arrays inline; the migrations are
+#         generated code, each running exactly once at startup
+[src/Obicon.Server/Data/Migrations/*.cs]
+dotnet_diagnostic.CA1861.severity = none
 
 # CA5359: HTTP(S)/TLS tests deliberately accept any certificate - self-signed targets
 #         are valid test targets, and TLS properties are reported in the result

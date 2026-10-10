@@ -89,7 +89,7 @@ public partial class TestQueueProcessor : BackgroundService
                 Data = new TestAssignmentMessage
                 {
                     JobId = job.Id.ToString(),
-                    TestId = job.TestId.ToString(),
+                    TestId = job.TestId?.ToString() ?? Guid.Empty.ToString(),
                     TestType = job.TestType,
                     Target = job.Target,
                     TimeoutSeconds = job.TimeoutSeconds,
@@ -98,7 +98,7 @@ public partial class TestQueueProcessor : BackgroundService
                     ExpectedDnsResult = job.ExpectedDnsResult,
                     IpVersion = job.IpVersion,
                     ExpectedBodyPattern = job.ExpectedBodyPattern,
-                    Headers = job.Headers,
+                    Headers = job.Headers.ToDictionary(h => h.Name, h => h.Value),
                     ProxyUrl = job.ProxyUrl,
                     CacheBust = job.CacheBust,
                     TracerouteMaxHops = job.TracerouteMaxHops,

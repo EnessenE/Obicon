@@ -91,12 +91,6 @@ public class NodeSettings
     public List<string> Pools { get; set; } = new();
 
     /// <summary>
-    /// If enabled, this node stays connected even when the server reports a version outside
-    /// the supported range (same major.minor as the node). Default: false.
-    /// </summary>
-    public bool AllowUnsupportedServerVersion { get; set; }
-
-    /// <summary>
     /// If enabled, this node ships its log entries to the server while the server allows it
     /// (NodeLogShippingEnabled on the server). The node-side switch to opt out. Default: true.
     /// </summary>

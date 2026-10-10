@@ -14,9 +14,9 @@ public class TestJobResponse
     public Guid Id { get; set; }
 
     /// <summary>
-    /// ID of the test this job belongs to. Guid.Empty for one-off runs without a saved test.
+    /// ID of the test this job belongs to. Null for one-off runs without a saved test.
     /// </summary>
-    public Guid TestId { get; set; }
+    public Guid? TestId { get; set; }
 
     /// <summary>
     /// ID of the node assigned to execute this job.
@@ -114,10 +114,10 @@ public class TestJobResponse
         StartedAt = job.StartedAt,
         AcknowledgedAt = job.AcknowledgedAt,
         CompletedAt = job.CompletedAt,
-        Success = job.Result?.Success,
-        DurationMs = job.Result?.DurationMs,
-        Output = job.Result?.Output,
+        Success = job.Success,
+        DurationMs = job.DurationMs,
+        Output = job.Output,
         ErrorMessage = job.ErrorMessage,
-        Details = job.Result?.Details
+        Details = TestResultDetailsMapper.ToShared(job)
     };
 }

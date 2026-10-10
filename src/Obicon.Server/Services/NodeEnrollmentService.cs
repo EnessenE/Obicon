@@ -18,20 +18,19 @@ public interface INodeEnrollmentService
 public partial class NodeEnrollmentService : INodeEnrollmentService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly IEnrollTokenService _enrollTokenService;
     private readonly IServerSettingsService _settingsService;
     private readonly ILogger<NodeEnrollmentService> _logger;
 
     public NodeEnrollmentService(
         IDbContextFactory<ObiconDbContext> dbFactory,
-        SqliteWriteQueue writeQueue,
         IEnrollTokenService enrollTokenService,
         IServerSettingsService settingsService,
         ILogger<NodeEnrollmentService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _enrollTokenService = enrollTokenService;
         _settingsService = settingsService;
         _logger = logger;
@@ -41,15 +40,15 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
     {
         if (!await _settingsService.GetAsync<bool>("NodeAutoEnrollmentEnabled"))
         {
-            throw new InvalidOperationException("Node auto-enrollment is disabled on this server");
+            throw new ForbiddenException("Node auto-enrollment is disabled on this server");
         }
 
         var enrollToken = await _enrollTokenService.FindValidAsync(request.EnrollToken)
             ?? throw new UnauthorizedAccessException("Invalid, revoked, or expired enroll token");
 
-        // The whole enrollment runs as one queued write unit: node creation/update and
-        // pool membership must be written together, one by one like every other write
-        var (node, plainToken, poolIds) = await _writeQueue.EnqueueAsync(async db =>
+        // The whole enrollment runs as one unit of work: node creation/update and
+        // pool membership must be written together
+        var (node, plainToken, poolIds) = await _dbFactory.ExecuteAsync(async db =>
         {
             var labels = request.Labels.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToList();
             var poolIds = await ResolveOrCreatePoolsAsync(db, request.Pools);
@@ -65,18 +64,22 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
             string? plainToken = null;
             if (request.NodeId is { } nodeId)
             {
-                node = await db.Nodes.FindAsync(nodeId);
+                node = await db.Nodes
+                    .Include(n => n.Labels)
+                    .FirstOrDefaultAsync(n => n.Id == nodeId);
                 if (node == null)
                 {
                     throw new ArgumentException($"Unknown node ID: {nodeId}");
                 }
                 if (node.EnrollmentType != NodeEnrollmentType.AutoEnrollment)
                 {
-                    throw new InvalidOperationException("Only nodes that enrolled themselves can update via enrollment");
+                    throw new ForbiddenException("Only nodes that enrolled themselves can update via enrollment");
                 }
 
                 node.Name = request.NodeName;
-                node.Labels = labels;
+                db.NodeLabels.RemoveRange(node.Labels);
+                node.Labels = labels.Select(l => new NodeLabel { NodeId = node.Id, Label = l }).ToList();
+                db.NodeLabels.AddRange(node.Labels);
             }
             else
             {
@@ -88,18 +91,19 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
                     AuthToken = TokenHasher.Hash(plainToken),
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
-                    Labels = labels,
                     EnrollmentType = NodeEnrollmentType.AutoEnrollment
                 };
+                node.Labels = labels.Select(l => new NodeLabel { NodeId = node.Id, Label = l }).ToList();
                 db.Nodes.Add(node);
             }
 
             foreach (var poolId in poolIds)
             {
-                var pool = await db.NodePools.FindAsync(poolId);
-                if (pool != null && !pool.NodeIds.Contains(node.Id))
+                var alreadyMember = await db.PoolMembers
+                    .AnyAsync(pm => pm.PoolId == poolId && pm.NodeId == node.Id);
+                if (!alreadyMember)
                 {
-                    pool.NodeIds = pool.NodeIds.Append(node.Id).ToList();
+                    db.PoolMembers.Add(new PoolMember { PoolId = poolId, NodeId = node.Id });
                 }
             }
 
@@ -115,7 +119,7 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
             Id = node.Id,
             Name = node.Name,
             AuthToken = plainToken ?? string.Empty,
-            Labels = node.Labels,
+            Labels = node.Labels.Select(l => l.Label).ToList(),
             PoolIds = poolIds
         };
     }
@@ -142,7 +146,7 @@ public partial class NodeEnrollmentService : INodeEnrollmentService
             {
                 Id = Guid.NewGuid(),
                 Name = name,
-                NodeIds = new List<Guid>(),
+                Members = new List<PoolMember>(),
                 CreatedAt = DateTime.UtcNow
             };
             db.NodePools.Add(pool);

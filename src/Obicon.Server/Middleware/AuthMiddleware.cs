@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Obicon.Server.Services;
 
 namespace Obicon.Server.Middleware;
@@ -29,7 +31,13 @@ public class AuthMiddleware
             authHeader != expected)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsync("Unauthorized - Missing or invalid Authorization header");
+            context.Response.ContentType = "application/problem+json";
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new ProblemDetails
+            {
+                Status = StatusCodes.Status401Unauthorized,
+                Title = "Unauthorized",
+                Detail = "Missing or invalid Authorization header"
+            }, JsonOptions));
             return;
         }
 
@@ -43,4 +51,6 @@ public class AuthMiddleware
         var excludedPaths = new[] { "/metrics", "/swagger", "/swagger-ui", "/ws", "/v1/enroll" };
         return excludedPaths.Any(p => path.StartsWithSegments(p));
     }
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 }

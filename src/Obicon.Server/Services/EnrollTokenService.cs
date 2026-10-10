@@ -10,7 +10,7 @@ namespace Obicon.Server.Services;
 public interface IEnrollTokenService
 {
     Task<Models.Responses.EnrollTokenResponse> CreateAsync(Models.Requests.CreateEnrollTokenRequest request);
-    Task<IEnumerable<Models.Responses.EnrollTokenResponse>> GetAllAsync();
+    Task<Models.Page<Models.Responses.EnrollTokenResponse>> GetAsync(Models.Requests.PageParameters page);
     Task<bool> RevokeAsync(Guid id);
     Task<bool> DeleteAsync(Guid id);
     Task<Models.EnrollToken?> FindValidAsync(string plainToken);
@@ -23,13 +23,13 @@ public interface IEnrollTokenService
 public partial class EnrollTokenService : IEnrollTokenService
 {
     private readonly IDbContextFactory<ObiconDbContext> _dbFactory;
-    private readonly SqliteWriteQueue _writeQueue;
+
     private readonly ILogger<EnrollTokenService> _logger;
 
-    public EnrollTokenService(IDbContextFactory<ObiconDbContext> dbFactory, SqliteWriteQueue writeQueue, ILogger<EnrollTokenService> logger)
+    public EnrollTokenService(IDbContextFactory<ObiconDbContext> dbFactory, ILogger<EnrollTokenService> logger)
     {
         _dbFactory = dbFactory;
-        _writeQueue = writeQueue;
+
         _logger = logger;
     }
 
@@ -49,7 +49,7 @@ public partial class EnrollTokenService : IEnrollTokenService
             PoolId = request.PoolId
         };
 
-        await _writeQueue.EnqueueAsync(async db =>
+        await _dbFactory.ExecuteAsync(async db =>
         {
             if (request.PoolId is { } poolId && !await db.NodePools.AnyAsync(p => p.Id == poolId))
             {
@@ -69,16 +69,21 @@ public partial class EnrollTokenService : IEnrollTokenService
         return response;
     }
 
-    public async Task<IEnumerable<EnrollTokenResponse>> GetAllAsync()
+    public async Task<Page<EnrollTokenResponse>> GetAsync(PageParameters page)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var tokens = await db.EnrollTokens.OrderByDescending(t => t.CreatedAt).ToListAsync();
-        return tokens.Select(EnrollTokenResponse.From);
+        var total = await db.EnrollTokens.CountAsync();
+        var tokens = await db.EnrollTokens
+            .OrderByDescending(t => t.CreatedAt)
+            .Skip(page.Offset)
+            .Take(page.Limit)
+            .ToListAsync();
+        return new Page<EnrollTokenResponse>(tokens.Select(EnrollTokenResponse.From).ToList(), total, page.Limit, page.Offset);
     }
 
     public async Task<bool> RevokeAsync(Guid id)
     {
-        var revoked = await _writeQueue.EnqueueAsync(async db =>
+        var revoked = await _dbFactory.ExecuteAsync(async db =>
         {
             var token = await db.EnrollTokens.FindAsync(id);
             if (token == null || token.RevokedAt != null)
@@ -98,7 +103,7 @@ public partial class EnrollTokenService : IEnrollTokenService
 
     public async Task<bool> DeleteAsync(Guid id)
     {
-        var deleted = await _writeQueue.EnqueueAsync(async db =>
+        var deleted = await _dbFactory.ExecuteAsync(async db =>
         {
             var token = await db.EnrollTokens.FindAsync(id);
             if (token == null)

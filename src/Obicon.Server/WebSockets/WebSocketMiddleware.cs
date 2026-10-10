@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -21,6 +22,7 @@ public partial class WebSocketMiddleware
     private readonly ITestQueueService _queueService;
     private readonly IServerSettingsService _settingsService;
     private readonly ITestMetricsEmitter _testMetricsEmitter;
+    private readonly INodeLogFunnel _nodeLogFunnel;
     private readonly ILogger<WebSocketMiddleware> _logger;
 
     public WebSocketMiddleware(
@@ -31,6 +33,7 @@ public partial class WebSocketMiddleware
         ITestQueueService queueService,
         IServerSettingsService settingsService,
         ITestMetricsEmitter testMetricsEmitter,
+        INodeLogFunnel nodeLogFunnel,
         ILogger<WebSocketMiddleware> logger)
     {
         _next = next;
@@ -40,6 +43,7 @@ public partial class WebSocketMiddleware
         _queueService = queueService;
         _settingsService = settingsService;
         _testMetricsEmitter = testMetricsEmitter;
+        _nodeLogFunnel = nodeLogFunnel;
         _logger = logger;
     }
 
@@ -67,7 +71,7 @@ public partial class WebSocketMiddleware
 
             var webSocket = await context.WebSockets.AcceptWebSocketAsync();
             var connectionId = Guid.NewGuid().ToString();
-            var remoteIp = context.Connection.RemoteIpAddress?.ToString();
+            var remoteIp = context.Connection.RemoteIpAddress;
 
             var added = _connectionManager.TryAddConnection(node.Id.ToString(), node.Name, webSocket);
             if (!added)
@@ -76,7 +80,7 @@ public partial class WebSocketMiddleware
                 return;
             }
 
-            LogNodeConnected(node.Id, remoteIp ?? "unknown");
+            LogNodeConnected(node.Id, remoteIp);
 
             try
             {
@@ -118,7 +122,7 @@ public partial class WebSocketMiddleware
         await webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
     }
 
-    private async Task HandleWebSocketConnection(string nodeId, string? remoteIp, WebSocket webSocket)
+    private async Task HandleWebSocketConnection(string nodeId, IPAddress? remoteIp, WebSocket webSocket)
     {
         var buffer = new byte[1024 * 4];
         var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
@@ -163,7 +167,7 @@ public partial class WebSocketMiddleware
     /// Processes one message from a node. Returns false when the connection must be closed,
     /// e.g. because the node version is unsupported.
     /// </summary>
-    private async Task<bool> ProcessMessage(string nodeId, string? remoteIp, WebSocket webSocket, WebSocketMessage message)
+    private async Task<bool> ProcessMessage(string nodeId, IPAddress? remoteIp, WebSocket webSocket, WebSocketMessage message)
     {
         LogProcessingMessage(message.Type, nodeId);
 
@@ -197,8 +201,10 @@ public partial class WebSocketMiddleware
 
     /// <summary>
     /// Handles a log entry shipped by a node. Entries are dropped while
-    /// NodeLogShippingEnabled is off; while ShipNodeLogsToConsole is on they are
-    /// written to the server's own console and log, tagged with the node's identity.
+    /// NodeLogShippingEnabled is off. Accepted entries are counted in OpenTelemetry and
+    /// forwarded into the OTel logging pipeline with their structure preserved (OTLP
+    /// egress); while ShipNodeLogsToConsole is on they are also written to the server's
+    /// own console and log, tagged with the node's identity.
     /// </summary>
     private async Task HandleNodeLogAsync(string nodeId, WebSocketMessage message)
     {
@@ -219,13 +225,17 @@ public partial class WebSocketMiddleware
         // also forwarded to the console
         var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
         var sourceContext = entry.Properties is { } props && props.TryGetValue("SourceContext", out var sc)
-            ? sc.ToString().Trim('"')
+            ? sc.Trim('"')
             : "unknown";
         Metrics.ServerMetrics.NodeLog(
             string.IsNullOrWhiteSpace(entry.Level) ? "unknown" : entry.Level,
             sourceContext,
             nodeId,
             node?.Name ?? "unknown");
+
+        // Structured egress: the entry flows into the OTel logging pipeline with the
+        // node's identity and the entry's own properties as first-class fields
+        _nodeLogFunnel.Forward(nodeId, entry);
 
         if (!await _settingsService.GetAsync<bool>("ShipNodeLogsToConsole"))
         {
@@ -272,7 +282,7 @@ public partial class WebSocketMiddleware
         return string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength] + "…";
     }
 
-    private async Task<bool> HandleNodeRegistration(string nodeId, string? remoteIp, WebSocketMessage message)
+    private async Task<bool> HandleNodeRegistration(string nodeId, IPAddress? remoteIp, WebSocketMessage message)
     {
         var registration = (message.Data as JsonElement?)?.Deserialize<NodeRegistrationMessage>();
         var nodeVersion = string.IsNullOrWhiteSpace(registration?.NodeVersion) ? null : registration!.NodeVersion;
@@ -299,7 +309,8 @@ public partial class WebSocketMiddleware
         await _nodeService.UpdateNodeLastSeenAsync(Guid.Parse(nodeId));
         await _nodeService.UpdateNodeConnectionInfoAsync(Guid.Parse(nodeId), nodeVersion, remoteIp, CollectReportedSettings(registration));
         await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
-            registration?.InternalIpv4, registration?.InternalIpv6, registration?.ExternalIpv4, registration?.ExternalIpv6);
+            ParseAddress(registration?.InternalIpv4), ParseAddress(registration?.InternalIpv6),
+            ParseAddress(registration?.ExternalIpv4), ParseAddress(registration?.ExternalIpv6));
         return true;
     }
 
@@ -317,7 +328,17 @@ public partial class WebSocketMiddleware
         }
 
         await _nodeService.UpdateNodeReportedAddressesAsync(Guid.Parse(nodeId),
-            update.InternalIpv4, update.InternalIpv6, update.ExternalIpv4, update.ExternalIpv6);
+            ParseAddress(update.InternalIpv4), ParseAddress(update.InternalIpv6),
+            ParseAddress(update.ExternalIpv4), ParseAddress(update.ExternalIpv6));
+    }
+
+    /// <summary>
+    /// Parses a wire-reported address into a native inet value. Null and unparseable
+    /// values both stay null, matching the "family unavailable" reporting contract.
+    /// </summary>
+    private static IPAddress? ParseAddress(string? address)
+    {
+        return address is null || !IPAddress.TryParse(address, out var parsed) ? null : parsed;
     }
 
     /// <summary>
@@ -411,10 +432,12 @@ public partial class WebSocketMiddleware
             Details = result.Details
         };
 
-        await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
+        // The service applies the TestResultStorageMode to terminal statuses and returns
+        // the job as of the update - including when the row was deleted - so the metrics
+        // below are always emitted, no matter the storage policy
+        var job = await _queueService.UpdateJobStatusAsync(jobId, status, testResult);
 
-        var job = await _queueService.GetJobAsync(jobId);
-        var test = job != null && job.TestId != Guid.Empty ? await _testService.GetTestAsync(job.TestId) : null;
+        var test = job != null && job.TestId is { } testId ? await _testService.GetTestAsync(testId) : null;
         var node = await _nodeService.GetNodeAsync(Guid.Parse(nodeId));
 
         await _testMetricsEmitter.EmitAsync(job, test, node, status, result.DurationMs);
@@ -450,7 +473,7 @@ public partial class WebSocketMiddleware
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} connected via WebSocket from {RemoteIp}")]
-    private partial void LogNodeConnected(Guid nodeId, string remoteIp);
+    private partial void LogNodeConnected(Guid nodeId, IPAddress? remoteIp);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} disconnected")]
     private partial void LogNodeDisconnected(Guid nodeId);

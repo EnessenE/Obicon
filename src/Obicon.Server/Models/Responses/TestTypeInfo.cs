@@ -8,7 +8,7 @@ namespace Obicon.Server.Models.Responses;
 public class TestTypeInfo
 {
     /// <summary>
-    /// The test type's enum value, e.g. 0 for Ping.
+    /// The test type as its camelCase wire string, e.g. "ping" for Ping.
     /// </summary>
     public TestType Type { get; set; }
 
