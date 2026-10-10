@@ -237,7 +237,7 @@ public partial class NodeService : INodeService
             }));
             await db.SaveChangesAsync();
 
-            LogConnectionInfoUpdated(nodeId, version, ipAddress?.ToString());
+            LogConnectionInfoUpdated(nodeId, version, ipAddress);
         });
     }
 
@@ -261,9 +261,7 @@ public partial class NodeService : INodeService
             node.ExternalIpv6 = externalIpv6;
             await db.SaveChangesAsync();
 
-            LogAddressesUpdated(nodeId,
-                internalIpv4?.ToString() ?? "unavailable", internalIpv6?.ToString() ?? "unavailable",
-                externalIpv4?.ToString() ?? "unavailable", externalIpv6?.ToString() ?? "unavailable");
+            LogAddressesUpdated(nodeId, internalIpv4, internalIpv6, externalIpv4, externalIpv6);
         });
     }
 
@@ -330,8 +328,8 @@ public partial class NodeService : INodeService
     private partial void LogDeletedNode(Guid nodeId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} connection info updated: version={Version} ip={IpAddress}")]
-    private partial void LogConnectionInfoUpdated(Guid nodeId, string? version, string? ipAddress);
+    private partial void LogConnectionInfoUpdated(Guid nodeId, string? version, IPAddress? ipAddress);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} addresses updated: int4={InternalIpv4} int6={InternalIpv6} ext4={ExternalIpv4} ext6={ExternalIpv6}")]
-    private partial void LogAddressesUpdated(Guid nodeId, string internalIpv4, string internalIpv6, string externalIpv4, string externalIpv6);
+    private partial void LogAddressesUpdated(Guid nodeId, IPAddress? internalIpv4, IPAddress? internalIpv6, IPAddress? externalIpv4, IPAddress? externalIpv6);
 }

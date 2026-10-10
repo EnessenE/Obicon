@@ -23,6 +23,9 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
     private readonly HttpClient _client;
     private readonly ITestQueueService _queue;
 
+    private static readonly string[] TwoLabelSelection = ["test_name", "node_id"];
+    private static readonly string[] NodeLabels = ["edge", "home"];
+
     public SchemaSanityTests(ITestOutputHelper output, ObiconServerFactory factory)
         : base(output)
     {
@@ -148,7 +151,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
     {
         // Change a list-typed setting through the API with a native array
         var put = await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels",
-            new { value = new[] { "test_name", "node_id" } });
+            new { value = TwoLabelSelection });
         put.EnsureSuccessStatusCode();
 
         try
@@ -179,7 +182,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         {
             // Restore the default labels, because the fixture database is shared
             var restore = await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels",
-                new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
+                new { value = TestDefaults.MetricLabels });
             restore.EnsureSuccessStatusCode();
         }
     }
@@ -255,7 +258,7 @@ public class SchemaSanityTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var update = await _client.PutAsJsonAsync($"/v1/nodes/{nodeId}", new
         {
             name = "cascade-node",
-            labels = new[] { "edge", "home" }
+            labels = NodeLabels
         });
         update.EnsureSuccessStatusCode();
 

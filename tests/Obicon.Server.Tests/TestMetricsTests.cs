@@ -21,6 +21,8 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     private readonly HttpClient _client;
     private readonly ITestMetricsEmitter _emitter;
 
+    private static readonly string[] SelectedLabels = ["node_id", "node_labels"];
+
     public TestMetricsTests(ITestOutputHelper output, ObiconServerFactory factory)
         : base(output)
     {
@@ -80,7 +82,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         var settings = await _client.GetFromJsonAsync<JsonElement>("/v1/settings");
         var byKey = settings.EnumerateArray().ToDictionary(s => s.GetProperty("key").GetString()!, s => s);
         Assert.True(byKey["TestMetricsEnabled"].GetProperty("value").GetBoolean());
-        var expected = JsonSerializer.SerializeToElement(new[] { "test_type", "test_name", "node_name", "node_labels" });
+        var expected = JsonSerializer.SerializeToElement(TestDefaults.MetricLabels);
         Assert.True(JsonElement.DeepEquals(expected, byKey["TestMetricsLabels"].GetProperty("value")));
     }
 
@@ -103,7 +105,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task Emit_SelectedLabels_RideAlong_UnselectedDoNot()
     {
-        await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "node_id", "node_labels" } });
+        await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = SelectedLabels });
         try
         {
             var node = await CreateNodeAsync("selection-node", "edge");
@@ -126,7 +128,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
+            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = TestDefaults.MetricLabels });
         }
     }
 
@@ -148,7 +150,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
+            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = TestDefaults.MetricLabels });
         }
     }
 
@@ -168,7 +170,7 @@ public class TestMetricsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = new[] { "test_type", "test_name", "node_name", "node_labels" } });
+            await _client.PutAsJsonAsync("/v1/settings/TestMetricsLabels", new { value = TestDefaults.MetricLabels });
         }
     }
 

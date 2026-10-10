@@ -16,6 +16,8 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
 {
     private readonly HttpClient _client;
 
+    private static readonly int[] ThreePresets = [15, 45, 300];
+
     public SettingsTests(ITestOutputHelper output, ObiconServerFactory factory)
         : base(output)
     {
@@ -269,7 +271,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task FrequencyPresetsSeconds_GateTestCreation()
     {
-        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 15, 45 } });
+        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = TestDefaults.OverrideFrequencyPresets });
         change.EnsureSuccessStatusCode();
 
         try
@@ -301,7 +303,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 10, 30, 60, 120, 300, 600, 3600 } });
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = TestDefaults.FrequencyPresets });
         }
     }
 
@@ -327,7 +329,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task SchedulerInterval_FollowsPresetOverride()
     {
-        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 15, 45, 300 } });
+        var change = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = ThreePresets });
         change.EnsureSuccessStatusCode();
         try
         {
@@ -337,7 +339,7 @@ public class SettingsTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 10, 30, 60, 120, 300, 600, 3600 } });
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = TestDefaults.FrequencyPresets });
         }
     }
 

@@ -14,6 +14,9 @@ public class ForcedListSettingsTests : LoggedTest, IClassFixture<ForcedListSetti
 {
     private readonly HttpClient _client;
 
+    private static readonly string[] ForcedTestTypes = ["Ping", "Dns"];
+    private static readonly string[] SingleTestType = ["Http"];
+
     public ForcedListSettingsTests(ITestOutputHelper output, ForcedListSettingsServerFactory factory)
         : base(output)
     {
@@ -29,12 +32,12 @@ public class ForcedListSettingsTests : LoggedTest, IClassFixture<ForcedListSetti
 
         var types = byKey["EnabledTestTypes"];
         Assert.Equal("Configuration (forced)", types.GetProperty("source").GetString());
-        var expectedTypes = JsonSerializer.SerializeToElement(new[] { "Ping", "Dns" });
+        var expectedTypes = JsonSerializer.SerializeToElement(ForcedTestTypes);
         Assert.True(JsonElement.DeepEquals(expectedTypes, types.GetProperty("value")));
 
         var presets = byKey["FrequencyPresetsSeconds"];
         Assert.Equal("Configuration (forced)", presets.GetProperty("source").GetString());
-        var expectedPresets = JsonSerializer.SerializeToElement(new[] { 15, 45 });
+        var expectedPresets = JsonSerializer.SerializeToElement(TestDefaults.OverrideFrequencyPresets);
         Assert.True(JsonElement.DeepEquals(expectedPresets, presets.GetProperty("value")));
 
         // The forced presets drive the derived scheduler interval
@@ -44,7 +47,7 @@ public class ForcedListSettingsTests : LoggedTest, IClassFixture<ForcedListSetti
     [Fact]
     public async Task ForcedListSettings_AreReadOnly()
     {
-        var response = await _client.PutAsJsonAsync("/v1/settings/EnabledTestTypes", new { value = new[] { "Http" } });
+        var response = await _client.PutAsJsonAsync("/v1/settings/EnabledTestTypes", new { value = SingleTestType });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }

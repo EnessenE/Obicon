@@ -148,7 +148,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
     [Fact]
     public async Task Test_AcceptsFrequencyAfterPresetChange()
     {
-        var original = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 15, 45 } });
+        var original = await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = TestDefaults.OverrideFrequencyPresets });
         original.EnsureSuccessStatusCode();
         try
         {
@@ -170,7 +170,7 @@ public class TestCrudTests : LoggedTest, IClassFixture<ObiconServerFactory>
         }
         finally
         {
-            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = new[] { 10, 30, 60, 120, 300, 600, 3600 } });
+            await _client.PutAsJsonAsync("/v1/settings/FrequencyPresetsSeconds", new { Value = TestDefaults.FrequencyPresets });
         }
     }
 

@@ -80,7 +80,7 @@ public partial class WebSocketMiddleware
                 return;
             }
 
-            LogNodeConnected(node.Id, remoteIp?.ToString() ?? "unknown");
+            LogNodeConnected(node.Id, remoteIp);
 
             try
             {
@@ -473,7 +473,7 @@ public partial class WebSocketMiddleware
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} connected via WebSocket from {RemoteIp}")]
-    private partial void LogNodeConnected(Guid nodeId, string remoteIp);
+    private partial void LogNodeConnected(Guid nodeId, IPAddress? remoteIp);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} disconnected")]
     private partial void LogNodeDisconnected(Guid nodeId);
