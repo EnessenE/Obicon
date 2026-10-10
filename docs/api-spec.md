@@ -114,7 +114,7 @@ Returns one page of registered nodes, oldest first, in the page envelope describ
       "lastSeenAt": "2024-01-01T00:00:01Z",
       "enrollmentType": "manual",
       "labels": [],
-      "version": "0.2.0",
+      "version": "0.5.0",
       "versionSupported": true,
       "ipAddress": "192.168.1.42",
       "internalIpv4": "192.168.1.42",
@@ -154,7 +154,7 @@ Returns details for a specific node.
   "lastSeenAt": "2024-01-01T00:00:01Z",
   "labels": [],
   "enrollmentType": "manual",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "versionSupported": true,
   "ipAddress": "192.168.1.42",
   "internalIpv4": "192.168.1.42",
@@ -221,7 +221,7 @@ Returns the live status of every node: its active flag and whether it currently 
 ```
 DELETE /v1/nodes/{id}
 ```
-Deletes a node, removes it from every pool it belongs to, and removes it from every test that directly targets it (pool-targeted tests are unaffected; a test left with no targets simply stops producing runs).
+Deletes a node, removes it from every pool it belongs to, removes it from every test that directly targets it (pool-targeted tests are unaffected; a test left with no targets simply stops producing runs), and deletes its run history (`test_jobs` rows cascade with the node).
 
 **Response:** 204 No Content
 
@@ -301,7 +301,7 @@ Replaces the pool's member list. Unknown node IDs are rejected with 400.
 ```
 DELETE /v1/pools/{id}
 ```
-Deletes the pool. Nodes are not affected.
+Deletes the pool. Nodes are not affected; enroll tokens scoped to the pool are deleted with it (they never fall back to server-wide scope).
 
 **Response:** 204 No Content
 
@@ -469,7 +469,7 @@ Updates a test.
 ```
 DELETE /v1/tests/{id}
 ```
-Deletes a test.
+Deletes a test together with its run history (its `test_jobs` rows cascade with it).
 
 **Response:** 204 No Content
 
@@ -668,7 +668,7 @@ Returns aggregated statistics about the server.
 **Response:** 200 OK
 ```json
 {
-  "version": "0.2.0",
+  "version": "0.5.0",
   "totalTests": 3,
   "activeTests": 2,
   "totalNodes": 4,
@@ -734,7 +734,7 @@ Returns one page of test runs plus the total number of runs matching the filters
   "offset": 0
 }
 ```
-For one-off runs (from `POST /v1/test-runs`), `testId` is `00000000-0000-0000-0000-000000000000`. `details` carries the structured result sections described under the TestResult message; it is null for results reported by nodes older than 0.4.0 (which also lose their old flat metrics).
+For one-off runs (from `POST /v1/test-runs`), `testId` is null - the job has no saved test. `details` carries the structured result sections described under the TestResult message; it is null for results reported by nodes older than 0.4.0 (which also lose their old flat metrics).
 
 The runs are a bounded window, not a history: finished jobs are governed by the `TestResultStorageMode` setting (`Full` keeps the payload, `MetadataOnly` keeps the row without it, `None` deletes the row on completion — so with `None` only in-flight jobs are ever listed) and the `JobRetentionDays` sweep deletes finished jobs after the window (default 30 days). Anything older lives in the user's metrics and log backend.
 
@@ -774,11 +774,9 @@ Sent and returned as a camelCase string:
 
 ## Test Frequency
 
-`Frequency` is the interval between runs, in plain seconds (no enum). The allowed values come from the `FrequencyPresetsSeconds` server setting (default: `[10,30,60,120,300,600,3600]`); create and update reject any value outside it. Adjust the setting on the Settings page or via `PUT /v1/settings/FrequencyPresetsSeconds` to offer different intervals, e.g. `[15,45,1800]`.
+`Frequency` is the interval between runs, in plain seconds (no enum). The allowed values come from the `FrequencyPresetsSeconds` server setting (default: `[10,30,60,120,300,600,3600]`); create and update reject any value outside it. Adjust the setting via `PUT /v1/settings/FrequencyPresetsSeconds` to offer different intervals, e.g. `[15,45,1800]`.
 
 Frequencies are enforced by the `TestScheduler` background loop, which wakes every `SchedulerLoopIntervalSeconds` (a read-only setting derived from the lowest `FrequencyPresetsSeconds` preset, default 10). Each wake runs one database query plus an in-memory scan and then sleeps (`Task.Delay`), so the CPU cost is one short database burst per wake — a lower interval means proportionally more wakes per hour. Changing `FrequencyPresetsSeconds` takes effect on the next cycle without a restart. Active tests are enqueued each time their interval elapses; after server downtime an overdue test runs once and resynchronizes instead of catching up.
-
-Databases from before this change stored `Frequency` as the old `TestFrequency` enum (0-6); the server converts those rows to seconds once at startup (`SchemaMigrations` table records it).
 
 ## IpVersion
 Sent and returned as a camelCase string:
@@ -816,7 +814,7 @@ The message also carries the server's observability policy: `LogShippingEnabled`
 {
   "type": "ServerHello",
   "data": {
-    "ServerVersion": "0.2.0",
+    "ServerVersion": "0.5.0",
     "LogShippingEnabled": false,
     "NodeLocalLoggingEnabled": true,
     "ExternalIpResolvingEnabled": false
@@ -832,7 +830,7 @@ Sent by node on connection.
   "data": {
     "NodeId": "string",
     "NodeName": "string",
-    "NodeVersion": "0.2.0",
+    "NodeVersion": "0.5.0",
     "MaxConcurrentTests": 4,
     "HeartbeatIntervalSeconds": 1,
     "DefaultTestTimeoutSeconds": 60,
@@ -867,7 +865,7 @@ Sent by server to assign a test to a node.
   "data": {
     "JobId": "string",
     "TestId": "string",
-    "TestType": 0-5,
+    "TestType": 0-6,
     "Target": "string",
     "Frequency": 60,  // seconds
     "ExpectedBodyPattern": null,  // HTTP/HTTPS: body regex; null = no check
@@ -953,7 +951,7 @@ Sent by node to ship one of its log entries to the server. Accepted only while t
   "data": {
     "NodeId": "string",
     "NodeName": "string",
-    "NodeVersion": "0.2.0",
+    "NodeVersion": "0.5.0",
     "Timestamp": "ISO8601 datetime",
     "Level": "Debug|Information|Warning|Error",
     "Message": "string",
