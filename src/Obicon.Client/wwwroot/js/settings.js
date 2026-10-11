@@ -313,7 +313,8 @@ function renderRawSettingRow(setting) {
 }
 
 function isBoolean(setting) {
-    return setting.value === 'true' || setting.value === 'false';
+    // Boolean settings arrive as native JSON booleans since the typed-settings change
+    return typeof setting.value === 'boolean';
 }
 
 // Boolean settings save immediately on toggle; the switch reverts on failure

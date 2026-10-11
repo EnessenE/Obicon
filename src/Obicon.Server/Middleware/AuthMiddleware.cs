@@ -47,8 +47,9 @@ public class AuthMiddleware
     private static bool IsExcludedPath(PathString path)
     {
         // /ws/nodes authenticates with the node token and /v1/enroll with the enroll token
-        // instead of the API Authorization header
-        var excludedPaths = new[] { "/metrics", "/swagger", "/swagger-ui", "/ws", "/v1/enroll" };
+        // instead of the API Authorization header; /v1/health stays open so orchestrator
+        // probes (Kubernetes, Docker, load balancers) can reach it without the key
+        var excludedPaths = new[] { "/metrics", "/swagger", "/swagger-ui", "/ws", "/v1/enroll", "/v1/health" };
         return excludedPaths.Any(p => path.StartsWithSegments(p));
     }
 

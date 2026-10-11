@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Obicon.Server.BackgroundServices;
@@ -141,21 +140,7 @@ app.UseMiddleware<AuthMiddleware>();
 app.UseMiddleware<WebSocketMiddleware>();
 
 app.MapControllers();
-app.MapHealthChecks("/v1/health", new HealthCheckOptions
-{
-    ResponseWriter = async (context, report) =>
-    {
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(new
-        {
-            Status = report.Status.ToString(),
-            TotalDuration = report.TotalDuration.ToString(),
-            Entries = report.Entries.ToDictionary(
-                e => e.Key,
-                e => new { Status = e.Value.Status.ToString(), e.Value.Description, Duration = e.Value.Duration.ToString(), e.Value.Data })
-        }));
-    }
-});
+app.MapHealthChecks("/v1/health");
 app.MapPrometheusScrapingEndpoint();
 
 ProgramLog.LogServerStarting(app.Logger, ServerInfo.Version);
