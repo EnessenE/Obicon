@@ -38,7 +38,7 @@ The contract is deliberate: **the database is for operating the system and debug
 
 ## Authentication
 
-API requests must carry the auth header (default: `Authorization: secureobiconkey`). `/ws`, `/metrics`, and `/swagger` are exempt; the WebSocket endpoint instead authenticates nodes by their token, and `/v1/enroll` authenticates by enroll token.
+API requests must carry the auth header (default: `Authorization: secureobiconkey`). `/ws`, `/metrics`, `/swagger`, and `/v1/health` are exempt; the WebSocket endpoint instead authenticates nodes by their token, `/v1/enroll` authenticates by enroll token, and the health endpoint answers without the key so orchestrator probes can reach it.
 
 The header value and the WebSocket path are configurable (see below). The frontend's `js/api.js` already sends the header for every call.
 

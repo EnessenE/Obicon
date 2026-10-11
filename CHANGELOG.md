@@ -10,6 +10,19 @@ The CI pipeline publishes `ghcr.io/enessene/obicon/server:<server version>` and
 `node-vx.y.z` with the matching section below as notes. The frontend has no
 separate version; its changes are listed under the server release.
 
+## [Server 0.5.1] - 2026-10-11
+
+### Server
+- `GET /v1/health` no longer requires the API `Authorization` header. The endpoint only reports reachability status, and orchestrator probes (Kubernetes readiness/liveness, Docker healthchecks, load balancers) cannot carry the key — with the old behavior a Kubernetes readiness probe against `/v1/health` always failed with 401, so the pod never became ready and the service refused connections. `/v1/enroll`, `/metrics`, `/swagger`, and `/ws` keep their existing exemptions; every other endpoint still rejects unauthenticated requests
+- The health endpoint now serves the standard ASP.NET Core health checks response (plain text `Healthy`/`Unhealthy`) instead of a custom JSON payload; the database is still part of the check, so the status code (200/503) is what gates orchestrator readiness
+
+### Frontend
+- Settings page: boolean settings render as toggles again — the type check still compared against the pre-0.5.0 string forms (`'true'`/`'false'`), so native JSON booleans fell through to a plain text input
+
+## [Node 0.5.1] - 2026-10-11
+
+- Dependency update (`Microsoft.Extensions.Hosting` 10.0.12); version bump only otherwise, so nodes stay within the server's supported version range
+
 ## [Server 0.5.0] - 2026-10-10
 
 ### Server

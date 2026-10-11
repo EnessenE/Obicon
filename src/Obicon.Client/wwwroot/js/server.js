@@ -25,12 +25,12 @@ async function loadAll() {
     serverError.style.display = 'none';
 
     const [health, stats] = await Promise.allSettled([
-        apiCall('GET', '/v1/health'),
+        fetchHealth(),
         apiCall('GET', '/v1/stats')
     ]);
 
     if (health.status === 'fulfilled') {
-        document.getElementById('healthStatus').textContent = health.value.status;
+        document.getElementById('healthStatus').textContent = health.value;
         document.getElementById('healthTimestamp').textContent = new Date().toLocaleString();
     }
 
@@ -67,6 +67,16 @@ async function loadAll() {
 
 function setText(id, value) {
     document.getElementById(id).textContent = value;
+}
+
+// The health endpoint serves plain text (standard ASP.NET Core health checks,
+// no custom writer) and is exempt from the auth header, so it bypasses apiCall
+async function fetchHealth() {
+    const response = await fetch(`${API_BASE_URL}/v1/health`);
+    if (!response.ok) {
+        throw new Error(`Health check failed: HTTP ${response.status}`);
+    }
+    return response.text();
 }
 
 function formatUptime(uptime) {

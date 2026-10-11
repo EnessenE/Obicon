@@ -10,6 +10,7 @@ All endpoints require the `Authorization` header carrying the configured API key
 ```
 Authorization: secureobiconkey
 ```
+Exemptions: `/v1/health` (health checks must answer without the key so orchestrator probes can reach them), `/metrics`, `/swagger`, and `/ws` (the WebSocket endpoint authenticates nodes by their token instead). `/v1/enroll` authenticates with the enroll token in its body.
 
 ## Conventions
 
@@ -37,7 +38,7 @@ Status mapping: 400 invalid input, 401 missing or wrong API key, 403 understood 
 ```
 GET /v1/health
 ```
-Returns server health status via the ASP.NET Core health checks middleware.
+Standard ASP.NET Core health checks endpoint (includes the database check). The body is plain text — `Healthy` with 200 OK, `Unhealthy` with 503 Service Unavailable. No `Authorization` header required, so orchestrator probes (Kubernetes, Docker, load balancers) can reach it.
 
 **Response:** 200 OK (Healthy), 503 Service Unavailable (Unhealthy)
 ```json
